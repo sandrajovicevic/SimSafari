@@ -299,7 +299,11 @@ export async function buildPark(ctx, opts = {}) {
   } else report.warnings.push('traffic module or gate road node absent: no tours started');
 
   // ---- 10. sim speed + sane starting economy (defaults from World.js are already sane; untouched) --
-  try { ctx.app.setSpeed?.(1); } catch {}
+  // Speed 1 (one game-hour per real second) only in the live game, and only when the clock is not
+  // explicitly paused (a capture page passes &speed=0). In a showcase page the clock must stay at the
+  // preset's tod: under the screenshot tool's software renderer a 40-frame settle takes ~35 real
+  // seconds, and an advancing clock pushed every capture into a random night hour.
+  if (!ctx.isShowcase && !world.time.paused) { try { ctx.app.setSpeed?.(1); } catch {} }
 
   report.gate = { x: gateAnchor.x, z: gateAnchor.z, nodeId: gateNode };
   report.lodgeSite = { x: lodgeAnchor.x, z: lodgeAnchor.z, nodeId: lodgeNode };
