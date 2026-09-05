@@ -1,0 +1,33 @@
+{
+  "name": "simsafari",
+  "version": "1.0.0",
+  "description": "Construction-and-management safari park simulation (Three.js + Vite)",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "shot": "node tools/screenshot.mjs",
+    "shots": "node tools/screenshot.mjs --all",
+    "lint": "node tools/lint.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sandrajovicevic/simsafari.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/sandrajovicevic/simsafari/issues"
+  },
+  "homepage": "https://github.com/sandrajovicevic/simsafari#readme",
+  "type": "module",
+  "private": "true",
+  "dependencies": {
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1",
+    "vite": "^8.2.2"
+  }
+}

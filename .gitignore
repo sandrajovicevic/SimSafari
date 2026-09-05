@@ -1,0 +1,10 @@
+node_modules/
+dist/
+tools/shots/
+.dev.log
+.vite/
+*.log
+.DS_Store
+
+tools/.devserver.pid
+tools/.vite.pid

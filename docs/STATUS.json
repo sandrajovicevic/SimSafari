@@ -1,0 +1,188 @@
+{
+  "updated": "2026-09-02",
+  "wave": 1,
+  "passThreshold": 8.5,
+  "notes": [
+    "Egress proxy blocks Poly Haven / ambientCG / all CDNs: every asset is procedural.",
+    "Screenshot tool renders through SwiftShader (software GL); fps in shots/*.json is NOT a GPU number. Draw calls, triangles and errors are real.",
+    "Wave 1 was interrupted mid-round by an API spend limit. Builders were killed before writing module READMEs and before their final iteration passes. Scores below are the ORCHESTRATOR's own integration review, not a full critic pass: fewer angles, no API-contract audit. Treat them as provisional and biased slightly optimistic on modules only seen at one preset.",
+    "Integration verified: all 8 wave-1 modules load together in the full game with zero console errors, 50 draw calls, 1.22 M triangles.",
+    "SECOND ROOT CAUSE FOUND 2026-09-04: environment/index.js clamped auto-exposure at 60x, and it was hitting 5.46x at golden hour / 60x at night on ordinary, correctly-lit scenes (Math.max(0, keyDir.y) kills the key-light term well before the sky actually looks dim as the sun nears the horizon). Every material several-fold overexposed, verified by reading a baked lion albedo texture directly (correct ~0.38 linear) against near-white on screen. Lowered the ceiling to 4 (commit e3a6999); night is now dim and legible with visible stars instead of blown to white, golden hour shows correct value separation between light/dark test objects instead of clipping everything. Needs a further tuning pass against real references but is no longer broken. This, independently of the sRGB double-encode, explains why several modules' screenshots looked washed out at low sun angles even after the sRGB fix — e.g. buildings' lodge preset (tod 17.5) flat-white background buildings.",
+    "THIRD ROOT CAUSE FOUND 2026-09-04: terrain/mesh.js had `mesh.receiveShadow = false; // BENCH`, a leftover benchmarking flag that silently blocked every shadow in the game from landing on the ground, anywhere. Fixed (commit e3a6999). This was the real cause of animals' round-1 'no contact shadow' blocker — animals had already shipped a drawn contact-shadow decal as a workaround, which stays in place as a complement now that real shadows also work.",
+    "ROOT CAUSE FOUND 2026-09-02: core/Textures.js gpu() double-encoded sRGB (shader-side linearToSRGBv plus an sRGB-internal-format render target). Linear 0.216 was stored as byte 188 instead of 128 — every albedo ~37% too bright. This, not ACES tone mapping, was the real cause of the project-wide washed-out look; the earlier 'author darker to compensate' guidance was a workaround over a core defect and is now WRONG. Core is fixed. Modules that compensated must have that compensation REMOVED: props is currently over-dark (near-black foliage), and any darkening added to animals/terrain/roads in round 2 must be re-checked."
+  ],
+  "modules": {
+    "terrain": {
+      "wave": 1, "domain": "nature", "round": 2, "score": 8.0, "status": "near-pass", "errors": 0, "drawCalls": 40,
+      "reviewedBy": "orchestrator-integration", "presetsSeen": ["plains", "escarpment", "kopje (via roads-check2/roads-final-bridge)"],
+      "issues": [
+        { "sev": "resolved", "text": "FIXED and verified (tools/shots/terrain-final-escarpment.png): the black smear is gone. True triplanar projection blended by squared normal gives real weathered rock striation on the cliff face, correct grey-brown colour, no black band anywhere." },
+        { "sev": "resolved", "text": "FIXED and verified (tools/shots/roads-final-bridge.png, same terrain visible under the bridge): river is now dark tannin-stained with a tight sun glint and visible depth absorption, not blown-out white." },
+        { "sev": "resolved", "text": "FIXED and verified (tools/shots/terrain-satcheck.png, props-final-acacia.png): saturation is now correct — plausible dry-season ochre/gold with red laterite, no fluorescent yellow, no black horizon band." },
+        { "sev": "resolved", "text": "FIXED per builder report, plausible from roads-check2.png background: kopjes rebuilt as angular stacked-boulder forms rather than smooth blobs. Not independently close-verified this round." },
+        { "sev": "minor", "text": "Apron (world-edge floating-slab fix) not independently verified by the orchestrator — builder reports a matching-palette continuation ring with a previously-inverted winding now fixed. Worth one grazing-angle screenshot to confirm." },
+        { "sev": "minor", "text": "Builder's own README flags near-total-black night ground as shared across environment/props/terrain — a general night ambient-response issue, not terrain-specific. See environment's entry." }
+      ],
+      "good": "Four of five round-1 blockers/majors independently verified fixed this round with real screenshots, not just builder claims. This module has moved further than any other in the project. Not yet given a formal pass — needs a fresh independent multi-preset, multi-time-of-day critic pass rather than the orchestrator's spot checks — but it is very plausibly at or near the 8.5 bar."
+    },
+    "environment": {
+      "wave": 1, "domain": "nature", "round": 2, "score": 7.5, "status": "near-pass", "errors": 0, "drawCalls": 44,
+      "reviewedBy": "orchestrator-integration", "presetsSeen": ["overview", "golden", "close@12", "night"],
+      "issues": [
+        { "sev": "resolved", "text": "FIXED (integrator, commit e3a6999) and verified: the exposure ceiling was 60, hitting 5.46x at golden hour and 60x at night — every material several-fold overexposed. Lowered to 4 for day/golden-hour. Verified: golden-hour test spheres now show correct value separation (dark box reads dark, gold sphere reads gold) instead of clipping to white." },
+        { "sev": "resolved", "text": "FIXED (integrator, follow-up) and verified against animals' own ground-level night screenshot: the single ceiling of 4 fixed golden hour but left true night essentially unlit black (no HemisphereLight exists in this architecture; ambient is entirely IBL-via-exposure). Gated a separate, higher night-only ceiling (12) on `isMoonKey`. Verified: night is now dim but clearly readable — grass, animal silhouettes, a waterhole with reflection, river and escarpment all visible, not blown white or crushed black." },
+        { "sev": "major", "text": "Hard dark band at the horizon where the sky dome meets its ground colour — not yet independently re-checked since the exposure fixes; may look different now." },
+        { "sev": "major", "text": "Golden-hour sky washes toward white at the horizon with no blue retained overhead — a separate, still-open atmosphere-authoring issue distinct from the exposure clamp (confirmed distinct: the exposure fix changed object brightness but not this sky-colour behaviour)." }
+      ],
+      "good": "Scattering gradient at noon is correct and clean; golden-hour light direction and long soft shadows are convincing; CSM works; zero errors. Both exposure regimes (day and night) are now correctly calibrated after two rounds of fixes — this was the single highest-leverage module in the project, since its exposure bug was silently degrading the visual score of terrain, props, animals and buildings at low sun angles."
+    },
+    "animals": {
+      "wave": 1, "domain": "nature", "round": 3, "score": 8.0, "status": "near-pass", "errors": 0, "drawCalls": 62,
+      "reviewedBy": "orchestrator-integration", "presetsSeen": ["waterhole", "night"],
+      "issues": [
+        { "sev": "resolved", "text": "FIXED and verified: real cast shadows confirmed working (terrain's receiveShadow flag was the root cause, fixed by the integrator); the module's own contact-shadow decal was correctly demoted from primary grounding cue to a small low-opacity AO term to avoid double-darkening now both exist." },
+        { "sev": "resolved", "text": "FIXED and verified: a real bug where the staged waterhole's ground height sampled at the pool's outer rim could grab an unrelated rise and float the whole water plane over a metre above drinking animals — fixed by averaging samples inside the footprint instead (tools/shots/animals-waterhole-r6.png)." },
+        { "sev": "resolved", "text": "FIXED (jointly with environment) and verified: night was essentially unlit black after the first exposure-ceiling fix; animals' own precise ground-level evidence (tools/shots/animals-night-r4.png) is what led to the isMoonKey-gated night ceiling fix. Re-verified after: night now reads as dim, legible moonlit savannah (tools/shots/animals-night-ceilingfix.png)." },
+        { "sev": "minor", "text": "Elephant skin bump pattern reads slightly too regular/geometric ('golf ball') rather than organic wrinkles." },
+        { "sev": "minor", "text": "Wrinkle normal scale and leg anatomy were addressed by the builder in round 2 (taper, knee/hock joints, reduced normal strength) but not independently re-verified with a fresh close-up by the orchestrator." }
+      ],
+      "good": "The procedural elephant is unmistakably an elephant — trunk taper, tusks, ear shape and back line all read correctly from code-built geometry, still the hardest thing in the project. Real cast shadows, correct grey hide tone, and a fixed waterhole all independently verified across three rounds. The builder's own precise diagnostic work (reading back a baked texture to prove an exposure bug rather than a colour bug) is what led directly to two of the project's highest-leverage core fixes."
+    },
+    "roads": {
+      "wave": 1, "domain": "built", "round": 2, "score": 7.5, "status": "near-pass", "errors": 0, "drawCalls": 65,
+      "reviewedBy": "orchestrator-integration", "presetsSeen": ["overview", "bridge"],
+      "issues": [
+        { "sev": "resolved", "text": "FIXED and verified (tools/shots/roads-check2.png): road surface is no longer near-white chalk. Paved reads as correct grey asphalt; dirt/gravel blend naturally with the surrounding ground." },
+        { "sev": "resolved", "text": "FIXED and verified (tools/shots/roads-final-bridge.png): the bridge preset was pointed at empty plains; showcase.js now walks the real road graph for the actual water crossing. A real timber bridge with railings now spans dark tannin water in frame, with a detailed cracked mud-flat foreground." },
+        { "sev": "minor", "text": "Ruts/shoulder-blend improvements reported by the builder (widened dust blend, darker rut channels) not independently close-verified this round." },
+        { "sev": "minor", "text": "junction and close presets not independently reviewed this round (builder reports both fixed)." }
+      ],
+      "good": "Graph, terrain conforming, junctions and the bridge all work; road surface colour and the bridge framing are both independently confirmed fixed. Built domain benchmark is Cities: Skylines II — this is closer to that bar than it has been at any point in the project."
+    },
+    "ui": {
+      "wave": 1, "domain": "built", "round": 1, "score": 8.0, "status": "fail", "errors": 0, "drawCalls": 0,
+      "reviewedBy": "orchestrator-integration", "presetsSeen": ["game overview (DOM)"],
+      "issues": [
+        { "sev": "minor", "text": "An empty dark panel renders at top-right in the game view (notification stack container with no content should be hidden when empty)." },
+        { "sev": "minor", "text": "Not yet reviewed at report/panel/toolbar/night presets." }
+      ],
+      "good": "Genuinely close to the Cities: Skylines II reference: top bar with cash, income delta, visitors, reputation stars, day/season, clock, speed controls and weather; numbered category toolbar; framed minimap. Typography and spacing are disciplined. Strongest module in wave 1."
+    },
+    "simulation": {
+      "wave": 1, "domain": "sim", "round": 1, "score": 9.0, "status": "pass", "errors": 0, "drawCalls": 2,
+      "reviewedBy": "orchestrator-integration", "presetsSeen": ["overview (DOM)"],
+      "tests": { "file": "src/modules/simulation/test.mjs", "passed": 58, "failed": 0, "deterministic": true, "note": "same seed reproduces an identical 90-day history (cash d90 $326,597); a different seed diverges" },
+      "issues": [
+        { "sev": "minor", "text": "Only the overview preset has been reviewed; boom/bust/close/night not yet checked." },
+        { "sev": "minor", "text": "README.md still missing (builder was killed before writing it)." }
+      ],
+      "good": "The most complete module in the project and the one that carries gameplay fidelity to SimSafari 1998. Delivers habitat quality per species, animal happiness driving births/deaths/migration, visitor arrivals driven by reputation and price, a full income/expense ledger (tickets, lodge, shop vs staff, buildings, roads, feed, vet, interest), staff morale feeding upkeep efficiency, village prosperity, seeded events (drought, disease, poachers, viral review, grant) and poaching risk tied to ranger staffing. 58/58 tests pass, determinism verified."
+    },
+    "audio": {
+      "wave": 1, "domain": "audio", "round": 1, "score": 8.0, "status": "fail", "errors": 0, "drawCalls": 0,
+      "reviewedBy": "orchestrator-integration", "presetsSeen": ["night (DOM + analyser)"],
+      "issues": [
+        { "sev": "minor", "text": "Only the night preset reviewed; overview/storm/close not yet checked." },
+        { "sev": "minor", "text": "animals/vehicles/ui buses read -inf dB at capture because their sounds were still scheduled; a capture timed to a triggered call would prove the spatial chain end to end." },
+        { "sev": "minor", "text": "README.md still missing." }
+      ],
+      "good": "Fully synthesised and genuinely working: AudioContext running, master -20.2 dBFS with a populated 40 Hz-16 kHz spectrum, and a correct night layer mix (insects 1.00, frogs 1.00, birds 0.15, wind 0.41). Spatialised lion, hyena, nightjar and elephant rumble scheduled with real distances (35-265 m)."
+    },
+    "effects": {
+      "wave": 1, "domain": "nature", "round": 1, "score": 6.0, "status": "fail", "errors": 0, "drawCalls": 204,
+      "reviewedBy": "orchestrator-integration", "presetsSeen": ["overview"],
+      "issues": [
+        { "sev": "blocker", "text": "The showcase scene is blown out to near-white, so the passes cannot be judged. Cause is almost certainly that `environment` is not loaded in the effects showcase, so nobody sets renderer.toneMappingExposure and it stays at 1.0 under a bright sun. Add environment to the showcase's optional deps or set a sane exposure in stage()." },
+        { "sev": "major", "text": "204 draw calls at overview is far above the '≤12 extra draw calls' budget. Most are probably the showcase's own test geometry rather than the pipeline, but the module must measure and report the pipeline's own cost separately." },
+        { "sev": "major", "text": "No A/B of the `off` preset against `overview` has been done, so the pipeline's actual contribution is unmeasured." },
+        { "sev": "minor", "text": "README.md still missing." }
+      ],
+      "good": "Pipeline installs and renders with zero errors; soft shadows and a warm golden-hour grade are visible."
+    },
+    "zoning": {
+      "wave": 2, "domain": "built", "round": 1, "score": 7.0, "status": "near-pass", "errors": 0, "drawCalls": 150,
+      "reviewedBy": "orchestrator-integration", "presetsSeen": ["overview"],
+      "issues": [
+        { "sev": "major", "text": "Habitat overlay cell edges are hard/blocky (checkerboard) rather than the spec's soft-edged, animated dashed boundary. Functionally correct — zones are clearly readable, coloured, and integrated with real terrain/props — but visually short of the Cities: Skylines II reference." },
+        { "sev": "minor", "text": "Fence posts/wire not clearly visible at overview distance; needs a close-preset check." },
+        { "sev": "minor", "text": "Only overview independently reviewed; close/overlay/night not yet checked by the orchestrator (module loads and all 4 presets are present per probe, zero errors)." },
+        { "sev": "minor", "text": "Genuine mutual optional-dependency cycle with animals (each lists the other as optional). Architecturally handled by the registry's cycle detection, not a bug, but worth knowing about." }
+      ],
+      "good": "A real, working habitat-painting overlay: correctly coloured, blocky-but-legible zone regions integrated with terrain and props in one coherent scene. Loads with zero errors, all 4 presets present, lint clean."
+    },
+    "buildings": {
+      "wave": 2, "domain": "built", "round": 2, "score": 8.0, "status": "near-pass", "errors": 0, "drawCalls": 276,
+      "reviewedBy": "orchestrator-integration", "presetsSeen": ["lodge"],
+      "issues": [
+        { "sev": "resolved", "text": "FIXED and verified (tools/shots/buildings-final-lodge.png): the flat-black roof shadow is gone — this was the environment exposure clamp + terrain receiveShadow bugs, both since fixed, not a buildings issue. The ground in front of the lodge now reads as correctly lit dry grass with a real soft shadow, and the background buildings show proper thatch roofs and shaded plaster walls instead of flat white boxes. Closes the loop on a cross-cutting bug chain: animals found it, environment/terrain fixed it, buildings independently confirms the fix." },
+        { "sev": "resolved", "text": "Root cause found and fixed by the builder: the showcase's 8 hand-picked site anchors landed on/near water/kopjes for every candidate on this seed (0/240 valid), so the whole complex fell back to a coordinate that was itself underwater — the actual cause of earlier 'floating on water' renders. Replaced with a full-grid scan with biome/water-table rejection and slope scoring." },
+        { "sev": "info", "text": "Buildings-only cost measured directly via api.stats(): 34 draw calls / 131,730 triangles for 25 buildings across all 16 catalogue types — well inside the <=60/<=400k spec budget. The ~276-296 draw calls seen in full-frame screenshots is terrain+props, not buildings; earlier concern about the draw-call count was based on the wrong number." },
+        { "sev": "minor", "text": "Builder's own README, honest: occasional forced placement when local slope fails even on a good site (2/25 this seed, never on water); no LOD beyond 300m; several catalogue types (fence gate, feeder, toilets, parking) only shown at overview distance, not close-up." }
+      ],
+      "good": "A real thatched-roof lodge with striated makuti roofing, timber rafters, chimney, stone plinth, water tank, solar panel, correct acacia silhouettes around it, and — now that the shadow bug is fixed — a coherent, correctly lit golden-hour scene. Two real bugs found and fixed along the way (site placement, windpump rotor pivot). All 6 presets load, zero errors, lint clean, buildings' own draw-call cost is well within budget."
+    },
+    "props": {
+      "wave": 2, "domain": "nature", "round": 2, "score": 8.0, "status": "near-pass", "errors": 0, "drawCalls": 139,
+      "reviewedBy": "orchestrator-integration", "presetsSeen": ["acacia"],
+      "issues": [
+        { "sev": "resolved", "text": "FIXED and verified (tools/shots/props-final-acacia.png): bark and foliage read as true dark grey-brown / deep green, no longer washed out." },
+        { "sev": "resolved", "text": "FIXED and verified (same shot): the acacia crown is now correctly a dense, flat-topped umbrella silhouette on a bare high-forking trunk — no longer palm-like." },
+        { "sev": "resolved", "text": "FIXED and verified (same shot): grass is a continuous sward with real colour variation, and the dirt patch now blends into it with a soft gradient — no hard seam of any kind. A real cast shadow from the tree is also visible on the ground now that terrain receives shadows." },
+        { "sev": "info", "text": "Correctly reassigned the horizon-line/seam defects to terrain via its own controlled hide-props test, which the orchestrator independently reproduced and confirmed. Credit where due." },
+        { "sev": "minor", "text": "Known gaps from the builder's own README, not independently verified: grassRebuildMs measured at 792ms (perf issue, root-caused, not fixed); only 4 of 8 spec'd tree species built; night preset now reads very dark, consistent with the cross-cutting night-ambient issue noted under environment/terrain, not a props-specific regression." }
+      ],
+      "good": "This is the clearest before/after in the project: round 1 was a legitimate 5.5 (washed out, wrong silhouette, visible seams). Round 2, independently verified, shows correct colour, correct silhouette, real shadows and no seams. Vegetation existing at all was the single biggest blocker in the project three rounds ago; it is now a strong module."
+    },
+    "traffic": {
+      "wave": 2, "domain": "built", "round": 1, "score": 7.5, "status": "near-pass", "errors": 0, "drawCalls": 106,
+      "reviewedBy": "orchestrator-integration", "presetsSeen": ["close"],
+      "issues": [
+        { "sev": "info", "text": "Verification took several attempts because the overview preset (camera distance 430m) makes a 4-5m vehicle imperceptibly small — I initially misread this as 'no vehicles rendering' and, worse, briefly misdiagnosed it as a missing kit.setBodyMatrix() call based on a flawed grep pattern ('setMatrix' is not a substring of 'setBodyMatrix') before re-checking and finding the wiring is correct. The close preset settles it cleanly: vehicles are real, positioned, and rendering. Recorded so the mistake isn't repeated." },
+        { "sev": "minor", "text": "Night preset (headlights) and sighting preset (animals interaction) not yet independently reviewed." },
+        { "sev": "minor", "text": "Overview preset's vehicle scale-at-distance is a legitimate framing concern for the module's own showcase, even though it isn't a rendering bug — worth a closer default camera or a labelled close-up inset." }
+      ],
+      "good": "Genuinely good: a real open safari truck with tiered bench seats, clearly visible seated passengers in varied clothing colours, ribbed canopy roof, roof rack, spare wheel, khaki body paint, and a visible ground contact shadow. World-state vehicle spawning verified directly (6 vehicles with plausible, in-bounds positions). Zero console errors, 106 draw calls at close, all modules load together cleanly."
+    },
+    "tools": {
+      "wave": 2, "domain": "built", "round": 1, "score": 8.0, "status": "near-pass", "errors": 0, "drawCalls": 87,
+      "reviewedBy": "orchestrator-integration", "presetsSeen": ["overview", "building"],
+      "issues": [
+        { "sev": "minor", "text": "terrain/road/close/night presets not yet independently reviewed (overview and building both confirmed good)." },
+        { "sev": "minor", "text": "Select/inspect picking is radius/nearest-based rather than a true mesh raycast — a documented, deliberate simplification given the public API contract, not a bug." },
+        { "sev": "minor", "text": "Undo/redo of road/building/animal add-remove changes the entity's id (roads.addRoad/buildings.place/animals.spawn all mint fresh ids) — documented, low-impact." }
+      ],
+      "good": "This is the module that makes the game playable rather than watchable, and it delivers: a real tool framework (activate/deactivate/undo/redo >=50 steps), and I independently verified two presets. `overview` shows the full scripted session actually working end-to-end — a curving gravel road crossing the river with a real bridge, a large painted habitat overlay, structures placed — all through the module's own public API, no shortcuts. `building` shows a working ghost preview: the real placed lodge with a semi-transparent red overlay correctly signalling an invalid (occupied) placement. Also found and fixed a genuine bug during its own testing: an unbounded terrain-raise stroke that, under this session's heavy concurrent load, once grew tall enough to embed the camera inside solid terrain — now capped, which fixes real gameplay too. README is thorough: full API, undo/redo mechanics explained per-tool, cost model, and an honest known-gaps list."
+    },
+    "savannah": { "wave": 3, "domain": "nature", "round": 0, "score": null, "status": "not-started", "errors": null, "drawCalls": null, "issues": [] },
+    "park": { "wave": 3, "domain": "nature", "round": 0, "score": null, "status": "not-started", "errors": null, "drawCalls": null, "issues": [] }
+  },
+  "game": {
+    "round": 1, "score": null, "blindVisual": null, "gameplayFidelity": null,
+    "integration": { "loads": true, "modulesOk": 8, "errors": 0, "drawCalls": 50, "triangles": 1215785 },
+    "issues": [
+      { "sev": "blocker", "text": "SYSTEMIC: everything renders washed out toward white — terrain, roads, animal hide, tree bark and foliage all show it. Builders are authoring albedo at roughly the target value, but ACES tone mapping then lifts and desaturates it further. The project-wide fix is to author darker and more saturated than the intended result. This is the single largest thing standing between the current look and the reference photography." },
+      { "sev": "major", "text": "Nothing is placed in the full game: no roads, buildings, habitats or animals appear at start because the park demo module (wave 3) does not exist yet." },
+      { "sev": "major", "text": "Wave 2 still missing zoning, buildings, traffic and tools; wave 3 missing savannah and park. Without tools the game cannot actually be played, only watched." }
+    ]
+  },
+  "history": [
+    { "module": "terrain", "round": 1, "score": 6.0, "by": "orchestrator-integration", "date": "2026-09-02" },
+    { "module": "environment", "round": 1, "score": 7.0, "by": "orchestrator-integration", "date": "2026-09-02" },
+    { "module": "animals", "round": 1, "score": 6.5, "by": "orchestrator-integration", "date": "2026-09-02" },
+    { "module": "roads", "round": 1, "score": 6.0, "by": "orchestrator-integration", "date": "2026-09-02" },
+    { "module": "ui", "round": 1, "score": 8.0, "by": "orchestrator-integration", "date": "2026-09-02" },
+    { "module": "simulation", "round": 1, "score": 9.0, "by": "orchestrator-integration", "date": "2026-09-02" },
+    { "module": "audio", "round": 1, "score": 8.0, "by": "orchestrator-integration", "date": "2026-09-02" },
+    { "module": "effects", "round": 1, "score": 6.0, "by": "orchestrator-integration", "date": "2026-09-02" },
+    { "module": "props", "round": 1, "score": 5.5, "by": "orchestrator-integration", "date": "2026-09-02" },
+    { "module": "terrain", "round": 2, "score": 8.0, "by": "orchestrator-integration", "date": "2026-09-04" },
+    { "module": "roads", "round": 2, "score": 7.5, "by": "orchestrator-integration", "date": "2026-09-04" },
+    { "module": "props", "round": 2, "score": 8.0, "by": "orchestrator-integration", "date": "2026-09-04" },
+    { "module": "buildings", "round": 2, "score": 8.0, "by": "orchestrator-integration", "date": "2026-09-04" },
+    { "module": "zoning", "round": 1, "score": 7.0, "by": "orchestrator-integration", "date": "2026-09-04" },
+    { "module": "traffic", "round": 1, "score": 7.5, "by": "orchestrator-integration", "date": "2026-09-04" },
+    { "module": "tools", "round": 1, "score": 8.0, "by": "orchestrator-integration", "date": "2026-09-04" },
+    { "module": "environment", "round": 2, "score": 7.5, "by": "orchestrator-integration", "date": "2026-09-04" },
+    { "module": "animals", "round": 3, "score": 8.0, "by": "orchestrator-integration", "date": "2026-09-04" }
+  ]
+}
