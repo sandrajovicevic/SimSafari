@@ -102,7 +102,7 @@ export default {
   id: 'simulation',
   version: 1,
   dependencies: [],
-  optional: [], // TEMP for isolated screenshots — restore ['animals', 'zoning', 'buildings', 'traffic', 'roads']
+  optional: ['animals', 'zoning', 'buildings', 'traffic', 'roads'],
   api,
 
   async init(c) {

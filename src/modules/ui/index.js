@@ -68,14 +68,14 @@ function setSpeed(mult) {
   if (mult > 0) s.speedMult = mult;
   try { ctx.app.setSpeed(BASE_SPEED * mult); } catch (e) { ctx.log.warn('setSpeed failed', e); }
   try { ctx.modules.get('simulation')?.speed?.(mult); } catch {}
-  try { ctx.modules.get('audio')?.play?.('ui_click', { gain: 0.4 }); } catch {}
+  try { ctx.modules.get('audio')?.play?.('click', { gain: 0.4 }); } catch {}
   parts?.topbar.refresh();
 }
 
 function requestTool(tool, options, item) {
   s.activeTool = tool ? { tool, options: options || null, item: item || null } : null;
   ctx.events.emit('tool:request', { tool, options: options || null });
-  try { ctx.modules.get('audio')?.play?.('ui_click', { gain: 0.4 }); } catch {}
+  try { ctx.modules.get('audio')?.play?.('click', { gain: 0.4 }); } catch {}
   parts?.toolbar.refresh();
 }
 
