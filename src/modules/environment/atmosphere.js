@@ -69,7 +69,7 @@ function densities(h, out) {
   return out;
 }
 
-const _d = [0, 0, 0], _od = [0, 0, 0], _ld = [0, 0, 0];
+const _d = [0, 0, 0], _ds = [0, 0, 0], _od = [0, 0, 0], _ld = [0, 0, 0];
 
 /** Optical depth (R, M, O) from point p toward direction s to the top of the atmosphere; Infinity if the earth blocks. */
 function lightDepth(px, py, pz, sx, sy, sz, out, n = 4) {
@@ -82,8 +82,8 @@ function lightDepth(px, py, pz, sx, sy, sz, out, n = 4) {
     const ti = (i + 0.5) * step;
     const x = px + sx * ti, y = py + sy * ti, z = pz + sz * ti;
     const h = Math.sqrt(x * x + y * y + z * z) - ATMOS.Re;
-    densities(h, _d);
-    out[0] += _d[0] * step; out[1] += _d[1] * step; out[2] += _d[2] * step;
+    densities(h, _ds);   // NOT _d: _d holds the view-ray density in scatter()'s loop — sharing it here
+    out[0] += _ds[0] * step; out[1] += _ds[1] * step; out[2] += _ds[2] * step;
   }
   return out;
 }

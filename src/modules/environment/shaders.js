@@ -97,12 +97,15 @@ void main(){
   vec3 col = lut.rgb;
   float mu = dot(d, uSunDir);
   if (d.y < 0.0) {
-    // distant savannah plain: ground albedo lit, then aerial perspective from the LUT
+    // distant savannah plain: ground albedo lit, then aerial perspective from the LUT. Converges to
+    // the pure LUT sky colour exactly at d.y = 0 so the horizon line is continuous with the dome
+    // above it — the old 50% uHorizon blend left a visible step (dark band) wherever the ground
+    // term was darker than the sky, i.e. every golden hour.
     float dist = uCamHeight / max(0.02, -d.y);
     float fade = 1.0 - exp(-dist * 0.00035);
     vec3 plain = uGroundLit * lut.a;
-    col = mix(plain, lut.rgb + plain, fade);
-    col = mix(col, uHorizon, smoothstep(-0.02, 0.0, d.y) * 0.5);
+    vec3 ground = mix(plain, lut.rgb + plain, fade);
+    col = mix(ground, lut.rgb, smoothstep(-0.012, 0.001, d.y));
   } else {
     // sun: limb-darkened disc + tight corona (the wide Mie glow lives in the LUT)
     float ang = acos(clamp(mu, -1.0, 1.0));
