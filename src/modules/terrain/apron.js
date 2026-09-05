@@ -93,14 +93,19 @@ float height(vec2 uv){
 vec3 albedo(vec2 uv, float h){
   float macro = tfbm(uv, 2.0, 3, uSeed + 10.0) * 0.5 + 0.5;
   float pt = tfbm(uv, 5.0, 3, uSeed + 17.0) * 0.5 + 0.5;
-  vec3 soil  = vec3(0.200, 0.122, 0.062);   // = splat DRY_GRASS soil
-  vec3 gold  = vec3(0.520, 0.360, 0.115);   // = splat DRY_GRASS tip
-  vec3 olive = vec3(0.215, 0.215, 0.082);   // = splat DRY_GRASS green accent
-  vec3 lat   = vec3(0.360, 0.200, 0.118);   // = splat DIRT laterite high
+  // Values below were re-matched (2026-09-05) against the splat's RENDERED plains at overview
+  // distance: the previous set read one step brighter and yellower than the playable terrain, so the
+  // world showed as a hard-edged bright slab inside a paler plain. The splat also carries its own AO
+  // (0.72-1.0) and macro darkening that this flat sheet must partially mirror.
+  vec3 soil  = vec3(0.170, 0.105, 0.055);
+  vec3 gold  = vec3(0.405, 0.300, 0.105);
+  vec3 olive = vec3(0.185, 0.190, 0.075);
+  vec3 lat   = vec3(0.310, 0.175, 0.105);
   vec3 c = mix(soil, gold, smoothstep(0.14, 0.60, h));
-  c = mix(c, olive, smoothstep(0.60, 0.88, macro) * 0.45);
-  c = mix(c, lat, smoothstep(0.62, 0.86, pt) * 0.55);
+  c = mix(c, olive, smoothstep(0.55, 0.85, macro) * 0.55);
+  c = mix(c, lat, smoothstep(0.62, 0.86, pt) * 0.5);
   c *= 0.86 + 0.24 * h;
+  c *= 0.88;   // overall step down: the splat's AO averages ~0.9 under the same light
   return c;
 }`,
     roughness: 'float rough(vec2 uv, float h){ return 0.95 - 0.1 * h; }',

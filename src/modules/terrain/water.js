@@ -48,7 +48,7 @@ export function createWaterMaterial(ctx, heightTex, normalTex) {
     uSkyMix: { value: 1.0 }, uWaveStr: { value: 1.0 },
     // Beer–Lambert absorption for a silt/tannin-stained savannah river: blue is killed fastest,
     // so the residual colour walks from a warm ochre shallow to a near-black olive at depth.
-    uGlint: { value: 1.1 }, uGlintPow: { value: 2600.0 }, uSheen: { value: 0.0 },
+    uGlint: { value: 0.6 }, uGlintPow: { value: 3200.0 }, uSheen: { value: 0.0 },
     uBed: { value: new THREE.Color(0.155, 0.098, 0.042) },   // wet sand/mud seen through 0 m of water
     uBody: { value: new THREE.Color(0.030, 0.038, 0.024) },  // suspended-sediment body colour (deep asymptote)
     uExt: { value: new THREE.Vector3(1.35, 1.75, 3.10) },    // per-metre extinction, r/g/b

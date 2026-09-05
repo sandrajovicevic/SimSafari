@@ -139,7 +139,7 @@ class ParticlesPass extends Pass {
 
 /** Lean bloom: soft-knee threshold into a 3-level mip chain, tent-filter upsample. Result at ¼ res. */
 class BloomPass extends Pass {
-  constructor(w, h, { threshold = 1.0, knee = 0.5, levels = 3, radius = 1.6 } = {}) {
+  constructor(w, h, { threshold = 1.35, knee = 0.4, levels = 3, radius = 1.6 } = {}) {
     super();
     this.needsSwap = false;
     this.levels = levels;

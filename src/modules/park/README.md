@@ -111,11 +111,54 @@ re-anchors its camera onto whatever actually got placed for the active seed, fol
 
 ## Gameplay-loop verification (measured)
 
-<!-- FILLED IN AFTER THE SCRIPTED BROWSER RUN -->
+Scripted in-browser run against the live demo park (seed 1, 2026-09-05), driving the modules'
+public APIs exactly as a player/tool would: `simulation.runDays(30)` per phase,
+`simulation.setTicketPrice`, `terrain.setWaterLevel`, `roads.addRoad` + `traffic.startTour`,
+counting `visitor:sighting` events on the bus. Real numbers, not projections:
+
+| experiment | measured result |
+|---|---|
+| **Baseline, 30 days @ $25** | 100 arrivals/day, satisfaction 0.644, cash $250k → **$230,060**, **29 animals left the park**, 0 births |
+| **Ticket price → $60, 30 days** | arrivals **100 → 26/day** (−74 %; the arrival model's elasticity 1.3 predicts (25/60)^1.3 ≈ 0.29 — matches), satisfaction 0.644 → 0.491, cash → **$122,528** — the dearer month earns *less* once fixed upkeep is paid: raising price past demand is a real loss, not a cheat |
+| **Water table dropped 6 m, 30 days** | 3 more animals left, 1 died. Weak signal, and the baseline's own 29 departures dwarf it — see the balance note below |
+| **Road past the predators + tour** | 0 sightings before, 0 after in 2×90 s of accelerated real time. **Not demonstrable under SwiftShader**: vehicles advance on real-time dt, so at ~1 fps software rendering a tour travels ~150 m in 3 minutes. The wiring (tour sight-stop → `visitor:sighting` → satisfaction) is unit-visible in `tours.js`/`sim.js`; verifying the loop end-to-end needs real hardware (expected: minutes of 60 fps, not hours of 1 fps) |
+
+**Balance finding for whoever tunes the demo next:** the park as built loses ~$650/day and bleeds
+~1 animal/day at the default ticket price — 29 animals migrate out in the first month because at
+least one habitat's quality sits below the 0.30 unhappiness-migration threshold for 3+ consecutive
+days. The economy survives (no bankruptcy risk at these numbers), but a starting layout that keeps
+every habitat above threshold would make the demo's first month read healthier.
+
+`happiness` per report came back undefined in this harness (the field exists per-habitat, not as a
+single scalar on the daily report — `getReport().habitats` carries it); the migration counts above
+are the observable consequence and are the numbers the spec asks for.
 
 ## Measured performance
 
-<!-- FILLED IN AFTER SCREENSHOTS -->
+SwiftShader software GL, seed 1, 1920×1080 (fps in the shots' JSON is *not* a GPU number; draws,
+triangles and errors are real). Every preset: **ready, 0 console errors, all modules `ok`** —
+verified 2026-09-05 after the environment sampler fix and the showcase clock fix (below).
+
+| preset | draws | triangles |
+|---|---|---|
+| overview | 223 | 4,250,570 |
+| gate | 288 | 4,390,855 |
+| lodge | 320 | 4,970,638 |
+| habitat | 337 | 5,880,103 |
+| tour | 317 | 5,040,754 |
+| close | 290 | 4,953,181 |
+| night | 314 | 5,246,305 |
+
+Whole game, no `?module=`: park auto-builds on `core:ready`, all 15 modules load, **0 errors,
+278 draw calls / 4.74 M triangles** at overview tod 14 — inside the ≤1500 draw / ≤6 M tri budget
+with headroom. `habitat` is the heaviest preset at 5.88 M triangles (dense grass under the plains
+habitat camera) — still inside budget, but it is the first thing to trim if the budget tightens.
+
+**Showcase clock note (fixed 2026-09-05):** `buildPark()` used to call `ctx.app.setSpeed(1)`
+unconditionally; under the screenshot tool's ~1 fps software renderer the 40-frame settle window
+burned ~35 game-hours, pushing every capture into a random night hour (the first `park-overview`
+screenshot came out black). The demo now runs at speed 1 only in the live game and only when the
+clock is not explicitly paused (`&speed=0` keeps capture pages deterministic).
 
 ## Known gaps (honest)
 

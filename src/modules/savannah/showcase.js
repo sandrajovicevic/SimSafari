@@ -184,13 +184,23 @@ export async function stage(ctx, presetName) {
   }
 
   // 4. A dirt track: from the grassland, past the kopje, across the river (roads builds a bridge
-  //    automatically wherever the polyline crosses water) and on to the waterhole.
+  //    automatically wherever the polyline crosses water). The final leg toward the waterhole is only
+  //    added if it stays dry: when the straight line clips the pan, roads would build its auto-bridge
+  //    straight through the drinking scene (verified on seed 1, waterhole-8 shot) and a wild
+  //    waterhole should not carry a road bridge.
   let roadEdgeId = null, roadS = 0;
   if (roads) {
     const kopjeApproach = { x: kopje.x + (kopje.r + 55) * Math.cos(0.6), z: kopje.z + (kopje.r + 55) * Math.sin(0.6) };
     const crossing = { x: riverMid.x + riverMid.tx * 40, z: riverMid.z + riverMid.tz * 40 };
     const waterApproach = { x: water.x + water.r * 2.4, z: water.z - water.r * 0.6 };
-    const pts = [[gx + 90, gz - 40], [kopjeApproach.x, kopjeApproach.z], [crossing.x, crossing.z], [waterApproach.x, waterApproach.z]];
+    const isWater = (x, z) => (terrain?.isWaterAt ? terrain.isWaterAt(x, z) : false);
+    let legWet = 0;
+    for (let k = 1; k < 12; k++) {
+      const t = k / 12;
+      if (isWater(crossing.x + (waterApproach.x - crossing.x) * t, crossing.z + (waterApproach.z - crossing.z) * t)) legWet++;
+    }
+    const pts = [[gx + 90, gz - 40], [kopjeApproach.x, kopjeApproach.z], [crossing.x, crossing.z]];
+    if (legWet <= 1) pts.push([waterApproach.x, waterApproach.z]);
     try {
       roads.addRoad(pts, 'dirt');
       const near = roads.nearestEdge(kopjeApproach.x, kopjeApproach.z, 400);
@@ -203,13 +213,16 @@ export async function stage(ctx, presetName) {
 
   // 5. Animals — one persistent cast: lion pride on the kopje, elephants/giraffes/zebra at the
   //    waterhole, a zebra/wildebeest/impala herd on the grassland, hippos at the waterhole for night.
+  //    (lionSpots lives at stage scope: the kopje preset's camera aims at the pride's mean position.)
+  //    Radii > 1.0: the pride rests on the grass at the kopje's foot — inside the boulder mass the
+  //    cats end up occluded by the very rocks they're standing on (verified seed 1, kopje-17.8).
+  const lionSpots = [[1.18, 0.9], [1.26, 2.4], [1.12, -1.6], [1.3, -3.0], [1.22, 4.6]];
   if (animals) {
     animals.clear();
     const hold = 1e6;
     const shores = shorePoints(ctx, terrain, water, 10);
 
     // -- kopje: lion pride on the lower flanks of the boulder pile
-    const lionSpots = [[0.55, 0.9], [0.62, 2.4], [0.48, -1.6], [0.7, -3.0], [0.58, 4.6]];
     for (let i = 0; i < lionSpots.length; i++) {
       const [rr, ang] = lionSpots[i];
       const x = kopje.x + Math.cos(ang) * kopje.r * rr, z = kopje.z + Math.sin(ang) * kopje.r * rr;
@@ -252,14 +265,31 @@ export async function stage(ctx, presetName) {
   aim(presets.overview, gx - 60, gz - 40);
   presets.overview.camera.yaw = degOf(gx - kopje.x, gz - kopje.z) + 20;
   aim(presets.close, gx, gz);
-  aim(presets.hero, gx - 20, gz + 10);
+  // hero: close enough that the walking herd reads as animals (at 220 m a zebra is ~10 px) —
+  // frame the herd's own spawn line with the kopje silhouette beyond it.
+  presets.hero.camera.distance = 130;
+  aim(presets.hero, gx - 6, gz + 6);
   presets.hero.camera.yaw = degOf(gx - kopje.x, gz - kopje.z) + 8;
   aim(presets.waterhole, water.x + water.r * 0.3, water.z - water.r * 0.2);
-  presets.kopje.camera.distance = Math.max(60, kopje.r * 1.65);
-  aim(presets.kopje, kopje.x, kopje.z);
+  // kopje: frame the pride itself, not the rock — on seeds where the tallest "kopje" is part of the
+  // escarpment the centre aim put every lion out of frame (verified seed 1, kopje-17.8 shot).
+  {
+    let lx = 0, lz = 0;
+    for (const [rr, ang] of lionSpots) { lx += kopje.x + Math.cos(ang) * kopje.r * rr; lz += kopje.z + Math.sin(ang) * kopje.r * rr; }
+    const nl = lionSpots.length;
+    presets.kopje.camera.distance = Math.max(46, kopje.r * 1.15);
+    aim(presets.kopje, lx / nl, lz / nl);
+  }
   aim(presets.herd, gx, gz);
-  aim(presets.river, riverGallery.x + riverGallery.nx * (riverGallery.hw + 6), riverGallery.z + riverGallery.nz * (riverGallery.hw + 6));
-  presets.river.camera.yaw = degOf(riverGallery.nx, riverGallery.nz) + 160;
+  // river: shoot from ON the water looking down the channel — the old bank-side aim sat inside the
+  // riverine scatter box and framed a wall of leaves with no river in it (verified seed 1, river-9.5).
+  {
+    const ahead = f?.pointOnRiver ? f.pointOnRiver(0.30) : riverGallery;
+    presets.river.camera.distance = 58;
+    presets.river.camera.pitch = 8;
+    presets.river.camera.yaw = degOf(ahead.x - riverGallery.x, ahead.z - riverGallery.z);
+    aim(presets.river, riverGallery.x, riverGallery.z);
+  }
   aim(presets.storm, gx - 40, gz - 20);
   presets.storm.camera.yaw = degOf(gx - kopje.x, gz - kopje.z) + 20;
   aim(presets.night, water.x + water.r * 0.4, water.z);

@@ -125,7 +125,10 @@ export class GrassField {
     this.geos = geos;
 
     const mat = ctx.materials.standard({
-      color: 0xffffff, roughness: 0.92, metalness: 0,
+      // roughness 1.0: at 0.92 the grazing-angle Fresnel lobe on millions of DoubleSide blades made
+      // the whole sward shimmer like liquid metal at low sun (park-lodge golden hour). Dry grass is
+      // close to a perfect diffuser; keep every specular response off the blades.
+      color: 0xffffff, roughness: 1.0, metalness: 0,
       side: THREE.DoubleSide, vertexColors: true,
     });
     mat.userData.cacheKeyExtra = 'grass';
