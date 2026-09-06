@@ -50,31 +50,45 @@ void main() {
   bool paints = zid > 0.5 && zid < 3.5;
 
   float here = regionKey(here4);
+
+  // Soft-boundary field: a 5×5 pyramid-weighted sample of "same region as centre". Its 0.5 contour
+  // traces the region boundary with the cell staircase's corners rounded into diagonals, and its
+  // falloff feathers the fill into the ground over ~a cell — the spec's soft-edged boundary. The
+  // data texture stays Nearest so the per-cell region tests below remain exact.
+  float same = 0.0, wsum = 0.0;
+  for (int j = -2; j <= 2; j++) {
+    for (int i = -2; i <= 2; i++) {
+      float w = 3.0 - float(max(abs(i), abs(j)));
+      same += w * (regionKey(texture2D(uZone, vUv + vec2(float(i), float(j)) * texel * 1.2)) == here ? 1.0 : 0.0);
+      wsum += w;
+    }
+  }
+  float field = same / wsum; // 1 deep inside, ~0.5 on the boundary, 0 outside
+
+  // exact per-cell edge distance (kept as the fallback for thin 1-cell fragments, where the blurred
+  // field never reaches 0.5 and the contour would vanish)
   float rE = regionKey(texture2D(uZone, vUv + vec2(texel.x, 0.0)));
   float rW = regionKey(texture2D(uZone, vUv - vec2(texel.x, 0.0)));
   float rN = regionKey(texture2D(uZone, vUv + vec2(0.0, texel.y)));
   float rS = regionKey(texture2D(uZone, vUv - vec2(0.0, texel.y)));
-
   vec2 cellUv = fract(vUv * uRes);
   float dE = rE != here ? (1.0 - cellUv.x) : 2.0;
   float dW = rW != here ? cellUv.x : 2.0;
   float dN = rN != here ? (1.0 - cellUv.y) : 2.0;
   float dS = rS != here ? cellUv.y : 2.0;
-  float edgeFrac = min(min(dE, dW), min(dN, dS));
-  float edgeDistM = edgeFrac * uCellSize;
-  // a wide (1.4 m) soft line: bright core, fading tail, clearly a highlighted boundary rather than
-  // just the raw staircase edge of the fill (that staircase is still the true shape — this is the
-  // "obviously drawn on top" outline a zoning-tool reference wants).
-  float edge = 1.0 - smoothstep(0.0, 1.4, edgeDistM);
-  float edgeCore = 1.0 - smoothstep(0.0, 0.35, edgeDistM);
-  // an edge only reads on the side that actually has a fill (paints); the auto no-build side stays blank
-  if (!paints) edge = 0.0;
+  float edgeDistM = min(min(dE, dW), min(dN, dS)) * uCellSize;
+  float edgeExact = (1.0 - smoothstep(0.0, 1.4, edgeDistM)) * step(field, 0.42);
+
+  // the soft line: brightest on the 0.5 contour, fading over ~0.35 of field either side
+  float edgeSoft = (1.0 - smoothstep(0.10, 0.42, abs(field - 0.5))) * step(0.42, field);
+  float edge = paints ? max(edgeSoft, edgeExact) : 0.0;
 
   if (!paints && edge <= 0.0) discard;
 
   // marching ants: a bright dash travelling along the boundary direction is approximated with a
-  // world-space diagonal coordinate (cheap, direction-agnostic, reads fine on a thin line)
-  float dashCoord = (vWorldPos.x + vWorldPos.z) * 0.22 - uTime * 2.2;
+  // world-space diagonal coordinate (cheap, direction-agnostic, reads fine on a thin line).
+  // 0.55 → ~11.4 m dash cycle (~3 m dashes): the old 0.22 made 4-cell pills that read as blocks.
+  float dashCoord = (vWorldPos.x + vWorldPos.z) * 0.55 - uTime * 2.2;
   float dashW = fwidth(dashCoord) * 1.5 + 0.001;
   float dashPhase = fract(dashCoord);
   float dash = smoothstep(0.42 - dashW, 0.42 + dashW, dashPhase) * smoothstep(0.92 + dashW, 0.92 - dashW, dashPhase);
@@ -90,11 +104,12 @@ void main() {
     float seam = smoothstep(0.0, pw, pf) * smoothstep(1.0, 1.0 - pw, pf);
     col *= mix(0.86, 1.05, seam);
   }
-  // bright warm highlight on the boundary line, brightest right at the cell edge
+  // bright warm highlight on the boundary line
   vec3 lineColor = vec3(1.0, 0.93, 0.55);
-  col = mix(col, lineColor, edge * mix(0.55, 1.0, dash) * 0.9 + edgeCore * 0.1);
+  col = mix(col, lineColor, edge * mix(0.55, 1.0, dash) * 0.9);
 
-  float fillA = paints ? 0.30 : 0.0;
+  // fill feathers out over the field's falloff instead of stopping hard at the cell edge
+  float fillA = paints ? 0.30 * smoothstep(0.42, 0.9, field) : 0.0;
   float edgeA = edge * mix(0.55, 1.0, dash);
   float a = max(fillA, edgeA);
   gl_FragColor = vec4(col, a * uOpacity);

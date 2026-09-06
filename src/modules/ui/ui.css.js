@@ -33,6 +33,9 @@ export const CSS = `
 .sf * { box-sizing: border-box; }
 .sf .pe { pointer-events: auto; }
 .sf.hidden { display: none; }
+/* the hidden ATTRIBUTE must win over any class display rule (.sf .side's display:flex was
+ * overriding the UA's [hidden], leaving an empty dark selection panel docked top-right) */
+.sf [hidden] { display: none !important; }
 .sf .ic { display: inline-flex; width: 18px; height: 18px; flex: 0 0 auto; vertical-align: middle; }
 .sf .ic svg { width: 100%; height: 100%; display: block; }
 .sf .ic.lg { width: 24px; height: 24px; }

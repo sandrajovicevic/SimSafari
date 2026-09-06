@@ -86,7 +86,9 @@ export class App {
 
     if (!Number.isNaN(p.tod)) this.setTimeOfDay(p.tod, true);
     if (p.module) this.world.time.paused = !p.play;
-    if (!Number.isNaN(p.speed)) this.world.time.speed = p.speed;
+    // an explicit ?speed=0 is an explicit pause: set `paused` too, so modules that start the clock
+    // (park's demo sets speed 1 on core:ready in the live game) respect it instead of overriding it.
+    if (!Number.isNaN(p.speed)) { this.world.time.speed = p.speed; this.world.time.paused = p.speed === 0; }
 
     say('initialising…');
     await this.registry.initAll();

@@ -271,14 +271,39 @@ export async function stage(ctx, presetName) {
   aim(presets.hero, gx - 6, gz + 6);
   presets.hero.camera.yaw = degOf(gx - kopje.x, gz - kopje.z) + 8;
   aim(presets.waterhole, water.x + water.r * 0.3, water.z - water.r * 0.2);
-  // kopje: frame the pride itself, not the rock — on seeds where the tallest "kopje" is part of the
-  // escarpment the centre aim put every lion out of frame (verified seed 1, kopje-17.8 shot).
+  // kopje: frame the pride's male from pride level — camera just beyond him on the rock-outward
+  // line, looking back, so he reads large with the boulder mass directly behind (ring neighbours
+  // fall into frame as context). The old aims used the pride MEAN, but the ring spreads ~344°
+  // around the kopje, so the mean sits inside the rock and no camera there can work (the round-1
+  // blocker). Reads REAL spawn positions from world.animals, not the assumed ring, and walks the
+  // camera back along the outward line until line-of-sight (a heightfield march) actually clears.
   {
-    let lx = 0, lz = 0;
-    for (const [rr, ang] of lionSpots) { lx += kopje.x + Math.cos(ang) * kopje.r * rr; lz += kopje.z + Math.sin(ang) * kopje.r * rr; }
-    const nl = lionSpots.length;
-    presets.kopje.camera.distance = Math.max(46, kopje.r * 1.15);
-    aim(presets.kopje, lx / nl, lz / nl);
+    const P = presets.kopje;
+    const world = ctx.world;
+    const lions = [...world.animals.values()].filter((a) => a.species === 'lion');
+    const hero = lions.find((a) => a.sex === 'male') || lions[0];
+    if (hero) {
+      P.camera.yaw = degOf(hero.x - kopje.x, hero.z - kopje.z);
+      P.camera.pitch = 10;
+      const losClear = (px, py, pz) => {
+        const ty = world.getHeight(hero.x, hero.z) + 0.7;
+        for (let i = 1; i < 12; i++) {
+          const t = i / 12;
+          if (world.getHeight(px + (hero.x - px) * t, pz + (hero.z - pz) * t) + 0.4 > py + (ty - py) * t) return false;
+        }
+        return true;
+      };
+      for (const d of [24, 30, 40, 56, 80]) {
+        const cp = Math.cos(P.camera.pitch * DEG), sp = Math.sin(P.camera.pitch * DEG);
+        const px = hero.x + Math.sin(P.camera.yaw * DEG) * cp * d, pz = hero.z + Math.cos(P.camera.yaw * DEG) * cp * d;
+        let py = world.getHeight(hero.x, hero.z) + sp * d;
+        const ground = world.getHeight(px, pz);
+        if (py < ground + 1.7) py = ground + 1.7;
+        P.camera.distance = d;
+        if (losClear(px, py, pz)) break;
+      }
+      aim(P, hero.x, hero.z);
+    }
   }
   aim(presets.herd, gx, gz);
   // river: shoot from ON the water looking down the channel — the old bank-side aim sat inside the

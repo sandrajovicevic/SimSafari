@@ -125,6 +125,27 @@ function addSpur(ctx, roads, rng, from, to, kind = 'dirt') {
   return roads.nearestNode(to.x, to.z, 10)?.id ?? null;
 }
 
+/** The habitat region whose sampled cells lie nearest to (x,z), within maxDist — used to resolve a
+ * painted habitat def to its real flood-filled region (the disc can fragment; see buildPark step 5).
+ * `claimed` holds region ids already owned by another def: regions are connectivity-based, so a def
+ * must never resolve to — or rename — another def's region. */
+function regionNear(zoning, world, x, z, maxDist, claimed) {
+  const gres = world.grid.res, gcell = world.grid.cell, half = world.half;
+  let best = null, bestD = maxDist;
+  for (const h of zoning.listHabitats()) {
+    if (claimed?.has(h.id)) continue;
+    const cells = h.cells || [];
+    const step = Math.max(1, Math.floor(cells.length / 32));
+    for (let i = 0; i < cells.length; i += step) {
+      const idx = cells[i], ix = idx % gres, iz = (idx - ix) / gres;
+      const cx = (ix + 0.5) * gcell - half, cz = (iz + 0.5) * gcell - half;
+      const d = dist(x, z, cx, cz);
+      if (d < bestD) { bestD = d; best = h; }
+    }
+  }
+  return best;
+}
+
 // ---------------------------------------------------------------------------------------------
 // main build
 // ---------------------------------------------------------------------------------------------
@@ -132,8 +153,13 @@ function addSpur(ctx, roads, rng, from, to, kind = 'dirt') {
 const SPECIES = {
   plains: [['zebra', 10], ['wildebeest', 10], ['impala', 14]],
   browsers: [['giraffe', 4], ['elephant', 5]],
-  predators: [['lion', 5]],
-  wetland: [['hippo', 6], ['buffalo', 8]],
+  // the pride shares its kopje habitat with impala: the sim's predator score is prey/(predators×8),
+  // so a prey-less kopje is unliveable by construction (the round-1 demo lost all 5 lions inside
+  // 12 days). predation is gentle — one kill per lion per ~33 days (tables.predationRate 0.03).
+  predators: [['lion', 3], ['impala', 10]],
+  // herds are sized to their enclosure: the wetland region is bankside strips (the channel is
+  // NO_BUILD), and buffalo at 8 in it carried a −0.6 overcrowding penalty on happiness
+  wetland: [['hippo', 3], ['buffalo', 3]],
 };
 
 export async function buildPark(ctx, opts = {}) {
@@ -168,31 +194,61 @@ export async function buildPark(ctx, opts = {}) {
   if (roads) loop = buildLoop(ctx, roads, rng, loopCenter, half * 0.56, half * 0.42);
 
   let plainsIdx = 0, browsersIdx = 1, predIdx = 2, wetIdx = 3;
-  if (loop.verts.length === 6) {
-    const openness = loop.verts.map((v) => Math.min(distToKopjes(v.x, v.z, features), distToWater(v.x, v.z, features)));
-    const order = openness.map((_, i) => i).sort((a, b) => openness[b] - openness[a]);
-    plainsIdx = order[0]; browsersIdx = order[1];
-    const remaining = order.slice(2);
-    predIdx = remaining.reduce((best, i) => (distToKopjes(loop.verts[i].x, loop.verts[i].z, features) < distToKopjes(loop.verts[best].x, loop.verts[best].z, features) ? i : best), remaining[0]);
-    wetIdx = remaining.filter((i) => i !== predIdx).reduce((best, i) => (distToWater(loop.verts[i].x, loop.verts[i].z, features) < distToWater(loop.verts[best].x, loop.verts[best].z, features) ? i : best), remaining.find((i) => i !== predIdx) ?? remaining[0]);
-  }
-
   const kopje = biggestKopje(features);
   const predatorsAnchor = kopje
     ? { x: kopje.x, z: kopje.z, r: kopje.r + 42 }
     : { x: (loop.verts[predIdx]?.x ?? half * 0.2) + 60, z: (loop.verts[predIdx]?.z ?? -half * 0.2) + 40, r: 70 };
 
-  const riverSpot = pointBesideRiver(world, features, 0.5) || pointBesideRiver(world, features, 0.35) || pointBesideRiver(world, features, 0.65);
-  const wetlandAnchor = riverSpot
-    ? { x: riverSpot.x, z: riverSpot.z, r: 80 }
-    : { x: (loop.verts[wetIdx]?.x ?? -half * 0.2) - 60, z: (loop.verts[wetIdx]?.z ?? half * 0.2) + 40, r: 80 };
+  if (loop.verts.length === 6) {
+    const openness = loop.verts.map((v) => Math.min(distToKopjes(v.x, v.z, features), distToWater(v.x, v.z, features)));
+    const order = openness.map((_, i) => i).sort((a, b) => openness[b] - openness[a]);
+    const remaining = order.slice(2);
+    predIdx = remaining.reduce((best, i) => (distToKopjes(loop.verts[i].x, loop.verts[i].z, features) < distToKopjes(loop.verts[best].x, loop.verts[best].z, features) ? i : best), remaining[0]);
+    wetIdx = remaining.filter((i) => i !== predIdx).reduce((best, i) => (distToWater(loop.verts[i].x, loop.verts[i].z, features) < distToWater(loop.verts[best].x, loop.verts[best].z, features) ? i : best), remaining.find((i) => i !== predIdx) ?? remaining[0]);
+    // Habitat discs must not touch: zoning flood-fills contiguous HABITAT cells into ONE region, so
+    // overlapping paints merge — on seed 1 the plains and kopje discs touched, both defs resolved to
+    // the merged region and the kopje def renamed it, leaving no plains habitat at all. Pick the
+    // plains/browsers vertices subject to a pairwise disc-separation constraint (12 m gap).
+    const PL_R = 100, BR_R = 105;
+    const sepFrom = (i, a, ar, own) => !a || dist(loop.verts[i].x, loop.verts[i].z, a.x, a.z) > own + (a.r ?? 85) + 12;
+    plainsIdx = order.find((i) => sepFrom(i, predatorsAnchor, predatorsAnchor.r, PL_R)) ?? order[0];
+    browsersIdx = order.find((i) => i !== plainsIdx
+      && sepFrom(i, predatorsAnchor, predatorsAnchor.r, BR_R)
+      && sepFrom(i, loop.verts[plainsIdx], PL_R, BR_R)) ?? order.find((i) => i !== plainsIdx) ?? order[1];
+  }
 
-  const plainsAnchor = loop.verts[plainsIdx]
-    ? { x: loop.verts[plainsIdx].x, z: loop.verts[plainsIdx].z, r: 92 }
-    : findSpot(world, half * 0.3, -half * 0.15, rng, { spread: 140, maxSlopeDeg: 8 });
-  const browsersAnchor = loop.verts[browsersIdx]
-    ? { x: loop.verts[browsersIdx].x, z: loop.verts[browsersIdx].z, r: 88 }
-    : findSpot(world, -half * 0.32, -half * 0.05, rng, { spread: 140, maxSlopeDeg: 8 });
+  const riverSpot = pointBesideRiver(world, features, 0.5) || pointBesideRiver(world, features, 0.35) || pointBesideRiver(world, features, 0.65);
+  let wetlandAnchor = riverSpot
+    ? { x: riverSpot.x, z: riverSpot.z, r: 110 }
+    : { x: (loop.verts[wetIdx]?.x ?? -half * 0.2) - 60, z: (loop.verts[wetIdx]?.z ?? half * 0.2) + 40, r: 110 };
+
+  // Habitat discs must sit OFF the roads: a disc centred on its loop vertex is bisected by the loop
+  // road (roads force NO_BUILD, and flood-fill treats that as a wall), shredding the habitat into
+  // fragments — on seed 1 the largest "Plains" fragment was 3,552 m², giving zebra a capacity of 2
+  // and an overcrowding penalty that pinned happiness at the migration threshold. Offset each anchor
+  // inward from its vertex so the road only clips the disc's rim; tours still pass within a disc
+  // radius of the herd. Radii are sized so every species' capacity (area / tables.space) clears its
+  // population: the wetland disc reaches over the channel (water cells are excluded from the region),
+  // so it is the largest and is pulled back from the bank.
+  const offRoad = (v, r) => {
+    if (!v) return null;
+    const dx = loopCenter.x - v.x, dz = loopCenter.z - v.z, d = Math.hypot(dx, dz) || 1;
+    const at = findSpot(world, v.x + (dx / d) * (r * 0.7), v.z + (dz / d) * (r * 0.7), rng, { spread: 30, maxSlopeDeg: 10 });
+    return { x: at.x, z: at.z, r };
+  };
+  const plainsAnchor = offRoad(loop.verts[plainsIdx], 100) || findSpot(world, half * 0.3, -half * 0.15, rng, { spread: 140, maxSlopeDeg: 8 });
+  const browsersAnchor = offRoad(loop.verts[browsersIdx], 105) || findSpot(world, -half * 0.32, -half * 0.05, rng, { spread: 140, maxSlopeDeg: 8 });
+  if (riverSpot) {
+    const dx = loopCenter.x - wetlandAnchor.x, dz = loopCenter.z - wetlandAnchor.z, d = Math.hypot(dx, dz) || 1;
+    wetlandAnchor = { x: wetlandAnchor.x + (dx / d) * 30, z: wetlandAnchor.z + (dz / d) * 30, r: 110 };
+  }
+
+  /** Where a habitat's access spur should end: the disc rim facing the road, never the centre. */
+  const rimPoint = (from, anchor) => {
+    const dx = anchor.x - from.x, dz = anchor.z - from.z, d = Math.hypot(dx, dz) || 1;
+    const r = (anchor.r ?? 85) * 0.92;
+    return { x: anchor.x - (dx / d) * r, z: anchor.z - (dz / d) * r };
+  };
 
   // ---- 4. roads: paved spine, connector, two dirt spurs ------------------------------------------
   let gateNode = null, lodgeNode = null, predatorsNode = null, wetlandNode = null;
@@ -207,10 +263,16 @@ export async function buildPark(ctx, opts = {}) {
       loop.verts.forEach((v, i) => { const d = dist(lodgeAnchor.x, lodgeAnchor.z, v.x, v.z); if (d < nd) { nd = d; nearestI = i; } });
       addSpur(ctx, roads, rng, lodgeAnchor, loop.verts[nearestI], 'gravel');
 
-      predatorsNode = addSpur(ctx, roads, rng, loop.verts[predIdx], predatorsAnchor, 'dirt');
-      wetlandNode = addSpur(ctx, roads, rng, loop.verts[wetIdx], wetlandAnchor, 'dirt');
+      predatorsNode = addSpur(ctx, roads, rng, loop.verts[predIdx], rimPoint(loop.verts[predIdx], predatorsAnchor), 'dirt');
+      wetlandNode = addSpur(ctx, roads, rng, loop.verts[wetIdx], rimPoint(loop.verts[wetIdx], wetlandAnchor), 'dirt');
     }
     report.roads = roads.stats?.() ?? {};
+
+    // Flush the roads module's deferred rebuild NOW, before any zone is painted: the lazy rebuild
+    // conforms the terrain under the roads and emits terrain:modified, and if that lands on a later
+    // frame the zoning grid re-floods mid-build — habitats fragment under the animals and the sim
+    // loses track of them (measured: 4 regions → 8 and 24 animals habitat-less within 20 frames).
+    try { roads.rebuild?.(); } catch (err) { log.warn('[park] roads.rebuild failed: ' + err.message); }
   } else report.warnings.push('roads module absent: no road network, buildings placed with ignoreRoads');
 
   // ---- 5. four fenced habitats -------------------------------------------------------------------
@@ -220,14 +282,20 @@ export async function buildPark(ctx, opts = {}) {
     { key: 'predators', name: 'Pride Kopje', anchor: predatorsAnchor, species: SPECIES.predators },
     { key: 'wetland', name: 'River Wetland', anchor: wetlandAnchor, species: SPECIES.wetland },
   ];
+  const claimedRegions = new Set();
   for (const h of habitatDefs) {
     const r = h.anchor.r ?? 85;
     if (zoning) {
       // several overlapping discs, not one plain circle, for an organic boundary (matches zoning's own showcase)
       zoning.paint(h.anchor.x, h.anchor.z, r, ZONE.HABITAT);
       zoning.paint(h.anchor.x + rng.range(-r * 0.35, r * 0.35), h.anchor.z + rng.range(-r * 0.35, r * 0.35), r * 0.65, ZONE.HABITAT);
-      const found = zoning.habitatAt(h.anchor.x, h.anchor.z);
-      if (found) { zoning.renameHabitat(found.id, h.name); h.habitatId = found.id; }
+      // resolve the region that actually owns this def: the painted disc can flood-fill into several
+      // fragments around rock/water/road, and the anchor cell itself may be unpaintable (the kopje's
+      // centre is rock), so habitatAt(anchor) can miss entirely. Nearest UNCLAIMED region within 1.3×
+      // the disc; a merge with an earlier def's disc leaves this def nothing, and the warning says so.
+      const region = regionNear(zoning, world, h.anchor.x, h.anchor.z, r * 1.3, claimedRegions);
+      if (region) { zoning.renameHabitat(region.id, h.name); h.habitatId = region.id; h.region = region; claimedRegions.add(region.id); }
+      else report.warnings.push(`habitat "${h.name}": no zoned region of its own near its anchor (disc merged with another habitat?); animals not released`);
     }
     report.habitats[h.key] = { id: h.habitatId ?? null, name: h.name, x: h.anchor.x, z: h.anchor.z, radius: r };
   }
@@ -242,6 +310,14 @@ export async function buildPark(ctx, opts = {}) {
     placed.shop = placeBuilding(ctx, buildings, 'shop', lodgeAnchor.x - 40, lodgeAnchor.z + 15, rng, { spread: 55 });
     placed.ranger = placeBuilding(ctx, buildings, 'ranger', lodgeAnchor.x, lodgeAnchor.z + 55, rng, { spread: 55 });
     placed.parking = placeBuilding(ctx, buildings, 'parking', lodgeAnchor.x + 15, lodgeAnchor.z - 55, rng, { spread: 55 });
+    // tented camp: the lodge's 24 beds turn away most of the 35 % of arrivals that want a night
+    // (CONST.lodgeShare); tents add 2 beds each at ~5 % of the lodge's upkeep — the cheapest beds in
+    // the catalogue and the most SimSafari-1998 silhouette in it.
+    placed.tents = [];
+    for (const [dx, dz] of [[-58, -20], [-52, 12], [-30, 32], [22, 30]]) {
+      const t = placeBuilding(ctx, buildings, 'tent', lodgeAnchor.x + dx, lodgeAnchor.z + dz, rng, { spread: 26 });
+      if (t) placed.tents.push(t);
+    }
 
     // hide overlooking the wetland, from beside its access spur, facing the water
     const wetlandView = { x: wetlandAnchor.x + (loop.verts[wetIdx]?.x ? (wetlandAnchor.x - loop.verts[wetIdx].x) * 0.15 : 20), z: wetlandAnchor.z + (loop.verts[wetIdx]?.z ? (wetlandAnchor.z - loop.verts[wetIdx].z) * 0.15 : 20) };
@@ -266,21 +342,91 @@ export async function buildPark(ctx, opts = {}) {
   }
 
   // ---- 8. animals ----------------------------------------------------------------------------------
-  if (animals) {
+  // Re-resolve every def's region against the CURRENT grid first: building placement (step 6) edits
+  // terrain (flatten) and each edit re-floods the zones, so the region objects captured in step 5 can
+  // be stale — spawning into stale cells puts animals on habitatId-0 ground the sim cannot manage.
+  const resolveRegions = () => {
+    if (!zoning) return;
+    const claimed = new Set();
     for (const h of habitatDefs) {
       const r = h.anchor.r ?? 85;
+      const region = regionNear(zoning, world, h.anchor.x, h.anchor.z, r * 1.3, claimed);
+      if (region) { if (region.id !== h.habitatId) zoning.renameHabitat(region.id, h.name); h.habitatId = region.id; h.region = region; claimed.add(region.id); }
+      else if (h.habitatId != null) { h.habitatId = null; h.region = null; report.warnings.push(`habitat "${h.name}": its region vanished after later edits; animals not released`); }
+    }
+  };
+  // Spawn each species as ONE herd centred on a dry cell inside the habitat's resolved region. An
+  // anchor-centred scatter leaks across the fragment boundaries the flood-fill created (on seed 1
+  // that put the lions in an unnamed orphan fragment with no prey, unmanaged by the sim), and a
+  // per-animal spawn makes every animal its own herd with a full-size home range that straddles the
+  // region edge — a group spawn keeps the herd's home centred well inside its habitat.
+  const pickInRegion = (region) => {
+    if (!region?.cells?.length) return null;
+    // best-of-N by interior mass (7×7 block of same-region cells): a random cell can sit on a
+    // fragment's road-cut edge, and a herd clustered there spills onto habitat-less ground
+    const g = world.grid, res = g.res, half = world.half;
+    let best = null, bestScore = -Infinity;
+    const K = Math.min(region.cells.length, 40);
+    for (let k = 0; k < K; k++) {
+      const idx = region.cells[rng.int(0, region.cells.length - 1)];
+      const ix = idx % res, iz = (idx - ix) / res;
+      let score = 0;
+      for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
+        const jx = ix + dx, jz = iz + dz;
+        if (jx < 0 || jz < 0 || jx >= res || jz >= res) continue;
+        if (g.habitatId[jz * res + jx] === region.id) score++;
+      }
+      const c = world.cellCenter(ix, iz);
+      if (world.isWater(c.x, c.z)) score -= 20;
+      if (score > bestScore) { bestScore = score; best = c; }
+    }
+    return best;
+  };
+  if (animals) {
+    resolveRegions();
+    for (const h of habitatDefs) {
+      const r = h.anchor.r ?? 85;
+      const region = h.region ?? (zoning && h.habitatId != null ? zoning.getHabitat(h.habitatId) : null);
       const ids = [];
       for (const [species, count] of h.species) {
-        const got = animals.spawn(species, h.anchor.x, h.anchor.z, count, { spread: r * 0.65, homeRadius: r });
+        const c = (region && pickInRegion(region)) || h.anchor;
+        const got = animals.spawn(species, c.x, c.z, count, { homeRadius: r * 0.4, herd: undefined });
         if (got) ids.push(...got);
       }
       report.animals[h.key] = ids.length;
+      // verification measures immediately after release: a miss means the spawn itself failed to
+      // place an animal inside the named region (roamers that wander out later are normal behaviour)
+      if (region && zoning && ids.length) {
+        const landed = ids.filter((id) => { const a = world.animals.get(id); return a && zoning.habitatAt(a.x, a.z)?.id === region.id; }).length;
+        if (landed < ids.length) report.warnings.push(`habitat "${h.name}": only ${landed}/${ids.length} released animals landed inside the named region`);
+      }
     }
   } else report.warnings.push('animals module absent: no animals released');
 
   // reconcile the headless sim's population bookkeeping against what we just spawned directly
   const sim = simulation?.getSim?.();
-  if (sim) { try { sim.reconcileFromWorld(); sim.markStart(); } catch {} }
+  if (sim) { try { sim.reconcileFromWorld(); } catch {} }
+
+  // ---- 8b. opening economy: a staffed park at volume pricing -----------------------------------------
+  // Zero staff means zero animal care (happiness = quality × (0.7 + 0.3·care)), which parks every
+  // marginal habitat one dry season from the 3-day migration threshold; keepers are what make births
+  // possible. Ticket price: the arrival model's elasticity makes total revenue peak BELOW the
+  // reference price — lodge + shop income scale with arrivals while tickets scale with price
+  // (measured 2026-09-06, tools/fidelity.mjs: $10 → 269 arrivals, +$155/day; $25 → 130, −$71/day;
+  // $60 → 44, −$2,740/day). The demo opens cheap and busy; reputation ramps from there.
+  let staffed = 0;
+  if (simulation) {
+    simulation.setTicketPrice(10);
+    const nAnim = Object.values(report.animals).reduce((s, n) => s + n, 0);
+    const hire = (role, n) => { if (n > 0) { try { simulation.hire(role, n); staffed += n; } catch {} } };
+    hire('keeper', Math.max(2, Math.ceil(nAnim / 20)));   // one keeper per 20 animals
+    hire('guide', 4);                                     // ~250 arrivals/day at the volume price
+    hire('maintenance', 2);                               // ~10 buildings + ~7 km of road
+    hire('lodge', 3);                                     // lodge + tented camp beds
+    hire('ranger', 2);                                    // poaching suppression across 4 habitats
+    report.staff = staffed;
+  }
+  if (sim) { try { sim.markStart(); } catch {} }
 
   // ---- 9. four safari vehicles on tour --------------------------------------------------------------
   if (traffic && gateNode) {
