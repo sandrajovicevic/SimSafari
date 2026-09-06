@@ -1,0 +1,48 @@
+name: Daily 17:00 (Central European)
+
+# GitHub cron is UTC only. 17:00 CET (UTC+1) = 16:00 UTC, 17:00 CEST (UTC+2) = 15:00 UTC,
+# so we fire at both and the gate step skips the firing that isn't 17:00 local today.
+on:
+  schedule:
+    - cron: '0 15 * * *'
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    steps:
+      # GitHub can start scheduled runs several minutes late; comparing UTC hours
+      # (not minutes) keeps the gate correct for sub-hour delays.
+      - name: Gate - continue only if it is 17:00 in Central Europe today
+        id: gate
+        run: |
+          offset=$(TZ=Europe/Paris date +%z | cut -c1-3)   # +02 during CEST, +01 during CET
+          expected=$((17 - 10#${offset#+}))
+          now=$(date -u +%H)
+          echo "UTC hour: $now, expected for 17:00 local: $expected"
+          echo "run=$([ "$now" -eq "$expected" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.run == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
+        run: npm ci
+
+      - name: Lint
+        if: steps.gate.outputs.run == 'true'
+        run: npm run lint
+
+      - name: Build
+        if: steps.gate.outputs.run == 'true'
+        run: npm run build
