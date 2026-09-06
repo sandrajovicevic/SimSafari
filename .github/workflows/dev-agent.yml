@@ -1,0 +1,127 @@
+name: SimSafari dev agent
+
+# Autonomous development run: an AI agent reads the repo's own instructions
+# (CLAUDE.md, docs/BUILDER_BRIEF.md, docs/CRITIC_BRIEF.md, docs/STATUS.json),
+# picks the highest-leverage open item, implements + verifies it, and pushes.
+# Runs daily at 09:00 Central European local time (the 17:00 health-check
+# workflow then independently verifies whatever it pushed).
+#
+# REQUIRES one repository secret: ZAI_API_KEY (a Z.ai GLM coding-plan API key).
+# Until the secret exists, every run skips itself silently.
+
+on:
+  schedule:
+    # GitHub cron is UTC only. 09:00 CEST (UTC+2) = 07:00 UTC, 09:00 CET (UTC+1) = 08:00 UTC.
+    # Fire at both; the gate step skips the firing that isn't 09:00 local today.
+    - cron: '0 7 * * *'
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dev-agent
+  cancel-in-progress: false
+
+jobs:
+  develop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      # If the API rejects this model id, check your plan's model list on
+      # https://docs.z.ai and change this one line (e.g. glm-4.6, glm-5 ...).
+      GLM_MODEL: glm-5.3-flash
+      ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+    steps:
+      # GitHub can start scheduled runs minutes late; comparing UTC hours
+      # (not minutes) keeps the time gate correct for sub-hour delays.
+      - name: Gate - 09:00 local and API key configured
+        id: gate
+        env:
+          KEY_SET: ${{ secrets.ZAI_API_KEY != '' }}
+        run: |
+          offset=$(TZ=Europe/Paris date +%z | cut -c1-3)   # +02 during CEST, +01 during CET
+          expected=$((9 - 10#${offset#+}))
+          now=$(date -u +%H)
+          echo "UTC hour: $now, expected for 09:00 local: $expected, key set: $KEY_SET"
+          if [ "$now" -eq "$expected" ] && [ "$KEY_SET" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.run == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies and screenshot browser
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Install agent CLI
+        if: steps.gate.outputs.run == 'true'
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Configure git identity for agent commits
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          git config user.name "SimSafari Dev Agent"
+          git config user.email "dev-agent@users.noreply.github.com"
+
+      - name: Start dev server
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > /tmp/vite.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:5173 > /dev/null && { echo "Vite is up"; exit 0; }
+            sleep 2
+          done
+          echo "Vite did not come up"; tail -50 /tmp/vite.log; exit 1
+
+      - name: Write agent mission
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          cat > /tmp/mission.md <<'EOF'
+          You are the autonomous orchestrator of the SimSafari project, running unattended in CI on a disposable Linux VM. Work on exactly ONE well-chosen item, done properly.
+
+          Read first, in this order:
+          1. ARCHITECTURE.md - the contract
+          2. CLAUDE.md - hard rules, verification cheatsheet, scoring scale
+          3. docs/BUILDER_BRIEF.md and docs/CRITIC_BRIEF.md - the role instructions
+          4. docs/STATUS.json - current state: scores, open issues, dated notes
+
+          Choose the single highest-leverage open item: an unresolved issue on the lowest-scoring module, a module below the 8.5 pass bar, or (if all majors on it are resolved) a batch of 'minor' issues on that same module. State your choice in one sentence in your output before starting.
+
+          Then execute it as builder-then-critic for that module:
+          - Implement only inside src/modules/<id>/, plus that module's README.md and its docs/STATUS.json entry - the briefs allow exactly that and nothing else.
+          - Obey every hard rule in CLAUDE.md: no Math.random() (use ctx.rng / ctx.noise), no network or CDN imports, no cross-module imports, no per-frame allocations, metres and +Y up.
+          - node tools/lint.mjs src/modules/<id> must pass.
+          - A dev server is ALREADY RUNNING at http://127.0.0.1:5173 - use it; never start or kill any server.
+          - Verify like a critic: node tools/screenshot.mjs --module <id> --preset <p> --tod <h>, then actually Read the PNG files and judge them against the CLAUDE.md scoring scale. Iterate until the issue is genuinely fixed - verified by pixels, not intentions.
+          - Update docs/STATUS.json: bump the module's round and score with real measured numbers, set issue severities, and prepend a dated note saying what you did and what remains.
+
+          Finishing (mandatory):
+          - npm run build must pass.
+          - Commit ALL changes as ONE commit and push: git add -A; git commit -m "[dev-agent] <module>: <one-line summary with evidence>"; git push origin main
+          - This run overrides CLAUDE.md's "do not commit" rule: in CI you ARE the orchestrator.
+          - If you are blocked or not satisfied with the quality, do NOT push half-work: instead write docs/requests/agent-<today>.md (what you tried, what blocked you, recommended next step), commit and push only that file.
+          Never edit anything under .github/, never touch CI configuration or secrets, never force-push, never rewrite history.
+          EOF
+          echo "Mission written: $(wc -l < /tmp/mission.md) lines"
+
+      - name: Run agent
+        if: steps.gate.outputs.run == 'true'
+        env:
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ZAI_API_KEY }}
+        run: |
+          claude -p "$(cat /tmp/mission.md)" \
+            --model "$GLM_MODEL" \
+            --dangerously-skip-permissions
