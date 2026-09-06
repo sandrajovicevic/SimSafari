@@ -1,11 +1,13 @@
-name: Daily 17:00 (Central European)
+name: Daily 22:00 (Central European)
 
-# GitHub cron is UTC only. 17:00 CET (UTC+1) = 16:00 UTC, 17:00 CEST (UTC+2) = 15:00 UTC,
-# so we fire at both and the gate step skips the firing that isn't 17:00 local today.
+# Evening health check: verifies that main still installs, lints and builds -
+# including whatever the 17:00 dev-agent run pushed earlier today.
+# GitHub cron is UTC only. 22:00 CEST (UTC+2) = 20:00 UTC, 22:00 CET (UTC+1) = 21:00 UTC,
+# so we fire at both and the gate step skips the firing that isn't 22:00 local today.
 on:
   schedule:
-    - cron: '0 15 * * *'
-    - cron: '0 16 * * *'
+    - cron: '0 20 * * *'
+    - cron: '0 21 * * *'
   workflow_dispatch:
 
 permissions:
@@ -17,13 +19,13 @@ jobs:
     steps:
       # GitHub can start scheduled runs several minutes late; comparing UTC hours
       # (not minutes) keeps the gate correct for sub-hour delays.
-      - name: Gate - continue only if it is 17:00 in Central Europe today
+      - name: Gate - continue only if it is 22:00 in Central Europe today
         id: gate
         run: |
           offset=$(TZ=Europe/Paris date +%z | cut -c1-3)   # +02 during CEST, +01 during CET
-          expected=$((17 - 10#${offset#+}))
+          expected=$((22 - 10#${offset#+}))
           now=$(date -u +%H)
-          echo "UTC hour: $now, expected for 17:00 local: $expected"
+          echo "UTC hour: $now, expected for 22:00 local: $expected"
           echo "run=$([ "$now" -eq "$expected" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
