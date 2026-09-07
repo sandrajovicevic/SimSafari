@@ -11,15 +11,34 @@ export const LAYER_NAMES = ['grass', 'dryGrass', 'dirt', 'rock', 'sand', 'mud'];
 // ---- height / albedo / roughness / ao snippets per layer -------------------------------------
 // Conventions: height(uv) in 0..1; albedo(uv,h) returns LINEAR colour; rough(uv,h), ao(uv,h) in 0..1.
 
+// De-regularized grass streak field. The old single `tfbm(uv * vec2(1,7), 40)` stamp repeated
+// identically every tile and read as a synthetic squiggle motif from midday overview through
+// close range. Orientation now drifts with a low-frequency noise, the streak coordinates are
+// domain-warped, a second crossed octave interferes, and a patchy mask lets the streak intensity
+// come and go — no two areas of the tile share one motif, so the 3.7 m repeat stops reading.
+const GRASS_BLADES = /* glsl */ `
+vec2 grot(vec2 p, float a){ float c = cos(a), s = sin(a); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }
+float bladesField(vec2 uv){
+  float ang = tnoise(uv, 3.0, uSeed + 33.0) * 2.2;
+  vec2 wp = grot(uv, ang) * vec2(1.0, 6.0)
+          + 0.12 * vec2(tnoise(uv, 7.0, uSeed + 39.0), tnoise(uv, 7.0, uSeed + 45.0));
+  float b1 = tfbm(wp, 34.0, 3, uSeed + 9.0);
+  float b2 = tfbm(grot(uv, 1.5 - ang) * vec2(4.5, 2.5) + 0.61, 47.0, 2, uSeed + 51.0);
+  return 0.62 * b1 + 0.38 * b2;
+}
+float bladesMask(vec2 uv){
+  return 0.35 + 0.65 * smoothstep(0.30, 0.70, tfbm(uv, 2.0, 2, uSeed + 57.0) * 0.5 + 0.5);
+}`;
+
 const GRASS = {
   seed: 11, normalStrength: 0.09,
-  height: /* glsl */ `
+  height: /* glsl */ `${GRASS_BLADES}
 float height(vec2 uv){
   vec2 w = tworley(uv, 34.0, uSeed);
   float tuft = 1.0 - smoothstep(0.05, 0.75, w.x);
   vec2 w2 = tworley(uv + 0.37, 61.0, uSeed + 5.0);
   float tuft2 = 1.0 - smoothstep(0.05, 0.8, w2.x);
-  float blades = tfbm(uv * vec2(1.0, 7.0), 40.0, 3, uSeed + 9.0) * 0.5 + 0.5;
+  float blades = bladesField(uv) * bladesMask(uv);
   float soil = tfbm(uv, 5.0, 4, uSeed + 1.0) * 0.5 + 0.5;
   float fine = tfbm(uv, 110.0, 2, uSeed + 3.0) * 0.5 + 0.5;
   return clamp(0.22 * soil + 0.32 * tuft + 0.22 * tuft2 + 0.16 * blades + 0.08 * fine, 0.0, 1.0);
@@ -27,16 +46,16 @@ float height(vec2 uv){
   albedo: /* glsl */ `
 vec3 albedo(vec2 uv, float h){
   float pt = tfbm(uv, 3.0, 3, uSeed + 21.0) * 0.5 + 0.5;
-  float blades = tfbm(uv * vec2(1.0, 7.0), 40.0, 3, uSeed + 9.0) * 0.5 + 0.5;
+  float blades = bladesField(uv) * bladesMask(uv);
   vec3 soil = vec3(0.145, 0.092, 0.056);
   vec3 dark = vec3(0.058, 0.076, 0.034);
   vec3 tip  = vec3(0.160, 0.185, 0.082);
   vec3 dry  = vec3(0.390, 0.295, 0.135);
   vec3 g = mix(dark, tip, smoothstep(0.3, 0.85, h));
   g = mix(g, dry, smoothstep(0.55, 0.8, pt) * 0.55);
-  g = mix(g, g * vec3(1.15, 1.1, 0.8), smoothstep(0.6, 0.9, blades) * 0.5);
+  g = mix(g, g * vec3(1.15, 1.1, 0.8), smoothstep(0.55, 0.95, blades) * 0.34);
   vec3 c = mix(soil, g, smoothstep(0.14, 0.38, h));
-  c *= 0.92 + 0.16 * hash12(floor(uv * 1024.0) + uSeed);
+  c *= 0.94 + 0.12 * hash12(floor(uv * 1024.0) + uSeed);
   return c;
 }`,
   roughness: 'float rough(vec2 uv, float h){ return 0.92 - 0.14 * h; }',
@@ -49,25 +68,43 @@ const DRY_GRASS = {
   albedo: /* glsl */ `
 vec3 albedo(vec2 uv, float h){
   float pt = tfbm(uv, 3.0, 3, uSeed + 21.0) * 0.5 + 0.5;
-  float blades = tfbm(uv * vec2(1.0, 7.0), 40.0, 3, uSeed + 9.0) * 0.5 + 0.5;
+  float blades = bladesField(uv) * bladesMask(uv);
   vec3 soil = vec3(0.200, 0.122, 0.062);
   vec3 dark = vec3(0.238, 0.163, 0.068);
   vec3 tip  = vec3(0.520, 0.360, 0.115);
   vec3 grn  = vec3(0.215, 0.215, 0.082);
   vec3 g = mix(dark, tip, smoothstep(0.3, 0.85, h));
   g = mix(g, grn, smoothstep(0.62, 0.85, pt) * 0.5);
-  g = mix(g, g * vec3(1.12, 1.08, 0.9), smoothstep(0.6, 0.9, blades) * 0.5);
+  g = mix(g, g * vec3(1.12, 1.08, 0.9), smoothstep(0.55, 0.95, blades) * 0.34);
   vec3 c = mix(soil, g, smoothstep(0.14, 0.38, h));
-  c *= 0.92 + 0.16 * hash12(floor(uv * 1024.0) + uSeed);
+  c *= 0.94 + 0.12 * hash12(floor(uv * 1024.0) + uSeed);
   return c;
 }`,
   roughness: 'float rough(vec2 uv, float h){ return 0.9 - 0.12 * h; }',
   ao: GRASS.ao,
 };
 
+// Non-repeating dried-crack field. The old single 7-cell worley lattice darkened identically
+// every tile and read as a stamped crack motif on the red dirt. Cracks now wobble off the
+// voronoi edge, come in two scales, and a low-frequency zone mask fades them in and out, so no
+// crack pattern repeats recognisably at close range.
+const DIRT_CRACKS = /* glsl */ `
+float crackZone(vec2 uv){
+  return smoothstep(0.30, 0.62, tfbm(uv, 2.5, 2, uSeed + 41.0) * 0.5 + 0.5);
+}
+float crackField(vec2 uv){
+  vec2 wob = 0.05 * vec2(tnoise(uv, 5.0, uSeed + 21.0), tnoise(uv, 5.0, uSeed + 27.0));
+  vec2 c = tworley(uv + wob, 7.0, uSeed + 4.0);
+  float cr1 = 1.0 - smoothstep(0.0, 0.045, c.y - c.x);
+  vec2 c2 = tworley(uv + 0.43 - wob, 15.0, uSeed + 33.0);
+  float cr2 = 1.0 - smoothstep(0.0, 0.035, c2.y - c2.x);
+  float zone = crackZone(uv);
+  return cr1 * (0.2 + 0.8 * zone) * 0.85 + cr2 * (1.0 - zone) * 0.5;
+}`;
+
 const DIRT = {
   seed: 37, normalStrength: 0.07,
-  height: /* glsl */ `
+  height: /* glsl */ `${DIRT_CRACKS}
 float pebbles(vec2 uv){
   vec2 w = tworley(uv, 48.0, uSeed + 2.0);
   float mask = step(0.62, hash12(floor(uv * 48.0) + uSeed));
@@ -76,17 +113,15 @@ float pebbles(vec2 uv){
 float height(vec2 uv){
   float base = tfbm(uv, 6.0, 5, uSeed) * 0.5 + 0.5;
   float peb = pebbles(uv);
-  vec2 c = tworley(uv, 7.0, uSeed + 4.0);
-  float crack = 1.0 - smoothstep(0.0, 0.05, c.y - c.x);
+  float crack = crackField(uv);
   float fine = tfbm(uv, 90.0, 2, uSeed + 8.0) * 0.5 + 0.5;
   float ruts = tfbm(uv * vec2(3.0, 1.0), 6.0, 3, uSeed + 12.0) * 0.5 + 0.5;
-  return clamp(0.36 * base + 0.32 * peb + 0.12 * fine + 0.12 * ruts - 0.16 * crack + 0.1, 0.0, 1.0);
+  return clamp(0.36 * base + 0.32 * peb + 0.12 * fine + 0.12 * ruts - 0.12 * crack + 0.1, 0.0, 1.0);
 }`,
   albedo: /* glsl */ `
 vec3 albedo(vec2 uv, float h){
   float peb = pebbles(uv);
-  vec2 c = tworley(uv, 7.0, uSeed + 4.0);
-  float crack = 1.0 - smoothstep(0.0, 0.05, c.y - c.x);
+  float crack = crackField(uv);
   float lf = tfbm(uv, 2.0, 3, uSeed + 30.0) * 0.5 + 0.5;
   vec3 lo = vec3(0.150, 0.076, 0.044);
   vec3 hi = vec3(0.360, 0.200, 0.118);
@@ -94,8 +129,8 @@ vec3 albedo(vec2 uv, float h){
   col = mix(col, col * vec3(0.88, 0.96, 1.06) + 0.03, smoothstep(0.4, 0.7, lf) * 0.45);
   vec3 stone = mix(vec3(0.30, 0.26, 0.22), vec3(0.46, 0.40, 0.33), hash12(floor(uv * 48.0) + 3.0));
   col = mix(col, stone, smoothstep(0.2, 0.6, peb));
-  col *= 1.0 - 0.5 * crack;
-  col *= 0.9 + 0.2 * hash12(floor(uv * 1024.0) + uSeed);
+  col *= 1.0 - 0.24 * crack;
+  col *= 0.92 + 0.16 * hash12(floor(uv * 1024.0) + uSeed);
   return col;
 }`,
   roughness: 'float rough(vec2 uv, float h){ return 0.96 - 0.12 * h; }',

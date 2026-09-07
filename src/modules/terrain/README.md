@@ -79,6 +79,26 @@ seed 1.
   simplex noise (`uWarpA/B/C`, ~1–11 m amplitude) before sampling, so a boundary that is a hard 2 m
   step on the CPU-side classification grid reads as organic noisy fingers in the render.
   `uBlendDepth` also height-blends the six layers rather than hard-cutting them.
+* **Distance specular anti-aliasing (round 3)**: the wet band (`aux.g`, river banks / pan rims)
+  used to drop roughness to 0.34, and at overview distances the GGX lobe was far narrower than a
+  screen pixel while mip-averaged detail normals fed it variance — that rendered as the white
+  speckle clusters hugging every waterline (blind round 3, "waterline sparkle blotches").
+  Cross-checked on real hardware (AMD RX 5700 XT, ANGLE D3D11 — `tools/shots/gpu-check-*.png`)
+  before fixing: a genuine shader aliasing bug, not a SwiftShader artifact. Fix: wet roughness
+  floor raised to 0.50, roughness climbs +0.35 over 200–800 m camera distance (distant ground
+  goes matte; close range untouched), detail normal flattens to 15 % past 700 m. `water.js`
+  fades its explicit Blinn glint (×0.1 by 800 m) and flattens wave normals over the same range.
+  The round-3 "fence ring" sparkle was the same wet band — the night rings are circular pan rims,
+  not zoning fences (no zoning change needed); remaining night sparkle on road lines belongs to
+  `roads`' reflective paint, out of terrain's scope.
+* **De-regularized layer stamps (round 3)**: the grass/dryGrass streak motif (old single
+  anisotropic `tfbm(uv·(1,7))` stamp that repeated identically every tile) is now a
+  locally-rotated, domain-warped two-octave field with a patchy intensity mask
+  (`bladesField`/`bladesMask` in `textures.js`), and the dirt crack motif wobbles off the
+  voronoi edge in two scales whose intensity comes and goes (`crackField`) at half its old
+  albedo contrast. The splat shader also samples the two tile scales at fixed odd-angle
+  rotations (`rot2`, 0.13 / 0.37 rad) so their repeats cannot align into a visible grid.
+  Palette/layer colours are unchanged — pattern redistribution only, no albedo shift.
   Cost is one shader-side warp; the CPU classification grid itself is unchanged.
 * **Water**: `water.js` no longer relies on the standard PBR specular lobe (roughness raised to 0.96
   so it contributes almost nothing) and instead adds one explicit, narrow Blinn-Phong sun glint term.
@@ -119,6 +139,12 @@ Terrain + water draw calls: 16 chunk meshes (4×4, always resident) + 1 water me
 128 apron segments × 22 rings), not draw-call-bound.
 
 ## Known gaps (honest)
+
+* **Two-scale texture repeats are broken up, not eliminated.** The round-3 rotations, warps and
+  masks stop the 3.7 m grass stamp and the dirt crack lattice from reading as motifs (verified
+  in round-3 after shots), but the underlying 1024² tiles still repeat; a dedicated texture
+  bombing / per-cell UV variation pass would be the next step if a critic ever catches the
+  repeat again at extreme close range.
 
 * **Night is close to unlit black.** Confirmed this is not terrain-specific: `environment`'s own
   night showcase (`tools/shots/env-night-exposurefix.png`) and `props`'s night showcase

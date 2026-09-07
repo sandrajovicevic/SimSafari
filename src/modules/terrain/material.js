@@ -43,7 +43,11 @@ vec3 tAlbedo; float tRough; float tAo; vec3 tNormalW;
   w[3] = c0.a * keep + wRockS; w[4] = (c1.r + c1.b) * keep; w[5] = c1.g * keep;
   float wsum = w[0] + w[1] + w[2] + w[3] + w[4] + w[5] + 1e-5;
   ${Array.from({ length: L }, (_, i) => `w[${i}] /= wsum;`).join(' ')}
-  vec2 uvA = wxz * uInvScaleA; vec2 uvB = wxz * uInvScaleB;
+  // The two tile scales are sampled at fixed odd-angle rotations (and the B scale is offset) so
+  // their repeats can never line up with each other or with the world axes into a visible grid.
+  // The layer textures are tileable, so a rotated lookup wraps seamlessly.
+  vec2 uvA = rot2(wxz * uInvScaleA, 0.13);
+  vec2 uvB = rot2(wxz * uInvScaleB, 0.37) + 0.31;
   float mb = 0.5 + 0.2 * (m2 - 0.5);
   vec4 A[${L}]; vec4 Bn[${L}];
 `;
@@ -67,7 +71,9 @@ vec3 tAlbedo; float tRough; float tAo; vec3 tNormalW;
   vec3 upv = abs(N.y) < 0.995 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
   vec3 Tg = normalize(cross(upv, N)); vec3 Bt = cross(N, Tg);
   vec3 nW = normalize(Tg * tnv.x + Bt * tnv.y + N * tnv.z);
-  float nStr = uNormalStr * (1.0 - 0.8 * smoothstep(120.0, 900.0, camD));
+  // Detail normal flattens almost completely at range: at overview distances the sub-texel normal
+  // variance concentrates the specular lobe into the white blotch clusters seen on waterlines.
+  float nStr = uNormalStr * (1.0 - 0.85 * smoothstep(150.0, 700.0, camD));
   nW = normalize(mix(N, nW, nStr));
   // ---- tints -------------------------------------------------------------------------------
   float rockShare = b[3];
@@ -85,13 +91,18 @@ vec3 tAlbedo; float tRough; float tAo; vec3 tNormalW;
   alb *= mix(vec3(1.04, 0.98, 0.90), vec3(0.94, 1.00, 0.96), m2);
   // wetness
   alb *= mix(1.0, 0.40, wet);
-  rough = mix(rough, 0.34, wet);
+  rough = mix(rough, 0.50, wet);
   // No saturation/contrast compensation here: core's sRGB double-encode is fixed, so the layer
   // textures are authored as true linear colour and are used as-is. uSat/uContrast stay at neutral.
   float lum = dot(alb, vec3(0.2126, 0.7152, 0.0722));
   alb = max(vec3(0.0), mix(vec3(lum), alb, uSat));
   alb = clamp(alb * uGain, 0.0, 1.0);
   alb = alb * alb * (3.0 - 2.0 * alb) * uContrast + alb * (1.0 - uContrast);
+  // Specular-AA roughness floor: past ~200 m the specular lobe is far narrower than a screen
+  // pixel, and the mip-averaged detail normals turn it into white speckle clusters on the wet
+  // band (river banks, pan rims). Letting roughness climb with distance takes the distant ground
+  // matte; close range (< 200 m) is untouched, so the wet sheen at ground level survives.
+  rough += 0.35 * smoothstep(200.0, 800.0, camD);
   tAlbedo = clamp(alb, 0.0, 1.0); tRough = clamp(rough, 0.2, 1.0); tAo = mix(1.0, ao, 0.7); tNormalW = nW;
 }
 diffuseColor.rgb *= tAlbedo;
@@ -109,6 +120,7 @@ uniform float uWarpA; uniform float uWarpB; uniform float uWarpC;
 uniform float uSat; uniform float uGain; uniform float uContrast;
 varying vec3 vWPos; varying vec3 vWNormal;
 vec3 srgb2lin(vec3 c){ return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }
+vec2 rot2(vec2 p, float a){ float c = cos(a), s = sin(a); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }
 ${GLSL_NOISE}
 // Two-scale planar (XZ) sample blended with X/Z projections by the squared normal.
 // tri = 0 → pure planar (flat ground, cheapest path); tri = 1 → full triplanar (cliff faces).
@@ -152,7 +164,7 @@ export function createTerrainMaterial(ctx, layers, control) {
       .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(tNormalW, 0.0)).xyz);')
       .replace('#include <aomap_fragment>', 'reflectedLight.indirectDiffuse *= tAo; reflectedLight.directDiffuse *= mix(1.0, tAo, 0.35);');
   };
-  m.customProgramCacheKey = () => 'terrain-splat-v3';
+  m.customProgramCacheKey = () => 'terrain-splat-v4';
   return m;
 }
 

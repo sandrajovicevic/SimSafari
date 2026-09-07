@@ -76,7 +76,7 @@ ${GLSL_NOISE}`)
   float ground = texture2D(tHeight, cuv).r;
   gDepth = max(0.0, vWPos.y - ground);
   float camD = distance(vWPos, cameraPosition);
-  float str = uWaveStr * (1.0 - 0.8 * smoothstep(150.0, 900.0, camD));
+  float str = uWaveStr * (1.0 - smoothstep(200.0, 800.0, camD));
   vec3 n1 = texture2D(tWaterN, p / 7.5 + uTime * vec2(0.011, 0.006)).xyz * 2.0 - 1.0;
   vec3 n2 = texture2D(tWaterN, p / 2.6 - uTime * vec2(0.008, 0.014)).xyz * 2.0 - 1.0;
   vec3 n3 = texture2D(tWaterN, p / 0.9 + uTime * vec2(0.02, -0.017)).xyz * 2.0 - 1.0;
@@ -111,10 +111,13 @@ ${GLSL_NOISE}`)
   // Here the highlight is a single tight Blinn lobe: bright, but only a few metres wide.
   #if NUM_DIR_LIGHTS > 0
   {
+    // The tight lobe aliases into speckle from overview cameras (lobe far narrower than a pixel);
+    // fade it out with distance. The waterhole/river showcase cameras sit well inside 250 m.
+    float glintFade = 1.0 - 0.9 * smoothstep(250.0, 800.0, distance(vWPos, cameraPosition));
     vec3 Lw = normalize((vec4(directionalLights[0].direction, 0.0) * viewMatrix).xyz);
     vec3 Hv = normalize(Lw + V);
     float ndh = max(dot(gWaterN, Hv), 0.0);
-    outgoingLight += directionalLights[0].color * (pow(ndh, uGlintPow) * uGlint + pow(ndh, 70.0) * uSheen);
+    outgoingLight += directionalLights[0].color * (pow(ndh, uGlintPow) * uGlint * glintFade + pow(ndh, 70.0) * uSheen);
   }
   #endif
   outgoingLight = mix(outgoingLight, vec3(0.115, 0.085, 0.050), gFoam);
@@ -122,7 +125,7 @@ ${GLSL_NOISE}`)
 }
 #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => 'terrain-water-v4';
+  m.customProgramCacheKey = () => 'terrain-water-v5';
   return m;
 }
 
