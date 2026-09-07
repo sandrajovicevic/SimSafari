@@ -34,7 +34,7 @@ export const presets = {
   },
   kopje: {
     camera: { target: [0, 0], distance: 74, pitch: 17, yaw: 300 }, tod: 17.8,
-    description: 'A lion pride resting on the kopje as the light goes gold; boulders and thorn scrub in the cracks (no euphorbia yet — see Known gaps).',
+    description: 'The pride at the kopje\'s foot in golden-hour light: the lens sits just beyond the male on the sun-facing flank, looking away from the low sun, so he is three-quarter front-lit at ~8 m — mane and modelled flank against the boulder backdrop, lionesses resting in the grass around him (camera, light and a props-free sightline are re-derived from the male\'s real spawn each seed).',
   },
   herd: {
     camera: { target: [0, 0], distance: 34, pitch: 9, yaw: 220 }, tod: 16,
@@ -213,10 +213,48 @@ export async function stage(ctx, presetName) {
 
   // 5. Animals — one persistent cast: lion pride on the kopje, elephants/giraffes/zebra at the
   //    waterhole, a zebra/wildebeest/impala herd on the grassland, hippos at the waterhole for night.
-  //    (lionSpots lives at stage scope: the kopje preset's camera aims at the pride's mean position.)
-  //    Radii > 1.0: the pride rests on the grass at the kopje's foot — inside the boulder mass the
+  //    (prideBrg lives at stage scope: the kopje preset's camera is staged off the male's position.)
+  //    Radii > 1.0: the pride stands on the grass at the kopje's foot — inside the boulder mass the
   //    cats end up occluded by the very rocks they're standing on (verified seed 1, kopje-17.8).
-  const lionSpots = [[1.18, 0.9], [1.26, 2.4], [1.12, -1.6], [1.3, -3.0], [1.22, 4.6]];
+  //    All five share ONE bearing (the old ring spread them ~344° around the rock, so at most one
+  //    lion could ever share a frame): the male sits closest to the lens in the head-high 'alert'
+  //    sentry pose (anim.js raises neck/head/ears on _alertW), two lionesses stand behind him and
+  //    two lie in the grass deeper in — a pride at rest with its sentry, all inside one frame.
+  //
+  //    WHICH flank comes from the LIGHT, not the rock. At the preset's 17.8 h the sun sits WNW and
+  //    only ~2° up (environment/atmosphere.js celestialDirection with the dry-season declination).
+  //    The old east-flank staging (prideBrg 0.9) put the lens on the sun side looking back INTO
+  //    that low sun: the male was unoccluded and in frame (kopje-fix-a/-b/-c) but backlit into a
+  //    pale flat box nobody reads as a lion. Staging the pride on the SUN-FACING flank with the
+  //    lens just beyond the male on the same bearing line means the camera looks straight AWAY
+  //    from the sun: he is front-lit warm and the sun itself stays behind the lens, never in
+  //    frame. The bearing is seeded 0.35 rad (~20°) off the sun so the light rakes across him at
+  //    a three-quarter angle — dead-centre front light is what flattened him into a pale box
+  //    (sav-kopje-baseline). The formula is environment's own sun geometry evaluated at the
+  //    preset hour (same numbers as celestialDirection).
+  //    The spot itself must be DRY and FLAT: a cat planted on a >0.14 slope ends up heel-deep
+  //    behind his own ledge (verified sav-kopje-baseline — legs occluded by a lip at the kopje
+  //    foot). If the seeded spot fails, walk the bearing around the rock until one passes both
+  //    tests; 1.18 r sits on the flattened skirt just outside the boulder crest.
+  const Hs = (presets.kopje.tod - 12) * 15 * DEG, dcl = 17 * DEG, lat = -2.3 * DEG;
+  const sunAz = Math.atan2(
+    -Math.cos(dcl) * Math.sin(Hs),
+    -(Math.cos(lat) * Math.sin(dcl) - Math.sin(lat) * Math.cos(dcl) * Math.cos(Hs)),
+  );
+  const spotOK = (brg, rr) => {
+    const x = kopje.x + Math.sin(brg) * kopje.r * rr, z = kopje.z + Math.cos(brg) * kopje.r * rr;
+    const wl = terrain?.getWaterLevelAt ? terrain.getWaterLevelAt(x, z) : ctx.world.terrain.waterLevel;
+    if (terrain?.isWaterAt?.(x, z) || ctx.world.getHeight(x, z) <= wl + 1.2) return false;
+    return ctx.world.getSlope(x, z) < 0.14;
+  };
+  const seedBrg = sunAz + 0.35;
+  let prideBrg = seedBrg;
+  for (const off of [0, 0.3, -0.3, 0.6, -0.6, 1.0, -1.0, Math.PI]) {
+    if (spotOK(seedBrg + off, 1.18)) { prideBrg = seedBrg + off; break; }
+  }
+  // spots are [radiusMultiple, bearingOffset] in the yaw convention (x = sin, z = cos), so the
+  // camera block below can reuse prideBrg directly; smaller radii sit deeper, toward the rock.
+  const lionSpots = [[1.18, 0], [1.12, 0.09], [1.14, -0.09], [1.07, 0.18], [1.05, -0.2]];
   if (animals) {
     animals.clear();
     const hold = 1e6;
@@ -224,10 +262,15 @@ export async function stage(ctx, presetName) {
 
     // -- kopje: lion pride on the lower flanks of the boulder pile
     for (let i = 0; i < lionSpots.length; i++) {
-      const [rr, ang] = lionSpots[i];
-      const x = kopje.x + Math.cos(ang) * kopje.r * rr, z = kopje.z + Math.sin(ang) * kopje.r * rr;
-      const st = i === 0 ? 'idle' : (i % 2 === 0 ? 'sleep' : 'rest');
-      animals.spawn('lion', x, z, 1, { heading: towards(x, z, kopje.x, kopje.z) + Math.PI * 0.5, state: st, hold, sex: i === 0 ? 'male' : 'female' });
+      const [rr, off] = lionSpots[i];
+      const brg = prideBrg + off;
+      const x = kopje.x + Math.sin(brg) * kopje.r * rr, z = kopje.z + Math.cos(brg) * kopje.r * rr;
+      const st = i === 0 ? 'alert' : i === 1 ? 'idle' : i === 2 ? 'rest' : i === 3 ? 'sleep' : 'rest';
+      // heading: tangent to the ring = profile to the lens; the male breaks the rectangle
+      // silhouette with a +0.6 rad three-quarter turn so the mane reads as mass, not a box
+      // (spawn jitters every heading by ±0.35 rad — still safely off head-on and tail-on).
+      const heading = towards(x, z, kopje.x, kopje.z) + Math.PI * 0.5 + (i === 0 ? 0.6 : 0);
+      animals.spawn('lion', x, z, 1, { heading, state: st, hold, sex: i === 0 ? 'male' : 'female' });
     }
 
     // -- waterhole: elephants + giraffes drinking, zebra at the shore
@@ -271,12 +314,31 @@ export async function stage(ctx, presetName) {
   aim(presets.hero, gx - 6, gz + 6);
   presets.hero.camera.yaw = degOf(gx - kopje.x, gz - kopje.z) + 8;
   aim(presets.waterhole, water.x + water.r * 0.3, water.z - water.r * 0.2);
-  // kopje: frame the pride's male from pride level — camera just beyond him on the rock-outward
-  // line, looking back, so he reads large with the boulder mass directly behind (ring neighbours
-  // fall into frame as context). The old aims used the pride MEAN, but the ring spreads ~344°
-  // around the kopje, so the mean sits inside the rock and no camera there can work (the round-1
-  // blocker). Reads REAL spawn positions from world.animals, not the assumed ring, and walks the
-  // camera back along the outward line until line-of-sight (a heightfield march) actually clears.
+  // kopje: stage the shot around the pride's MALE. Camera sits just beyond him on the rock-outward
+  // line, looking back: he reads large with the boulder mass directly behind (the old aims used
+  // the pride MEAN, but the mean of a ring sits inside the rock and no camera there can work).
+  // The bearing itself is chosen in section 5 — the sun-facing flank seeded 20° off the sun — so
+  // this backlook has the low golden-hour sun behind the lens raking across the male at three
+  // quarters. Distances are LION-SCALE — a lion is ~1.2 m at the shoulder, so the march starts at
+  // 8 m (the hero fix showed the same lesson: at 220 m a zebra is ~10 px; and at 12-16 m the
+  // male still read as an ambiguous tan quadruped — the mane and tail tuft only carry from
+  // ~8-10 m; verified kopje-fix-a/-fix-b vs the 7 m diagnostic). The camera spot must also be
+  // FLAT (<0.18 slope): a lens parked on the steep skirt stares into a rock wall that swallows
+  // half the frame (verified sav-kopje-baseline).
+  // The heightfield LOS march can only see terrain, never props, and the round-2 shot proved the
+  // subject can still hide behind a staged shrub — so after picking the camera we carve a
+  // props-free staging ground with props.clear:
+  //   • a sightline corridor of overlapping rects (±3.5 m) from 4 m behind the lens to 1.2 m
+  //     short of the male — on open golden grass the ~7 m lane reads as a game trail;
+  //   • a 9 m patch centred on the male: tall dead shrubs rooted OUTSIDE a small patch still
+  //     lean their branches across the subject (verified sav-kopje-baseline — a branch crossed
+  //     the male from a root 3 m off the lane);
+  //   • a 5 m patch on each lioness so no shrub swallows a resting cat;
+  //   • a 20 m fore-court at the lens itself: boulders rooted within ~10 m of the camera loom
+  //     into the frame edge even when well off-axis (the giant rock filling the left half of
+  //     sav-kopje-baseline was rooted beside the camera).
+  // The boulders BEHIND the male stay — they are the backdrop. All clearing is showcase-only
+  // staging inside this module; wild behaviour never sees it.
   {
     const P = presets.kopje;
     const world = ctx.world;
@@ -293,16 +355,35 @@ export async function stage(ctx, presetName) {
         }
         return true;
       };
-      for (const d of [24, 30, 40, 56, 80]) {
+      for (const d of [8, 11, 15, 21, 30]) {
         const cp = Math.cos(P.camera.pitch * DEG), sp = Math.sin(P.camera.pitch * DEG);
         const px = hero.x + Math.sin(P.camera.yaw * DEG) * cp * d, pz = hero.z + Math.cos(P.camera.yaw * DEG) * cp * d;
         let py = world.getHeight(hero.x, hero.z) + sp * d;
         const ground = world.getHeight(px, pz);
         if (py < ground + 1.7) py = ground + 1.7;
         P.camera.distance = d;
-        if (losClear(px, py, pz)) break;
+        if (losClear(px, py, pz) && world.getSlope(px, pz) < 0.18) break;
       }
       aim(P, hero.x, hero.z);
+      if (props?.clear) {
+        const sy = Math.sin(P.camera.yaw * DEG), cy = Math.cos(P.camera.yaw * DEG);
+        const cp = Math.cos(P.camera.pitch * DEG);
+        const camX = hero.x + sy * cp * P.camera.distance, camZ = hero.z + cy * cp * P.camera.distance;
+        const ax = camX - sy * 4, az = camZ - cy * 4; // start 4 m behind the camera
+        const bx = hero.x - sy * 1.2, bz = hero.z - cy * 1.2; // stop short of the male
+        const steps = Math.max(2, Math.ceil(Math.hypot(bx - ax, bz - az) / 3));
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const cx = ax + (bx - ax) * t, cz = az + (bz - az) * t;
+          props.clear({ x0: cx - 3.5, z0: cz - 3.5, x1: cx + 3.5, z1: cz + 3.5 });
+        }
+        props.clear({ x0: hero.x - 4.5, z0: hero.z - 4.5, x1: hero.x + 4.5, z1: hero.z + 4.5 });
+        for (const a of lions) {
+          if (a === hero) continue;
+          props.clear({ x0: a.x - 2.5, z0: a.z - 2.5, x1: a.x + 2.5, z1: a.z + 2.5 });
+        }
+        props.clear({ x0: camX - 10, z0: camZ - 10, x1: camX + 10, z1: camZ + 10 });
+      }
     }
   }
   aim(presets.herd, gx, gz);

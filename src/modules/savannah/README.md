@@ -26,14 +26,23 @@ showcase preset, so there is no cross-preset state), in this order:
    wild (a road bridge through the drinking scene was a verified defect on seed 1). One
    `traffic.spawn('safari', …)` parks a vehicle on the track.
 5. **The cast** — `animals.clear()`, then: a 5-lion pride (one male, rest-state mix, held) on the
-   kopje's lower flanks; elephants + giraffes drinking at real `shorePoints` marched out from the
+   kopje's sun-facing lower flank — the male's spot must be dry AND flat (slope < 0.14) so no rock
+   lip swallows his legs, and the whole bearing is seeded 20° off the sun so the preset camera
+   (parked just beyond him on the same line) looks away from the low sun with the light raking
+   three-quarter across him; elephants + giraffes drinking at real `shorePoints` marched out from the
    water's edge; zebra + warthog at the shore; a walking zebra/wildebeest herd with `target`s across
    the grassland plus impala and ostrich; hippos join the waterhole for the `night` preset only.
-   All staged animals use `hold: 1e6` so a still frame shows the composed state.
+   All staged animals use `hold: 1e6` so a still frame shows the composed state (they cannot wander
+   during the screenshot settle — held animals never change state or steer).
 6. **Camera anchors** — every preset's `camera.target` is re-aimed onto the real feature positions
    for the active seed (mutating the exported `presets` object in place, which core applies after
    `stage()` resolves), and all views are registered as `savannah-<name>` rig presets so the full
-   game can jump to them.
+   game can jump to them. The kopje preset additionally carves a props-free staging ground with
+   `props.clear`: a ±3.5 m sightline corridor from just behind the lens to 1.2 m short of the male,
+   a 9 m patch on the male (tall dead shrubs root outside a small patch and still lean their
+   branches across the subject), a 5 m patch per lioness, and a 20 m fore-court at the camera
+   (boulders rooted within ~10 m of the lens loom into the frame edge even off-axis). The boulders
+   behind the male stay — they are the backdrop.
 
 ## Public API — `ctx.modules.get('savannah')`
 
@@ -63,7 +72,7 @@ degrades the scene, never fails the stage.
 | `close` | 16 | foreground grass and an acacia trunk at eye level, kopje softening into haze |
 | `hero` | 17.4 | the flagship golden-hour shot: acacia left third, grazing herd middle distance, kopje silhouette right third, warm haze layering |
 | `waterhole` | 8 | elephants and giraffes drinking in low morning light, zebra at the shore |
-| `kopje` | 17.8 | the kopje at golden hour — boulder-strewn rock over hazy plains; the pride is staged at its foot but can be occluded by the mass (see CG list) |
+| `kopje` | 17.8 | the pride at the kopje's foot in golden hour — the male three-quarter front-lit at ~8 m against the boulder backdrop, lionesses resting around him (see CG list for the residual model tell) |
 | `herd` | 16 | zebra and wildebeest crossing open grassland at eye level |
 | `river` | 9.5 | the riverine gallery from on the water, looking down the channel |
 | `storm` | 15 | dark sky, rain approaching, the track leading into it |
@@ -82,7 +91,7 @@ its own); the whole scene sits far inside the ≤1500 draw / ≤6 M tri budget a
 | close | 211 | 4,850,921 |
 | hero | 206 | 4,803,954 |
 | waterhole | 200 | 3,963,856 |
-| kopje | 190 | 3,467,903 |
+| kopje | 185 | 3,709,866 |
 | herd | 212 | 4,879,278 |
 | river | 188 | 4,564,596 |
 | storm | 174 | 4,069,273 |
@@ -96,20 +105,20 @@ its own); the whole scene sits far inside the ≤1500 draw / ≤6 M tri budget a
   bright gold from pure diffuse response (roughness is 1.0 — there is no specular left to remove),
   which is close to how backlit grass photographs, but the uniformity of the glow across the whole
   sward is the single biggest remaining CG tell (park-lodge golden hour shows it at its strongest).
-* **The `kopje` preset does not reliably show its subject**: the pride is staged at the kopje's foot
-  (radius > 1.0 — inside the boulder mass the cats are occluded by their own rock), but from the
-  preset's yaw the mass can still hide them on seed 1. Two aim iterations (centre → pride mean →
-  foot) improved the framing without solving visibility; the proper fix is a camera-to-lion
-  visibility check per stage, which needs a mesh raycast no module currently exposes. The shot is
-  kept for the rock-and-planes composition; the lions are a documented miss, not a hidden one.
+* **The `kopje` subject is now staged, not hoped for** (round-3 fix, verified sav-kopje-fix-d/-e):
+  the pride sits on the sun-facing flank at 1.18 r on a slope-checked flat spot, the preset camera
+  is marched from 8 m outward along the male's bearing until the terrain LOS is clear, and
+  `props.clear` carves the corridor/podium/fore-court described in stage step 6 — the male reads
+  unmistakably (dark mane, legs on the ground) in both verification captures. Residuals below.
 * **Foliage silhouettes against glare** (dawn) are dark alpha cutouts — real backlit canopy glows
   through; there is no leaf translucency term.
 * **Animal faces at conversational distance** (waterhole elephants at 40 m) are convincingly
   sculpted but the trunk-tip/ear articulation is stiffer than film reference; skin wrinkles read
   slightly regular on the elephant.
-* **The lion pride is small in frame even when aimed correctly** — 5 lions on a 40 m-radius rock
-  read as shapes, not individuals; photography of a pride at this distance would carry more
-  behavioural story (interaction, cubs).
+* **The male lion up close is a low-poly box-and-cylinder cat** — at the kopje preset's 8 m the
+  silhouette, mane, legs and tail tuft all read, but the body has no muscle relief or fur, and the
+  front-lit flank values run pale against the darker rock; photography at this distance would show
+  whiskers, fly twitch and behavioural story (interaction, cubs) that no staged still can.
 * **Water**: the tannin-dark rivers and pans with a tight sun glint read photographically at a
   distance; at close range the shore blend is a painted gradient, not wet-sand geometry.
 * **Clouds** are a two-layer analytic sheet — convincing at hero/storm distances, but a storm front's
@@ -131,4 +140,8 @@ its own); the whole scene sits far inside the ≤1500 draw / ≤6 M tri budget a
   screenshot never produces one). `?module=savannah` pages are silent by design.
 * README written 2026-09-05 by the integrator during wave-3 verification; the code is the original
   builder's except: the waterhole road-leg guard, the kopje/river camera aims, and the lion-spot
-  constant hoisted to stage scope (all documented above with their evidence shots).
+  constant hoisted to stage scope (all documented above with their evidence shots), plus the
+  round-3 kopje subject fix (2026-09-07): sun-facing-flank staging with slope-guarded spots,
+  the 8 m lion-scale camera march with a camera-slope guard, and the props.clear corridor /
+  podium / fore-court carving (evidence: sav-kopje-baseline.png shows the three failure modes it
+  removes — ledge-occluded legs, a branch across the subject, a boulder rooted at the lens).
