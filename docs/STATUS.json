@@ -1,8 +1,10 @@
 {
-  "updated": "2026-09-05",
+  "updated": "2026-09-07",
   "wave": 3,
   "passThreshold": 8.5,
   "notes": [
+    "2026-09-07 wave-3 blind visual test (docs/critic/game-round3-blind.md): 11 fresh captures across the park demo and the staged savannah, each scored on visible merit against the §12 anchors. game.blindVisual = 6.9 (game subset incl. the UI composite); savannah subset 7.0. Systemic findings, priority order: (1) wild night legibility fails away from lights — a close view at 21.5h reads near-black (5.5) while the park-lit overview (6.5) and the moonlit waterhole (7.0) are readable; (2) white sparkle blotches trace waterlines/pan rims/fence rings at overview, day and night — suspected specular aliasing, needs a real-GPU cross-check; (3) kopje pride still illegible — two captures 24h apart are frame-identical, subject occluded by shrubs or wandering during the settle; (4) grass mottle stamp reads synthetic from midday overview through close; (5) tiled crack motif on red dirt; (6) world-edge apron detail step. Best image: savannah waterhole at 8.0.",
+    "2026-09-07 fidelity + capture protocol: tools/fidelity.mjs passes 6/6 scenarios against the live game (elasticity $10/25/40/60 → 249/129/72/41 arrivals/day with net -951/-1357/-3203/-4596 $/day; bankruptcy flag day 18; water-table degradation drops Plains quality 0.527 → 0.342; determinism identical over 30 days; sightings 20 vs 0 with/without vehicles) — game.gameplayFidelity = 8.0, held below 8.5 by undemonstrated births, poaching/drought events and village prosperity. The harness also shows the demo park is cash-flow negative at EVERY measured price — recorded as an open park minor. Capture protocol: a 1080p --game capture costs 580–860 s wall under SwiftShader; an interrupted capture loop ORPHANS its chrome-headless-shell, which then burns all cores for minutes (taskkill //F //IM chrome-headless-shell.exe); DOM captures failed twice at Playwright's default 30 s screenshot timeout, so tools/screenshot.mjs now uses 180 s and logs failures loudly.",
     "FOURTH AND DEEPEST ROOT CAUSE FOUND 2026-09-05: environment/atmosphere.js lightDepth() reused scatter()'s view-density scratch array _d, so every CPU-sampled sky radiance came out ~10^4x too dim (measured zenith 7e-6 vs physical ~0.5). The exposure controller, reading a near-black sky, climbed to its ceiling; the visible 'sky' was the blown-out cloud deck; fog and aerial-perspective colours near black produced the horizon band. This is the true root cause of the round-1 SYSTEMIC 'washed out toward white' blocker and of both of environment's round-2 majors — NOT ACES tone mapping, NOT albedo authoring. The GPU LUT was unaffected (GLSL locals), which is why sun colour was always right while sky/fog colours were wrong. Fixed with a separate scratch array; wave-3 verification then proceeded against a correctly-lit world.",
     "Wave 3 (savannah, park) verified 2026-09-05: both modules were already fully implemented in the ZIP but had never been screenshotted, scored, or documented (STATUS said 'not-started' — stale). All 17 savannah presets and 7 park presets + 9 full-game sweeps shot and READ; 0 console errors everywhere; all inside the draw/triangle budgets. savannah README written; park README's two placeholder sections filled with measured numbers; missing READMEs written for environment, simulation, ui, audio; traffic's 1-line draft replaced.",
     "Screenshot-tooling note for future rounds: park's own setSpeed(1) used to push every capture into a random night hour under SwiftShader (~35 game-hours burn during the 40-frame settle at ~1 fps) — capture pages must pass &speed=0, and modules that advance the clock must respect an explicitly paused clock. Also: do not run 3+ concurrent SwiftShader renders on a 12-core machine — module imports starve and pages time out.",
@@ -64,13 +66,13 @@
       "good": "Graph, terrain conforming, junctions and the bridge all work; road surface colour and the bridge framing are both independently confirmed fixed. Built domain benchmark is Cities: Skylines II — this is closer to that bar than it has been at any point in the project."
     },
     "ui": {
-      "wave": 1, "domain": "built", "round": 1, "score": 8.0, "status": "fail", "errors": 0, "drawCalls": 0,
-      "reviewedBy": "orchestrator-integration", "presetsSeen": ["game overview (DOM)"],
+      "wave": 1, "domain": "built", "round": 2, "score": 8.0, "status": "near-pass", "errors": 0, "drawCalls": 0,
+      "reviewedBy": "integrator-verification", "presetsSeen": ["round 1: game overview DOM; round 2: fresh DOM composite over the live park (tools/shots/blind-game-dom-14c-dom.png, 2026-09-07)"],
       "issues": [
-        { "sev": "minor", "text": "An empty dark panel renders at top-right in the game view (notification stack container with no content should be hidden when empty)." },
+        { "sev": "resolved", "text": "FIXED and verified (blind-game-dom-14c-dom.png, 2026-09-07): the empty dark panel top-right is gone (.sf [hidden] display:none — .side's display:flex was defeating the hidden attribute). Top bar, toolbar and minimap all render legibly over the live park; the blind test scored this composite 7.5, the strongest game view." },
         { "sev": "minor", "text": "Not yet reviewed at report/panel/toolbar/night presets." }
       ],
-      "good": "Genuinely close to the Cities: Skylines II reference: top bar with cash, income delta, visitors, reputation stars, day/season, clock, speed controls and weather; numbered category toolbar; framed minimap. Typography and spacing are disciplined. Strongest module in wave 1."
+      "good": "Genuinely close to the Cities: Skylines II reference: top bar with cash, income delta, visitors, reputation stars, day/season, clock, speed controls and weather; numbered category toolbar; framed minimap. Typography and spacing are disciplined. Strongest module in wave 1, re-verified over the live park in round 2 with the notification-panel fix in place."
     },
     "simulation": {
       "wave": 1, "domain": "sim", "round": 1, "score": 9.0, "status": "pass", "errors": 0, "drawCalls": 2,
@@ -105,15 +107,16 @@
       "good": "Pipeline installs via app.setRenderFn, renders 0 errors, costs exactly its 12-draw budget, self-reports measure() numbers, degrades to direct rendering if construction fails. The composer's yard (spheres on plinths, crates, tanks, campfire, lamp ring, sheds, far skyline) is a legitimate test scene for the passes."
     },
     "zoning": {
-      "wave": 2, "domain": "built", "round": 1, "score": 7.0, "status": "near-pass", "errors": 0, "drawCalls": 150,
-      "reviewedBy": "orchestrator-integration", "presetsSeen": ["overview"],
+      "wave": 2, "domain": "built", "round": 2, "score": 7.5, "status": "near-pass", "errors": 0, "drawCalls": 150,
+      "reviewedBy": "integrator-verification", "presetsSeen": ["round 1: overview; round 2: fresh 2026-09-07 capture of overlay (tools/shots/blind-zoning-overlay.png)"],
       "issues": [
-        { "sev": "major", "text": "Habitat overlay cell edges are hard/blocky (checkerboard) rather than the spec's soft-edged, animated dashed boundary. Functionally correct — zones are clearly readable, coloured, and integrated with real terrain/props — but visually short of the Cities: Skylines II reference." },
+        { "sev": "resolved", "text": "PARTIALLY FIXED and verified (blind-zoning-overlay.png, 2026-09-07): the round-1 hard checkerboard fill is gone — fill feathers via a 5x5 same-region field (commit 4500c55) and the dash cycle is finer (~11 m); zone fill edges are visibly soft. Downgraded to a minor: the boundary dashes still trace the 4 m cell staircase in long zigzag chains." },
+        { "sev": "minor", "text": "Boundary dashes are grid-quantised — they follow 4 m cell steps rather than a smoothed contour, the one remaining gap to the Cities: Skylines II reference." },
         { "sev": "minor", "text": "Fence posts/wire not clearly visible at overview distance; needs a close-preset check." },
         { "sev": "minor", "text": "Only overview independently reviewed; close/overlay/night not yet checked by the orchestrator (module loads and all 4 presets are present per probe, zero errors)." },
         { "sev": "minor", "text": "Genuine mutual optional-dependency cycle with animals (each lists the other as optional). Architecturally handled by the registry's cycle detection, not a bug, but worth knowing about." }
       ],
-      "good": "A real, working habitat-painting overlay: correctly coloured, blocky-but-legible zone regions integrated with terrain and props in one coherent scene. Loads with zero errors, all 4 presets present, lint clean."
+      "good": "A real, working habitat-painting overlay: correctly coloured zone regions integrated with terrain and props in one coherent scene; round 2 adds feathered fill and finer marching ants. Loads with zero errors, all 4 presets present, lint clean."
     },
     "buildings": {
       "wave": 2, "domain": "built", "round": 2, "score": 8.0, "status": "near-pass", "errors": 0, "drawCalls": 276,
@@ -159,37 +162,41 @@
       "good": "This is the module that makes the game playable rather than watchable, and it delivers: a real tool framework (activate/deactivate/undo/redo >=50 steps), and I independently verified two presets. `overview` shows the full scripted session actually working end-to-end — a curving gravel road crossing the river with a real bridge, a large painted habitat overlay, structures placed — all through the module's own public API, no shortcuts. `building` shows a working ghost preview: the real placed lodge with a semi-transparent red overlay correctly signalling an invalid (occupied) placement. Also found and fixed a genuine bug during its own testing: an unbounded terrain-raise stroke that, under this session's heavy concurrent load, once grew tall enough to embed the camera inside solid terrain — now capped, which fixes real gameplay too. README is thorough: full API, undo/redo mechanics explained per-tool, cost model, and an honest known-gaps list."
     },
     "savannah": {
-      "wave": 3, "domain": "nature", "round": 1, "score": 7.5, "status": "near-pass", "errors": 0, "drawCalls": 165,
-      "reviewedBy": "integrator-verification", "presetsSeen": ["all 10: overview, close, hero, waterhole, kopje, herd, river, storm, night, dawn (re-shot after fixes)"],
+      "wave": 3, "domain": "nature", "round": 2, "score": 7.5, "status": "near-pass", "errors": 0, "drawCalls": 165,
+      "reviewedBy": "integrator-blind-visual", "presetsSeen": ["round 1: all 10; round 2: fresh 2026-09-07 blind captures of overview, waterhole, kopje, night (tools/shots/blind-sav-*.png)"],
       "issues": [
-        { "sev": "major", "text": "The kopje preset does not reliably show its subject: the lion pride is staged at the kopje's foot but the rock mass occludes it from the preset's yaw on seed 1 (two aim iterations: centre, pride mean, foot). Proper fix needs a camera-to-lion visibility check (mesh raycast no module exposes). Documented miss, not hidden." },
-        { "sev": "minor", "text": "Uniform golden glow across the whole sward at low sun (pure diffuse now that grass roughness is 1.0) is the biggest remaining CG tell — park-lodge shows it strongest." },
+        { "sev": "major", "text": "STILL OPEN after the round-2 aim fix (commit 4500c55): the male lion still does not read in the kopje preset. Two captures 24 h apart (savannah-kopje-auto.png 2026-09-06, blind-sav-kopje.png 2026-09-07) are frame-identical and show the pride at best as an ambiguous tan shape behind a shrub clump — camera aim is no longer the problem; the subject is either occluded by staged shrubs in the sightline or wanders off during the 40-frame settle at ~1 fps. Needs a shrub-free sightline from the preset camera or staging the pride closer to the lens." },
+        { "sev": "minor", "text": "Uniform golden glow across the whole sward at low sun (pure diffuse now that grass roughness is 1.0) is the biggest remaining CG tell — park-lodge shows it strongest. Round-2 blind refinement: the grass mottle reads as a synthetic squiggle stamp at MIDDAY too, from overview through close range — it is now a texture-pattern problem, not an exposure problem." },
+        { "sev": "minor", "text": "White sparkle blotches overlap vegetation at the waterhole rim and upper river in overview shots (blind-sav-overview.png) — reads as specular aliasing; needs a real-GPU cross-check before treating as a shader bug." },
         { "sev": "resolved", "text": "FIXED and verified (savannah-waterhole-auto.png): the dirt track no longer bridges the waterhole pan — the leg to the waterhole is dropped when the straight line samples water. The waterhole is wild again." },
         { "sev": "resolved", "text": "FIXED and verified (savannah-river-auto.png): river preset camera now sits ON the water looking down the channel; the old bank-side aim framed a wall of riverine foliage with no river in it." },
         { "sev": "resolved", "text": "FIXED and verified (savannah-hero-auto.png): hero camera at 130 m so the walking herd reads as animals (was 220 m — zebras were ~10 px)." }
       ],
-      "good": "A real, seed-general composer: every stage re-derives anchors from actual terrain features, art-directs weather per preset through environment's API, and stages a 60+ animal cast with states. All 10 presets load with 0 console errors, inside budget (max 228 draws / 5.15M tris at dawn vs the 1500/6M budget). Cross-module defect fixes it drove: terrain water glint, props grass shimmer, effects bloom threshold, the world-edge apron palette."
+      "good": "A real, seed-general composer: every stage re-derives anchors from actual terrain features, art-directs weather per preset through environment's API, and stages a 60+ animal cast with states. All 10 presets load with 0 console errors, inside budget (max 228 draws / 5.15M tris at dawn vs the 1500/6M budget). Cross-module defect fixes it drove: terrain water glint, props grass shimmer, effects bloom threshold, the world-edge apron palette. Round-2 blind reads: waterhole 8.0 (unmistakably African — the best image in the blind set), night waterhole 7.0 (legible moonlit scene), overview 6.5 (sparkle blotches), kopje 6.5 (subject illegible — major above)."
     },
     "park": {
-      "wave": 3, "domain": "built", "round": 1, "score": 8.0, "status": "near-pass", "errors": 0, "drawCalls": 223,
-      "reviewedBy": "integrator-verification", "presetsSeen": ["all 7: overview, gate, lodge, habitat, tour, close, night"],
+      "wave": 3, "domain": "built", "round": 2, "score": 8.0, "status": "near-pass", "errors": 0, "drawCalls": 223,
+      "reviewedBy": "integrator-verification", "presetsSeen": ["round 1: all 7; round 2: fidelity-harness 30-day runs + blind game views (overview/close × 8/14/21.5, DOM, 2026-09-07)"],
       "issues": [
-        { "sev": "major", "text": "BALANCE: the demo park as built loses ~$650/day and migrates 29 animals in the first 30 days — at least one habitat's quality sits below the 0.30 migration threshold for 3+ consecutive days at start (measured in the scripted 30-day run). No bankruptcy risk, but the first month reads unhealthy. Numbers and method in park/README.md." },
+        { "sev": "resolved", "text": "FIXED (commit 4500c55) and verified by the fidelity harness (2026-09-07): month one now has 0 migrations (was 29), lions survive (were all gone by day 12), day-30 cash $209,298 from $250,000, and the live game is deterministic — same seed reproduces an identical 30-day history. Habitat discs offset off the loop road, regions re-resolved after late terrain edits, species spawn as herds inside their named region (0 strays on seeds 1+2)." },
+        { "sev": "minor", "text": "Economy: the demo park is cash-flow negative at EVERY measured price point — net -951/-1357/-3203/-4596 $/day at $10/$25/$40/$60 (elasticity itself is correct: 249/129/72/41 arrivals/day). Population health was bought with a staff roster whose expense base no measured price covers; a player following the demo's lead cannot reach break-even in month one. Profitability needs content that grows arrivals (species variety, attractions), not price tuning." },
         { "sev": "minor", "text": "The tour preset's showcase-only vehicle spawns on the kopje plateau top (nearest road point to the framed habitat) — reads as a truck parked on a mesa. Existing documented gap; unchanged." },
-        { "sev": "minor", "text": "Predator-road sighting loop could not be demonstrated under SwiftShader (vehicles advance on real-time dt; at ~1 fps a tour travels ~150 m in 3 min — 0 sightings before/after). Wiring verified in code; needs real hardware. park/README.md documents the attempt." },
+        { "sev": "minor", "text": "Predator-road sighting loop under SwiftShader: still not demonstrable with real-time vehicles (~1 fps), but the fidelity harness now proves the chain end-to-end with synthetic dt — 20 sightings over 1800 vehicle-seconds with demo tours vs 0 without vehicles. Needs real hardware for the live-path confirmation." },
         { "sev": "resolved", "text": "FIXED and verified: the demo clock no longer races showcase captures — setSpeed(1) now applies only in the live game and only when the clock is not explicitly paused. Previously every ?module=park screenshot landed at a random night hour (~35 game-hours burned during the 40-frame settle at ~1 fps); the first park-overview shot was black." }
       ],
-      "good": "The playable game exists and starts itself: with no ?module=, park builds the whole demo on core:ready — gate, lodge complex, loop road with spurs, 4 fenced habitats, hides + tower, 60+ animals, 4 tours, sim at speed 1 — verified 0 errors across all 15 modules (game shots 276-325 draws, 4.6-5.8M tris, inside budget). Gameplay loop measured with real numbers: price elasticity confirmed (100 → 26 arrivals/day at $60, and the dearer month earns less), migration threshold demonstrably crossed at baseline. UI verified visible over the live park (game-dom-ui)."
+      "good": "The playable game exists and starts itself: with no ?module=, park builds the whole demo on core:ready — gate, lodge complex, loop road with spurs, 4 fenced habitats, hides + tower, 60+ animals, 4 tours, sim at speed 1 — verified 0 errors across all 15 modules (game shots 276-326 draws, 4.6-5.9M tris, inside budget). Round-2 rebalancing (commit 4500c55) made month one ecologically healthy and the live game deterministic; the fidelity harness now measures price elasticity, water-quality coupling, bankruptcy and the sightings chain with real numbers. UI verified visible over the live park. Remaining: month-one cash flow is negative at every measured price (minor above)."
     }
   },
   "game": {
-    "round": 2, "score": null, "blindVisual": null, "gameplayFidelity": null,
-    "integration": { "loads": true, "modulesOk": 15, "errors": 0, "drawCalls": 278, "triangles": 4737342 },
+    "round": 3, "score": null, "blindVisual": 6.9, "gameplayFidelity": 8.0,
+    "integration": { "loads": true, "modulesOk": 15, "errors": 0, "drawCalls": 284, "triangles": 4617129 },
     "issues": [
       { "sev": "resolved", "text": "FIXED (2026-09-05, environment/atmosphere.js): the round-1 SYSTEMIC 'everything washes out toward white' blocker was never a tone-mapping or albedo-authoring problem — it was a CPU sky-sampler aliasing bug that made every sky-derived colour ~10^4x too dim, driving the exposure controller to its ceiling and fog/horizon colours to near-black. Full root cause under environment's entry. The earlier 'author darker to compensate' guidance was a workaround over a defect and is wrong." },
       { "sev": "resolved", "text": "FIXED (2026-09-05, park module verified): the full game now starts into a complete playable park — park auto-builds on core:ready (gate, lodge complex, loop + spurs, 4 habitats, 60+ animals, 4 tours, sim at speed 1). Verified with a 9-shot --game sweep (overview/close/low x 8/14/21.5, clock paused via &speed=0): 0 errors, 276-325 draws, 4.6-5.8M tris." },
-      { "sev": "minor", "text": "World-edge apron reads as a low-detail continuation: the palette was re-matched (2026-09-05, terrain/apron.js) and the bright-slab effect is gone, but the border is still visible as a detail-density step (habitat tints, roads and props exist only inside the world). Acceptable at gameplay distances; a perfect match would mean extending the splat material itself." },
-      { "sev": "minor", "text": "Blind visual test and gameplay-fidelity checklist (the two scores that matter for wave 3) still not run — both now HAVE their subject: a staged savannah (savannah module) and a complete park (park module). These are the next orchestrator actions." }
+      { "sev": "resolved", "text": "DONE (2026-09-07): blind visual test scored 11 fresh captures (game.blindVisual = 6.9; savannah subset 7.0) and the gameplay-fidelity harness passed 6/6 (game.gameplayFidelity = 8.0). Protocol, per-image scores and systemic findings in docs/critic/game-round3-blind.md." },
+      { "sev": "minor", "text": "Wild night legibility is camera/hour dependent: the park-lit overview (6.5) and the moonlit waterhole (7.0) are readable, but a wild close view at 21.5h reads near-black (blind-game-close-21_5.png scored 5.5). Recommend a moon-elevation-aware exposure floor or a minimum ambient for wild views." },
+      { "sev": "minor", "text": "White sparkle blotches trace waterlines, pan rims and fence rings at overview distance, day and night (scored down in three blind shots). Suspected specular aliasing; must be cross-checked on real GPU — SwiftShader may exaggerate it." },
+      { "sev": "minor", "text": "World-edge apron reads as a low-detail continuation: the palette was re-matched (2026-09-05, terrain/apron.js) and the bright-slab effect is gone, but the border is still visible as a detail-density step (habitat tints, roads and props exist only inside the world). Acceptable at gameplay distances; a perfect match would mean extending the splat material itself. Re-confirmed by the 2026-09-07 blind overview shots." }
     ]
   },
   "history": [
@@ -214,6 +221,11 @@
     { "module": "environment", "round": 3, "score": 8.0, "by": "integrator-verification", "date": "2026-09-05" },
     { "module": "effects", "round": 2, "score": 8.0, "by": "integrator-verification", "date": "2026-09-05" },
     { "module": "savannah", "round": 1, "score": 7.5, "by": "integrator-verification", "date": "2026-09-05" },
-    { "module": "park", "round": 1, "score": 8.0, "by": "integrator-verification", "date": "2026-09-05" }
+    { "module": "park", "round": 1, "score": 8.0, "by": "integrator-verification", "date": "2026-09-05" },
+    { "module": "park", "round": 2, "score": 8.0, "by": "integrator-verification", "date": "2026-09-07" },
+    { "module": "savannah", "round": 2, "score": 7.5, "by": "integrator-blind-visual", "date": "2026-09-07" },
+    { "module": "zoning", "round": 2, "score": 7.5, "by": "integrator-verification", "date": "2026-09-07" },
+    { "module": "ui", "round": 2, "score": 8.0, "by": "integrator-verification", "date": "2026-09-07" },
+    { "module": "game", "round": 3, "score": 6.9, "by": "integrator-blind-visual", "date": "2026-09-07" }
   ]
 }

@@ -96,7 +96,11 @@ async function shoot(browser, { module: mod, preset, tod, seed, quality, name, e
   let wrotePng = false;
   if (args.dom && ready) {
     // Full-page composite (WebGL canvas + DOM UI). Needed for ui/audio/simulation panels.
-    try { await page.screenshot({ path: pngPath, fullPage: false }); wrotePng = true; } catch {}
+    // The game's rAF loop keeps the compositor busy, so Playwright's default 30 s screenshot
+    // timeout intermittently gives up (seen 2026-09-07: two silent failures in a row). Give it
+    // a long timeout and never swallow the failure silently — a missing PNG must be loud.
+    try { await page.screenshot({ path: pngPath, fullPage: false, timeout: 180000 }); wrotePng = true; }
+    catch (e) { console.log(`   ! DOM page.screenshot failed: ${String(e?.message || e).slice(0, 200)}`); }
     if (stats) delete stats.dataUrl;
   } else if (stats?.dataUrl) {
     fs.writeFileSync(pngPath, Buffer.from(stats.dataUrl.split(',')[1], 'base64'));
