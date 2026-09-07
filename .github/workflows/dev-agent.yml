@@ -37,16 +37,23 @@ jobs:
     steps:
       # GitHub can start scheduled runs minutes late; comparing UTC hours
       # (not minutes) keeps the time gate correct for sub-hour delays.
-      - name: Gate - 17:00 local and API key configured
+      - name: Gate - 17:00 local (schedule only) and API key configured
         id: gate
         env:
           KEY_SET: ${{ secrets.ZAI_API_KEY != '' }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          offset=$(TZ=Europe/Paris date +%z | cut -c1-3)   # +02 during CEST, +01 during CET
-          expected=$((17 - 10#${offset#+}))
-          now=$(date -u +%H)
-          echo "UTC hour: $now, expected for 09:00 local: $expected, key set: $KEY_SET"
-          if [ "$now" -eq "$expected" ] && [ "$KEY_SET" = "true" ]; then
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            offset=$(TZ=Europe/Paris date +%z | cut -c1-3)   # +02 during CEST, +01 during CET
+            expected=$((17 - 10#${offset#+}))
+            now=$(date -u +%H)
+            echo "UTC hour: $now, expected for 17:00 local: $expected, key set: $KEY_SET"
+            time_ok=$([ "$now" -eq "$expected" ] && echo true || echo false)
+          else
+            echo "Manual run ($EVENT_NAME) - time gate bypassed, key set: $KEY_SET"
+            time_ok=true
+          fi
+          if [ "$time_ok" = "true" ] && [ "$KEY_SET" = "true" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
