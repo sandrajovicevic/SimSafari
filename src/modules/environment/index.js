@@ -13,6 +13,18 @@ import { DEG, clamp, lerp, smoothstep } from '../../core/Units.js';
 const LUT_W = 512, LUT_H = 256;
 const SUN_KEY = 3.6;              // key light intensity at unit transmittance (three physical units, w/ ACES)
 const GROUND_ALBEDO = [0.39, 0.30, 0.15]; // linear albedo of the fallback ground (0xa8956a)
+// Night legibility floor (round 3, see README "History"): the automatic exposure saturates at the
+// night ceiling whenever the moon is the key (0.62/L^0.62 is still ~40 at night), so the ceiling —
+// not the controller — sets night brightness, and at exposure 12 moonlit ground radiance (~2.5e-4)
+// lands around 1% sRGB: near-black frames away from park lamps (blind-game-close-21_5.png, 5.5).
+// NIGHT_LIFT art-directs the moon KEY light brighter instead of touching exposure, so the sky dome,
+// stars, moon disc and the PMREM (and with them terrain's water reflections) stay exactly as tuned.
+// NIGHT_HEMI is a tiny starlight/airglow stand-in (§9 "sky via hemisphere + PMREM") so shadowed
+// sides and moonless nights are not pure black. Both scale with st.night: day contributes zero.
+const NIGHT_LIFT = 9;             // moon-key boost at a high moon; up to x1.8 more when the moon is at the horizon
+const NIGHT_HEMI = 0.035;         // night-only hemisphere irradiance (linear radiance scale)
+const HEMI_SKY = [0.14, 0.20, 0.34];   // deep blue-grey zenith tint of the night hemisphere light
+const HEMI_GROUND = [0.05, 0.04, 0.03]; // warm dark umber bounce
 const WEATHER_PRESETS = {
   clear: { cloud: 0.18, rain: 0, haze: 0.25 },
   cloudy: { cloud: 0.55, rain: 0, haze: 0.35 },
@@ -28,7 +40,7 @@ const st = {  // lighting state (allocation-free)
   sunEl: 0, moonEl: 0, phase: 0.6, illum: 1, night: 0, turbidity: 1.2, moonE: 0,
   keyColor: new THREE.Color(), keyIntensity: 0, sunColor: new THREE.Color(), sunIntensity: 0,
   zenith: new THREE.Color(), horizon: new THREE.Color(), ambientLum: 0,
-  exposureTarget: 1, exposure: 1, exposureBias: 1, isMoonKey: false,
+  exposureTarget: 1, exposure: 1, exposureBias: 1, isMoonKey: false, nightLift: 0,
   weather: { cloud: 0.2, rain: 0, haze: 0.3, storm: 0 },     // smoothed (rendered) values
   weatherTarget: { cloud: 0.2, rain: 0, haze: 0.3 },
   lutTurb: -1, lutMoonE: -1,
@@ -190,6 +202,16 @@ function makeRain() {
   group.add(R.rain);
 }
 
+// Minimum-ambient hemisphere light (ARCHITECTURE §9: "sky via hemisphere + PMREM"). Intensity is
+// driven to 0 by day in computeLighting, so it only ever contributes at night — no new light has
+// ever existed here before (see STATUS 2026-09-04), which is why night ambient was IBL-only and
+// shadowed sides went pure black. It casts no shadows and adds no draw calls.
+function makeAmbient() {
+  R.hemi = new THREE.HemisphereLight(0xffffff, 0x000000, 0);
+  R.hemi.name = 'night-ambient';
+  group.add(R.hemi);
+}
+
 function makePmrem() {
   R.pmrem = new THREE.PMREMGenerator(ctx.renderer);
   R.pmrem.compileEquirectangularShader();
@@ -258,6 +280,25 @@ function computeLighting() {
     st.keyColor.copy(st.sunColor);
     st.keyIntensity = st.sunIntensity;
   }
+  // Night legibility floor (round 3): lift the moon key instead of the exposure. Gated to real
+  // night (st.night), to the moon actually being up, and made moon-elevation-aware: ground
+  // irradiance falls with cos(elevation), so as the moon nears the horizon the boost grows
+  // (x1 -> x1.8) to hold low-moon hours legible rather than letting them sink back toward black.
+  // Exposure is NOT raised (it is already saturated at the night ceiling), so the sky dome, stars,
+  // moon disc, clouds and the PMREM — and terrain's water reflections driven by the PMREM — are
+  // untouched; only diffuse moonlit surfaces brighten. keyLum below reads the boosted intensity,
+  // so the exposure controller still self-limits on the rare high-moon/low-ceiling crossings.
+  const cosM = Math.max(0, st.moonDir.y);
+  const lowMoon = 1 + (1 - smoothstep(0.05, 0.6, cosM)) * 0.8;
+  st.nightLift = NIGHT_LIFT * lowMoon * (st.moonDir.y > 0 ? 1 : 0) * st.night;
+  if (st.isMoonKey) st.keyIntensity *= st.nightLift;
+  // minimum ambient: starlight/airglow. 0 by day (st.night = 0), dimmed by cloud cover.
+  // 0.035 (round-3 tune #2): 0.02 left moon-facing ground readable but shadowed canopy/animal
+  // sides at pure black in the wild close view (game-close-21_5-paused.png ~6/10); 0.035 adds
+  // ~3-6 sRGB points on shadow sides without reading as a light source.
+  R.hemi.color.setRGB(HEMI_SKY[0], HEMI_SKY[1], HEMI_SKY[2]);
+  R.hemi.groundColor.setRGB(HEMI_GROUND[0], HEMI_GROUND[1], HEMI_GROUND[2]);
+  R.hemi.intensity = NIGHT_HEMI * st.night * clamp(cloudAtten, 0, 1);
   // sky colours
   const z = sampler.zenith, h = sampler.horizon;
   const overcastMix = Math.pow(W.cloud, 2) * 0.75;
@@ -293,7 +334,13 @@ function computeLighting() {
   // when the moon is genuinely the dominant light — i.e. real night, not merely a low sun — so it is
   // the right gate for a separate, higher night ceiling without reopening the golden-hour overexposure.
   // 12 is a first correction, not a tuned value: still needs a pass against real night-photo references.
-  const ceiling = st.isMoonKey ? 12 : 4;
+  //
+  // Round 3: the gate itself had a hole — `isMoonKey` is a luminance COMPARISON, so on a moonless
+  // night (moon down, sun down, both key luminances exactly 0) it is false and the DAY ceiling of 4
+  // applied to true night, crushing pre-dawn / moonset hours doubly dark. Gate the night ceiling on
+  // the night regime instead: any time the sun is well down (st.night > 0.5) night rules apply,
+  // with or without a moon. Day/golden-hour behaviour is unchanged (st.night = 0 there).
+  const ceiling = (st.isMoonKey || st.night > 0.5) ? 12 : 4;
   st.exposureTarget = clamp(0.62 / Math.pow(L, 0.62), 0.55, ceiling) * st.exposureBias;
 
   // fog: horizon-tinted, denser with haze/cloud/rain and at golden hour (dust)
@@ -450,6 +497,7 @@ const api = {
       moonElevationDeg: st.moonEl / DEG, moonPhase: st.phase, moonIllumination: st.illum, night: st.night, keyIsMoon: st.isMoonKey,
       keyIntensity: st.keyIntensity, keyColor: [st.keyColor.r, st.keyColor.g, st.keyColor.b],
       exposure: st.exposure, turbidity: st.turbidity, fogDensity: ctx?.scene.fog?.density,
+      nightLift: st.nightLift, nightAmbient: R.hemi ? R.hemi.intensity : 0,
       weather: { ...st.weather }, cascadeRadii: R.csm ? R.csm.radii.slice() : [], cascadeSplits: R.csm ? R.csm.splits.slice() : [],
     };
   },
@@ -475,6 +523,7 @@ export default {
       makeSky();
       makeStars();
       makeRain();
+      makeAmbient();
       makePmrem();
       R.csm = new Cascades(ctx.camera, group, { cascades: ctx.quality === 'low' ? 2 : 3, mapSize: ctx.quality === 'low' ? 1024 : 2048 });
     } catch (err) {
@@ -561,6 +610,7 @@ export default {
     if (ctx?.events) { /* listeners are removed by the registry via offOwner */ }
     R.csm?.dispose();
     R.envRT?.dispose(); R.pmrem?.dispose();
+    if (R.hemi) R.hemi.removeFromParent();
     R.lutRT?.dispose(); R.lutMat?.dispose(); R.lutQuad?.geometry.dispose();
     R.skyMat?.dispose(); R.cloudMat?.dispose(); R.starMat?.dispose(); R.rainMat?.dispose();
     R.skyGeo?.dispose(); R.stars?.geometry.dispose(); R.rain?.geometry.dispose();

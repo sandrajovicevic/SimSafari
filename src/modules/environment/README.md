@@ -17,8 +17,9 @@ are loaded from disk.
   `tonemapping_fragment`, so exposure applies uniformly.
 * `index.js` — per-frame `computeLighting()`: key light (sun by day, moon by night via
   `isMoonKey`), exposure from scene key luminance `0.62/L^0.62` clamped to 4 by day / 12 at night
-  (separate night ceiling: see Known gaps), fog colour/density, all dome uniforms, LUT/PMREM
-  refresh policy (twilight re-bakes more often).
+  (separate night ceiling: see Known gaps), night key-legibility lift + minimum-ambient hemisphere
+  (see History 2026-09-07), fog colour/density, all dome uniforms, LUT/PMREM refresh policy
+  (twilight re-bakes more often).
 * `csm.js` — one cascaded shadow map (3 cascades, 2048²) on the key light.
 
 ## Public API — `ctx.modules.get('environment')`
@@ -28,7 +29,8 @@ getSunDirection(out?) → Vector3        // unit vector toward the sun (even bel
 getMoonDirection(out?) → Vector3
 getKeyDirection(out?) → Vector3        // current key light direction (sun or moon)
 getSunColor(out?) → Color              // linear RGB sunlight after atmospheric transmittance
-getSunIntensity() → number             // key light intensity (three physical units)
+getSunIntensity() → number             // key light intensity (three physical units; includes the
+                                       // night legibility lift when the moon is the key)
 getSkyColor(out?) → Color              // zenith sky colour, linear radiance
 getHorizonColor(out?) → Color          // horizon (fog) colour, linear radiance
 getEnvMap() → Texture|null             // PMREM environment (also on scene.environment)
@@ -92,7 +94,18 @@ SwiftShader software GL (fps is not representative; draws/tris/errors are real).
 * **Single-scattering only** — no multiple scattering, so the sky directly anti-sunward at twilight
   is darker than reference photography; the phase function partly fakes the wide glow.
 * **Exposure night ceiling (12) is a first correction, not tuned** against real night-photo
-  references; moonlit scenes are readable but brighter than a physical full moon.
+  references; moonlit scenes are readable but brighter than a physical full moon. The night gate
+  now covers moonless nights too (any sun < -6°-ish, `st.night > 0.5`), not just `isMoonKey`.
+* **Night legibility lift (NIGHT_LIFT 9, +up to x1.8 low-moon) and the night hemisphere floor
+  (NIGHT_HEMI 0.035) are art-directed**, not physical: they make wild moonlit views readable
+  (round-3 blind test's near-black 21.5h close shot) without touching exposure, the sky dome,
+  stars or the PMREM (so terrain's water reflections stay as tuned). Tune history: first guess
+  16 / 0.06 was tuned down to 6 / 0.02 after reading the module night shots at 21.5/22h — but the
+  real wild close view at 21.5h (game-close-21_5-paused.png) then still read ~6/10, so the shipped
+  values are 9 / 0.035 (game-close-21_5-tune2.png reads ~7 while staying clearly night; the moonlit
+  savannah waterhole got BETTER, not whiter — sav-night-tune2.png). New-moon nights stay physically
+  dark (the lift scales with the moon's illuminated fraction); they get only the hemisphere floor.
+  Night clouds, water glints and park lamps are intentionally NOT boosted.
 * **Clouds are cheap**: two analytic layers from one tileable noise texture; no cloud shadows on the
   ground, no god rays, no wet-ground darkening during rain.
 * Below-horizon plain is a flat shaded colour with aerial perspective — real terrain hides it inside
@@ -113,3 +126,28 @@ SwiftShader software GL (fps is not representative; draws/tris/errors are real).
   (GLSL locals).** Before/after: `tools/shots/env-before-golden.png` → `env-after-golden.png`.
 * Same day: sky dome's below-horizon branch now converges to the pure LUT sky colour at d.y = 0
   (was a 50% `uHorizon` blend → visible step). Part of the horizon-band fix above.
+* **2026-09-07 — wild night legibility (round-3 blind top issue #1): a wild close view at 21.5 h
+  read as an almost black frame (blind-game-close-21_5.png, 5.5) while park-lit and waterhole
+  nights were readable. Diagnosis: the exposure controller was doing exactly what it was told —
+  at 21.5 h the moon (20.5° up, illum 0.92) is the key, exposure already saturates at the night
+  ceiling 12 (`getState()` in the live game: `keyIsMoon: true, exposure: 12`), and moonlit ground
+  radiance ~2.5e-4 × 12 lands at ~1% sRGB through ACES. No exposure setting could fix that without
+  blowing the sky/water glints, so the fix art-directs the moon KEY light instead: `NIGHT_LIFT` ×
+  moon-elevation compensation (×1.8 at the horizon → ×1 above 37°), gated on `st.night` and moon-up;
+  plus a tiny night-only hemisphere (`NIGHT_HEMI`, §9's "sky via hemisphere") as a starlight/airglow
+  floor for shadowed sides; plus the night-ceiling gate now covers moonless nights (`st.night > 0.5`)
+  where both key luminances are 0 and `isMoonKey` is false (previously the DAY ceiling of 4 applied
+  to true night). This is exactly the "moon-elevation-aware exposure floor or a minimum ambient for
+  wild views" the round-3 status recommended — implemented as the art-directed moon KEY lift +
+  hemisphere floor above, not an exposure floor, because exposure already sat at its night ceiling.
+  Verified against the live game with the clock explicitly paused (`&speed=0`; an unpaused capture
+  drifts hours at ~1 fps): tune #1 (6 / 0.02) took the same view from near-black to ~6/10;
+  tune #2 (9 / 0.035, shipped) reads ~7 — terrain mottle, tree/animal silhouettes, lodge roof and
+  kopje all legible, still unmistakably night. Exposure, sky, stars, clouds and PMREM untouched →
+  day/golden-hour unchanged (game-close-14-afterfix.png matches the blind reference); the moonlit
+  waterhole's water reflection path is untouched by construction and the scene got more readable,
+  not whiter.**
+Before/after: `tools/shots/blind-game-close-21_5.png` → `game-close-21_5-paused.png` (tune 1) →
+  `game-close-21_5-tune2.png` (shipped); day control `game-close-14-afterfix.png`;
+  waterhole regression `blind-sav-night.png` → `sav-night-afterfix.png` → `sav-night-tune2.png`;
+  module night: `env-after-night.png` → `env-night-215-tune2.png` / `env-night-22-final.png`.
