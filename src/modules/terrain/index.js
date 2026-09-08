@@ -60,7 +60,7 @@ function rebuildWater() {
 function rebuildApron() {
   const ctx = S.ctx;
   try {
-    if (!S.apronMat) S.apronMat = createApronMaterial(ctx);
+    if (!S.apronMat) S.apronMat = createApronMaterial(ctx, S.layers, S.control);
     const geo = buildApronGeometry(ctx.world, ctx.noise);
     if (S.apron) { S.apron.geometry.dispose(); S.apron.geometry = geo; }
     else {
@@ -269,7 +269,8 @@ export default {
     if (S.water) { S.water.geometry.dispose(); S.water.removeFromParent(); S.water = null; }
     if (S.apron) { S.apron.geometry.dispose(); S.apron.removeFromParent(); S.apron = null; }
     if (S.apronMat) { S.ctx.materials.untrack(S.apronMat); S.apronMat.dispose(); S.apronMat = null; }
-    for (const suf of [':height', ':albedo', ':orm', ':normal']) S.ctx?.textures.dispose('terrain:apron4' + suf);
+    // the apron samples the shared splat layer arrays / control textures — owned and disposed via
+    // S.layers / S.control below, so there is no separate apron texture set to release.
     if (S.material) { S.ctx.materials.untrack(S.material); S.material.dispose(); S.material = null; }
     if (S.waterMat) { S.ctx.materials.untrack(S.waterMat); S.waterMat.dispose(); S.waterMat = null; }
     S.layers?.dispose(); S.layers = null;

@@ -3,6 +3,7 @@
   "wave": 3,
   "passThreshold": 8.5,
   "notes": [
+    "2026-09-08 zoning boundary dashes + world-edge apron RESOLVED (builder agent, orchestrator-verified): zoning gains boundaries.js — region interfaces traced once via crack-following, collinear runs merged, 1-cell water/paint-fringe teeth melted with 6 Taubin passes (clamped to <=2.0 m of the exact partition, topology cannot leak), corners rounded with 3x Chaikin, emitted as ONE indexed ribbon with arc-length attributes driving the dash cycle (11.4 m kept); overlay.js is now fill-only (4500c55 feathering preserved; ribbon = +1 draw). Verified: dashes read as smooth marching-ants contours (b5-zoning-overlay.png vs blind-zoning-overlay.png zigzags), no fill/fence regression (overview/close), lint ok, 0 errors. Terrain apron: the REAL fix was applied — apron material now samples the same packed splat layers through the identical two-scale UV scheme, height blend, detail-normal and tint chain, with an analytic plains control and a 20-220 m fade from baked control aux; the border now reads as continuous mottled plains (b2-game-overview-14/8.png vs fix4-game-overview-14.png). Residuals documented in terrain README: props/roads stop at the border (~15% tree-shadow brightness gap, partially compensated), far-field blotch positions differ (GLSL vs CPU noise). Interior splat untouched; 315 draws at game overview.",
     "2026-09-08 critic sweep part 1 (unreviewed presets, item 7): environment, audio, simulation reviewed with own screenshots (all JSONs errors=[], draws 59-81, within budget). environment: dusk shows NO afterglow 26 min after sunset while dawn at equal solar depression is excellent (5.6h scored 9) — staging yaw hides the glow plus the documented single-scatter anti-solar gap (MAJOR); close preset shows no sun disc at 16-17h, just blown Mie glow (MAJOR); overcast keeps hard shadows at cloud 0.92 because cloudAtten leaves 26% direct (MINOR-MAJOR); storm deck not darkened by rain (MINOR); README claims failed (dusk afterglow, sun-disc close-up, dark storm deck, dawn mist) -> claims cap rule: score 8.0 -> 6.0, status fail, recoverable after fixes. audio: genuinely working end to end — live meters (master -26.9 dB, animals bus -31.7 LIVE, 8 species spatialised 34-347 m), morning-chorus hour crossfade (birds 0.76 at 8h vs 0.47 midday), correct storm drop-offs, clean dusk transition; the wave-1 'animals bus -inf' minor is CLOSED by live evidence; keep 8.0, status fail -> near-pass; nits: wind layer 1.10 exceeds the panel's 0-1 scale, README tod table drifts. simulation: BLOCKER-class major — in every staged showcase park the 193 staged animals vanish within ~5 days with born/died/left/predation all ~0 (an uncounted removal path; suspect reconcileFromWorld() sim.js:248 zeroing internal counts uncounted whenever world.animals is non-empty — true on the live world, false in the unit tests, which is why 80/80 passed); the engine itself is innocent (plain-world baseline keeps 372 animals thriving 90 days; the live park demo grew 80->87 with births). Boom preset fails all three of its claims (pop 1, arrivals 70 < 100, cash -214k) and the README 'healthy cash' overview claim regressed. Claims cap rule: 9.0 -> 6.0, status fail — recoverable after the reconcile fix + re-staged presets. All scored findings are content/code, not renderer artifacts.",
     "2026-09-08 park economy + gameplay fidelity RESOLVED (builder agent, orchestrator-verified): (5) the demo park now BREAKS EVEN at $15 — net +383 $/day 30-day mean, +1,630 day-30, cash 250k -> 261k (was negative at every price; new elasticity table $10/12/15/20/25/40/60 -> arrivals 272/272/265/187/142/81/49, net -782/-246/+383/-1,267/-2,709/-4,749/-6,064). Content, not price tricks: 11 species (+rhino/ostrich/warthog), 3 water pumps (fix the vital-water gate that crushed woodland/kopje quality), 12 tents (48 beds, was 32 bed-capped), 18 staff, replan() after build (day-1 arrivals 25 -> 131). (6) Births were multiplicative-blocked, now 10-15 per 30 days at every price (was 0): drive gate re-tuned clamp01((h-0.45)/0.3) (was (h-0.5)/0.5, unreachable for 6 of 8 species), breed rates x1.5. Two genuine integration bugs found and fixed along the way: buildings' catalogueRows() drops the water field so the sim fallback matched 'pump' as generic (pump row added with water:1), and the habitat probe could never see an in-habitat pump because zoning carves the footprint out of habitatId (_inHabitat now probes the 5x5 neighbourhood). Harness additions: organic poaching (day 97 at low morale), drought (water 1.0->0.65, grass -30%, recovery), disease (vet x1.27, 7 excess deaths), prosperity chain (rich 0.85/0 poached/+449 vs starved 0.46/3 poached/-4,515). Original 6 scenarios semantically unchanged (elasticity, water coupling, sightings 12 vs 0, bankruptcy day 17, determinism identical). Tests 80/80 (58 originals + 22 new), lint clean, spend(amount,reason)+getSpendLog added per docs/requests/tools.md. game.gameplayFidelity is still recorded as 8.0 until the round-3 re-evaluation re-scores it.",
     "2026-09-08 animals skin rework + leg re-verification RESOLVED (builder agent, orchestrator-verified): the elephant's skin bump field was rebuilt from regular groove stacks/lattices to an organic wrinkles() field — domain rotated by a slowly varying direction field, anisotropically stretched (crest lines run long instead of closing into round dimples), continuously frequency-jittered, second octave at non-harmonic x2.618, amplitude varying by region (deeper at neck/head/leg masses, calmest on the flank); the third regular lattice and the sin(P.z*7) body bands were removed. Verified with fresh macro (3.4-5 m) and showcase (12 m) close-ups at 2 tods: irregular mottled hide, no lattice, wrinkle density higher on legs than flank; grey tone, groove depths, normal strength unchanged; draw calls bit-identical before/after (shader-only change). Round-2 leg anatomy (taper, knee/hock swell, foot flare, calm normals) RE-VERIFIED and passed as-is. Known remaining (pre-existing, out of scope): faceted pale patches on rump/hip at 12 m from tube-normal discontinuities — geometry, recorded in README. Note: frame triangles at close now read 3.29 M because another module's dense grass loads in the showcase frame — not animals geometry (bit-identical before/after).",
@@ -69,6 +70,10 @@
         {
           "sev": "minor",
           "text": "Builder's own README flags near-total-black night ground as shared across environment/props/terrain — a general night ambient-response issue, not terrain-specific. See environment's entry."
+        },
+        {
+          "sev": "resolved",
+          "text": "FIXED (2026-09-08): world-edge apron extended to the true splat material (same packed layers, two-scale UVs, height blend, detail normals, tint chain + analytic plains control with 20-220 m fade). Border step no longer reads at overview; residuals documented in README (props/roads border stop, far-field blotch mismatch)."
         }
       ],
       "good": "Four of five round-1 blockers/majors independently verified fixed this round with real screenshots, not just builder claims. This module has moved further than any other in the project. Not yet given a formal pass — needs a fresh independent multi-preset, multi-time-of-day critic pass rather than the orchestrator's spot checks — but it is very plausibly at or near the 8.5 bar."
@@ -332,23 +337,17 @@
     "zoning": {
       "wave": 2,
       "domain": "built",
-      "round": 2,
+      "round": 3,
       "score": 7.5,
       "status": "near-pass",
       "errors": 0,
-      "drawCalls": 150,
-      "reviewedBy": "integrator-verification",
-      "presetsSeen": [
-        "round 1: overview; round 2: fresh 2026-09-07 capture of overlay (tools/shots/blind-zoning-overlay.png)"
-      ],
+      "drawCalls": 171,
+      "reviewedBy": "orchestrator-verification",
+      "presetsSeen": "round 1: overview; round 2: fresh 2026-09-07 capture of overlay (tools/shots/blind-zoning-overlay.png); round 3: overlay/overview/close after boundaries.js ribbon (b5-zoning-*, 2026-09-08)",
       "issues": [
         {
           "sev": "resolved",
           "text": "PARTIALLY FIXED and verified (blind-zoning-overlay.png, 2026-09-07): the round-1 hard checkerboard fill is gone — fill feathers via a 5x5 same-region field (commit 4500c55) and the dash cycle is finer (~11 m); zone fill edges are visibly soft. Downgraded to a minor: the boundary dashes still trace the 4 m cell staircase in long zigzag chains."
-        },
-        {
-          "sev": "minor",
-          "text": "Boundary dashes are grid-quantised — they follow 4 m cell steps rather than a smoothed contour, the one remaining gap to the Cities: Skylines II reference."
         },
         {
           "sev": "minor",
@@ -361,6 +360,10 @@
         {
           "sev": "minor",
           "text": "Genuine mutual optional-dependency cycle with animals (each lists the other as optional). Architecturally handled by the registry's cycle detection, not a bug, but worth knowing about."
+        },
+        {
+          "sev": "resolved",
+          "text": "FIXED and verified (2026-09-08, b5-zoning-overlay.png): boundary dashes are no longer grid-quantised — a new boundaries.js traces interfaces once, melts cell teeth (Taubin, clamped to the exact partition), Chaikin-rounds corners and emits one ribbon whose arc-length attribute drives a smooth 11.4 m dash cycle. Topology-safe by construction; fill feathering untouched."
         }
       ],
       "good": "A real, working habitat-painting overlay: correctly coloured zone regions integrated with terrain and props in one coherent scene; round 2 adds feathered fill and finer marching ants. Loads with zero errors, all 4 presets present, lint clean."
@@ -601,8 +604,8 @@
         "text": "FIXED (2026-09-08) and real-GPU-verified: white sparkle blotches along waterlines, pan rims and 'fence rings' at overview were genuine specular aliasing (persists on AMD RX 5700 XT D3D11 — not a SwiftShader artifact). Terrain wet-band roughness 0.34→0.50 with a +0.35 roughness floor over 200–800 m, detail normals flattening to 15% past 700 m, and water glint ×0.1 by 800 m. Day speckle gone in game and savannah overviews on real GPU; game-overview draws/tris bit-identical. Night clarification: the dotted rings at 21.5h are pale-sand ALBEDO (byte-identical before/after), pre-existing and unchanged — not part of this bug; residual night road-line sparkle is roads' reflective paint."
       },
       {
-        "sev": "minor",
-        "text": "World-edge apron reads as a low-detail continuation: the palette was re-matched (2026-09-05, terrain/apron.js) and the bright-slab effect is gone, but the border is still visible as a detail-density step (habitat tints, roads and props exist only inside the world). Acceptable at gameplay distances; a perfect match would mean extending the splat material itself. Re-confirmed by the 2026-09-07 blind overview shots."
+        "sev": "resolved",
+        "text": "FIXED (2026-09-08) with documented residuals: the apron now samples the same packed splat layers/UV scheme/tint chain as the interior, with an analytic plains control fading 20-220 m from the baked aux — the border reads as continuous mottled plains rather than a detail-density step (b2-game-overview-14/8.png). Residuals: props/roads still stop at the border (~15% tree-shadow brightness gap, partially compensated) and far-field blotch positions differ (GLSL vs CPU noise)."
       }
     ]
   },
@@ -857,6 +860,13 @@
       "round": 3,
       "score": 6.0,
       "by": "critic-sweep",
+      "date": "2026-09-08"
+    },
+    {
+      "module": "zoning",
+      "round": 3,
+      "score": 7.5,
+      "by": "orchestrator-verification",
       "date": "2026-09-08"
     }
   ]

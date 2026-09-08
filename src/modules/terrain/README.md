@@ -15,7 +15,7 @@ Serengeti / Masai Mara / Kruger aerial and ground photography.
 | `material.js` | the splat `MeshStandardMaterial` (`onBeforeCompile`) — two-scale UV blend + triplanar |
 | `textures.js` | six procedural PBR layer sets (grass/dryGrass/dirt/rock/sand/mud), packed into two `DataArrayTexture`s |
 | `water.js` | river/pan water geometry + material (depth absorption, tight sun glint) |
-| `apron.js` | world-edge continuation ring (~6.5× world half-size) so the map doesn't end in a floating slab |
+| `apron.js` | world-edge continuation ring (~6.5× world half-size) sampling the splat's own layer textures so the map doesn't end in a floating slab |
 | `showcase.js` | presets + `stage()`, repositions cameras onto the seed's actual generated features |
 
 ## Public API (`ctx.modules.get('terrain')`)
@@ -110,8 +110,12 @@ seed 1.
   `world.half`, sharing height samples with the true edge (no seam), rising into low distant
   "highlands" (`rise = 45·t² + ridged noise`) so the rim always sits above a ground-level camera's
   horizon instead of leaving a gap that shows the sky dome's below-horizon colour as a dark band.
-  Its PBR albedo is authored to match the splat's dry-grass/laterite plains values so the two surfaces
-  read as one continuous ground rather than two different sheets.
+  Since round 3 the apron's material samples the SAME packed layer texture arrays as the playable
+  splat (`layers.tAlb`/`tNrm`) through the splat's two-scale UV scheme, height blend and full tint
+  chain, with an analytic plains control (dry grass dominant, laterite `pt` patches, slope dirt/rock
+  mirroring `classifySample`). Near the border the baked control aux (moisture/wet/macro) is sampled
+  clamped and faded to the analytic field over 20–220 m, so macro-variation blotches and the riverine
+  green band continue across the world border instead of stepping to a different-detail slab.
 * **Colour**: all albedo is authored as **true linear colour** consumed by `ctx.textures.pbr()`
   (core's `srgb:true` path does the single sRGB encode — see `CLAUDE.md`). No saturation/contrast
   compensation is applied in the shader (`uSat`/`uContrast` sit at neutral); the earlier round's
@@ -173,3 +177,11 @@ Terrain + water draw calls: 16 chunk meshes (4×4, always resident) + 1 water me
 * **`paintBiome`/`clearPaint` do not repaint the apron** — the apron is a fixed procedural material
   independent of `world.terrain.biome`, so a paint edit right at the world border will not be
   reflected past x/z = ±512.
+* **Apron continuation residuals (round 3, after the splat-material extension)**: the ground texture,
+  detail frequency and tint chain now continue across the border, but (a) props' tree/shrub cover and
+  roads still stop at the world edge (other modules), so at overview the apron is ~15% brighter than
+  tree-shaded interior plains (a 0.95 albedo gain compensates most of the rest); (b) far-field
+  macro-variation blotches use GLSL noise, so their exact positions differ from the CPU-baked interior
+  field across the seam (frequency and contrast match; the 20–220 m clamped-aux fade keeps the near
+  border continuous); (c) the escarpment plateau exits the north border as flat plains, since the
+  apron ring deliberately continues plains only.

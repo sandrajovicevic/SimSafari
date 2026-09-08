@@ -2,13 +2,18 @@
 // so the map does not end in a hard slab cut floating in the sky colour. Ring 0 sits exactly on the
 // heightfield border (shared heights → no seam, no z-fighting); outer rings extrapolate the plains with
 // noise and rise into low distant highlands, so the rim always occludes the sky dome's horizon band.
+// The material samples the SAME packed layer texture arrays (and the same two-scale UV scheme, height
+// blend, and tint chain) as the playable terrain's splat shader, with an analytic plains control
+// (dry-grass dominant + laterite patches + slope rock) — so across the world border the detail texels,
+// detail frequency and colour grading are literally the same ground continuing, not a different-detail
+// slab. Near the border the baked control aux (moisture/wet/macro) is sampled clamped, so even the
+// macro-variation blotches and the riverine green band continue seamlessly.
 import * as THREE from 'three';
 import { GLSL_NOISE } from '../../core/Textures.js';
 
 const OUTER = 6.5;      // outer radius as a multiple of world.half
 const RINGS = 22;       // radial subdivisions
 const SEGS = 128;       // subdivisions per world side (2 m at ring 0 — matches the terrain cell)
-const TILE = 26;        // metres per texture repeat
 
 /** Point on the unit square boundary (Chebyshev radius 1) at perimeter parameter u ∈ [0,1). */
 function squarePoint(u, out) {
@@ -27,7 +32,6 @@ export function buildApronGeometry(world, noise) {
   const cols = nPer + 1;
   const rows = RINGS + 1;
   const pos = new Float32Array(cols * rows * 3);
-  const uv = new Float32Array(cols * rows * 2);
   const sp = { x: 0, z: 0 };
   const fb = (x, z, s, o) => noise.fbm2D(x / s + 37.3, z / s + 91.7, o);
   for (let r = 0; r < rows; r++) {
@@ -53,7 +57,6 @@ export function buildApronGeometry(world, noise) {
         + t * t * (16 * noise.ridged2D(x / 820 + 5.1, z / 820 + 2.3, 3) + 7 * fb(x, z, 380, 2));
       const k = (r * cols + c);
       pos[k * 3] = x; pos[k * 3 + 1] = edgeH + relief + rise; pos[k * 3 + 2] = z;
-      uv[k * 2] = x / TILE; uv[k * 2 + 1] = z / TILE;   // tiles (TILE metres per repeat)
     }
   }
   const idx = new Uint32Array(RINGS * nPer * 6);
@@ -66,7 +69,6 @@ export function buildApronGeometry(world, noise) {
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geo.setIndex(new THREE.BufferAttribute(idx, 1));
   geo.computeVertexNormals();
   geo.computeBoundingSphere();
@@ -74,70 +76,134 @@ export function buildApronGeometry(world, noise) {
   return geo;
 }
 
-/** Dry-plains PBR set + macro variation, tuned to sit under the splat material's plains colour. */
-export function createApronMaterial(ctx) {
-  const size = ctx.quality === 'low' ? 256 : 512;
-  // Albedo is authored as TRUE LINEAR colour; core's Textures.pbr() does the single sRGB encode.
-  // Values are matched to the splat's dry-grass / laterite plains so the apron and the playable
-  // terrain read as one continuous surface across the world border.
-  const set = ctx.textures.pbr({
-    key: 'terrain:apron4', size, seed: 91, normalStrength: 0.06,
-    height: /* glsl */ `
-float height(vec2 uv){
-  float base = tfbm(uv, 6.0, 4, uSeed) * 0.5 + 0.5;
-  float tuft = tridged(uv, 30.0, 3, uSeed + 2.0);
-  float fine = tfbm(uv, 90.0, 2, uSeed + 5.0) * 0.5 + 0.5;
-  return clamp(base * 0.48 + tuft * 0.40 + fine * 0.12, 0.0, 1.0);
-}`,
-    albedo: /* glsl */ `
-vec3 albedo(vec2 uv, float h){
-  float macro = tfbm(uv, 2.0, 3, uSeed + 10.0) * 0.5 + 0.5;
-  float pt = tfbm(uv, 5.0, 3, uSeed + 17.0) * 0.5 + 0.5;
-  // Values below were re-matched (2026-09-05) against the splat's RENDERED plains at overview
-  // distance: the previous set read one step brighter and yellower than the playable terrain, so the
-  // world showed as a hard-edged bright slab inside a paler plain. The splat also carries its own AO
-  // (0.72-1.0) and macro darkening that this flat sheet must partially mirror.
-  vec3 soil  = vec3(0.170, 0.105, 0.055);
-  vec3 gold  = vec3(0.405, 0.300, 0.105);
-  vec3 olive = vec3(0.185, 0.190, 0.075);
-  vec3 lat   = vec3(0.310, 0.175, 0.105);
-  vec3 c = mix(soil, gold, smoothstep(0.14, 0.60, h));
-  c = mix(c, olive, smoothstep(0.55, 0.85, macro) * 0.55);
-  c = mix(c, lat, smoothstep(0.62, 0.86, pt) * 0.5);
-  c *= 0.86 + 0.24 * h;
-  c *= 0.88;   // overall step down: the splat's AO averages ~0.9 under the same light
-  return c;
-}`,
-    roughness: 'float rough(vec2 uv, float h){ return 0.95 - 0.1 * h; }',
-    ao: 'float ao(vec2 uv, float h){ return mix(0.72, 1.0, h); }',
-  });
+// PARS: the splat's shared helpers (sRGB decode, rotated lookup) + the packed layer arrays. Names are
+// suffixed A so a future copy-paste of splat code into the same program can never double-define.
+const APRON_PARS = /* glsl */ `
+uniform sampler2DArray tAlb; uniform sampler2DArray tNrm; uniform sampler2D tAux;
+uniform float uHalf; uniform float uInvCell; uniform float uInvRes;
+uniform float uInvScaleA; uniform float uInvScaleB; uniform float uBlendDepth;
+varying vec3 vWPos; varying vec3 vWNormal;
+vec3 srgb2linA(vec3 c){ return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }
+vec2 rot2A(vec2 p, float a){ float c = cos(a), s = sin(a); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }
+${GLSL_NOISE}
+`;
+
+// The splat's plains path, re-derived for positions outside the control textures' range. Every constant
+// here (tile scales, height-blend depth, tint multipliers, normal/roughness distance falloffs) is copied
+// 1:1 from material.js's splatGLSL so the two sides of the border grade identically.
+const APRON_FRAG = /* glsl */ `
+vec3 tAlbedo; float tRough; float tAo; vec3 tNormalW;
+{
+  vec3 N = normalize(vWNormal);
+  vec2 wxz = vWPos.xz;
+  float camD = distance(vWPos, cameraPosition);
+  float slope = 1.0 - N.y;
+  // same analytic variation terms as the splat — these match exactly across the border
+  float m2 = snoise(wxz * 0.021) * 0.5 + 0.5;
+  float m3 = snoise(wxz * 0.083 + 7.0) * 0.5 + 0.5;
+  // baked control aux, sampled clamped: moisture / wetness / macro continue the border values outward
+  vec2 cc = clamp(wxz, -uHalf, uHalf);
+  vec4 aux = texture2D(tAux, clamp(((cc + uHalf) * uInvCell + 0.5) * uInvRes, 0.0, 1.0));
+  // analytic far-field aux at the baked fields' frequencies (GLSL noise differs per-blotch from the CPU
+  // bake, but frequency and contrast match, so the variation reads as one continuing field)
+  float macroA = 0.5 + 0.5 * (0.6 * fbm(wxz * (1.0 / 210.0) + vec2(3.3, 8.1), 3) + 0.4 * fbm(wxz * (1.0 / 70.0) + vec2(1.1, 4.4), 2));
+  float moistA = clamp(0.18 + 0.16 * fbm(wxz * (1.0 / 300.0) + vec2(37.3, 91.7), 2), 0.0, 1.0);
+  float fade = smoothstep(20.0, 220.0, length(max(abs(wxz) - uHalf, vec2(0.0))));
+  float macro = mix(aux.b, macroA, fade);
+  float moist = mix(aux.r, moistA, fade);
+  float wet = mix(aux.g, 0.0, fade);
+  float pt = fbm(wxz * (1.0 / 90.0) + vec2(37.3, 91.7), 3);
+  // plains layer weights mirroring generate.js classifySample (grass / dryGrass / laterite dirt patches)
+  // plus the splat's slope-driven dirt and rock so cut banks and cliff exits keep grading correctly
+  float wGrass = smoothstep(0.50, 0.62, moist + 0.22 * pt);
+  float wDirt = smoothstep(0.36, 0.46, pt) * (1.0 - smoothstep(0.30, 0.45, moist)) * 0.8;
+  float wRockS = smoothstep(0.10, 0.34, slope + 0.05 * (m3 - 0.5));
+  float wDirtS = smoothstep(0.05, 0.16, slope) * (1.0 - wRockS);
+  float keep = 1.0 - max(wRockS, wDirtS);
+  float w0 = wGrass * keep;
+  float w1 = max(1.0 - max(wGrass, wDirt), 0.0) * keep;
+  float w2 = min(wDirt * keep + wDirtS, 1.0);
+  float w3 = wRockS;
+  float wsum = max(w0 + w1 + w2 + w3, 1e-4);
+  w0 /= wsum; w1 /= wsum; w2 /= wsum; w3 /= wsum;
+  // the splat's two-scale UV blend at the same fixed odd rotations
+  vec2 uvA = rot2A(wxz * uInvScaleA, 0.13);
+  vec2 uvB = rot2A(wxz * uInvScaleB, 0.37) + 0.31;
+  float mb = 0.5 + 0.2 * (m2 - 0.5);
+  vec4 A0 = mix(texture(tAlb, vec3(uvA, 0.0)), texture(tAlb, vec3(uvB, 0.0)), mb);
+  vec4 A1 = mix(texture(tAlb, vec3(uvA, 1.0)), texture(tAlb, vec3(uvB, 1.0)), mb);
+  vec4 A2 = mix(texture(tAlb, vec3(uvA, 2.0)), texture(tAlb, vec3(uvB, 2.0)), mb);
+  vec4 A3 = mix(texture(tAlb, vec3(uvA, 3.0)), texture(tAlb, vec3(uvB, 3.0)), mb);
+  vec4 B0 = mix(texture(tNrm, vec3(uvA, 0.0)), texture(tNrm, vec3(uvB, 0.0)), mb);
+  vec4 B1 = mix(texture(tNrm, vec3(uvA, 1.0)), texture(tNrm, vec3(uvB, 1.0)), mb);
+  vec4 B2 = mix(texture(tNrm, vec3(uvA, 2.0)), texture(tNrm, vec3(uvB, 2.0)), mb);
+  vec4 B3 = mix(texture(tNrm, vec3(uvA, 3.0)), texture(tNrm, vec3(uvB, 3.0)), mb);
+  // height-based blend, as in the splat
+  float h0 = A0.a * 0.9 + w0; float h1 = A1.a * 0.9 + w1;
+  float h2 = A2.a * 0.9 + w2; float h3 = A3.a * 0.9 + w3;
+  float ma = max(max(h0, h1), max(h2, h3));
+  float b0 = max(h0 - ma + uBlendDepth, 0.0);
+  float b1 = max(h1 - ma + uBlendDepth, 0.0);
+  float b2 = max(h2 - ma + uBlendDepth, 0.0);
+  float b3 = max(h3 - ma + uBlendDepth, 0.0);
+  float bs = max(b0 + b1 + b2 + b3, 1e-4);
+  b0 /= bs; b1 /= bs; b2 /= bs; b3 /= bs;
+  vec3 alb = srgb2linA(A0.rgb) * b0 + srgb2linA(A1.rgb) * b1 + srgb2linA(A2.rgb) * b2 + srgb2linA(A3.rgb) * b3;
+  vec2 tn = (B0.rg * 2.0 - 1.0) * b0 + (B1.rg * 2.0 - 1.0) * b1 + (B2.rg * 2.0 - 1.0) * b2 + (B3.rg * 2.0 - 1.0) * b3;
+  float rough = B0.b * b0 + B1.b * b1 + B2.b * b2 + B3.b * b3;
+  float ao = B0.a * b0 + B1.a * b1 + B2.a * b2 + B3.a * b3;
+  // world-space detail normal through the splat's orthonormal frame, with the same distance flattening
+  vec3 tnv = vec3(tn, sqrt(max(0.04, 1.0 - dot(tn, tn))));
+  vec3 upv = abs(N.y) < 0.995 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+  vec3 Tg = normalize(cross(upv, N)); vec3 Bt = cross(N, Tg);
+  vec3 nW = normalize(Tg * tnv.x + Bt * tnv.y + N * tnv.z);
+  float nStr = 1.0 * (1.0 - 0.85 * smoothstep(150.0, 700.0, camD));
+  nW = normalize(mix(N, nW, nStr));
+  // ---- the splat's tint chain (rockShare from the slope weight; dust/riverbed are zero out here) ----
+  float rockShare = b3;
+  float rmac = snoise(wxz * 0.013 + vWPos.y * 0.021) * 0.5 + 0.5;
+  float rmac2 = snoise(wxz * 0.055 + vWPos.y * 0.09 + 4.0) * 0.5 + 0.5;
+  alb *= mix(1.0, mix(0.58, 1.22, rmac) * mix(0.85, 1.12, rmac2), rockShare);
+  float grassShare = b1 + b0 * 0.5;
+  alb = mix(alb, alb * vec3(0.82, 1.00, 0.72), moist * grassShare * 0.5);
+  alb *= mix(0.74, 1.16, macro) * mix(0.90, 1.10, m2) * mix(0.95, 1.05, m3);
+  alb *= mix(vec3(1.04, 0.98, 0.90), vec3(0.94, 1.00, 0.96), m2);
+  alb *= mix(1.0, 0.40, wet);
+  rough = mix(rough, 0.50, wet);
+  rough += 0.35 * smoothstep(200.0, 800.0, camD);
+  // measured balance (game overview, tod 14): the apron read ~5% brighter than the interior plains
+  // relative to the previous apron, mostly because props' tree shadows end at the border. A 5% gain
+  // restores the previous interior/apron luminance ratio on top of the shared tint chain.
+  alb *= 0.95;
+  tAlbedo = clamp(alb, 0.0, 1.0); tRough = clamp(rough, 0.2, 1.0); tAo = mix(1.0, ao, 0.7); tNormalW = nW;
+}
+diffuseColor.rgb *= tAlbedo;
+`;
+
+/** Splat-continuation material: same layer texture arrays, same two-scale sampling, same tint chain. */
+export function createApronMaterial(ctx, layers, control) {
+  const world = ctx.world;
   const m = ctx.materials.standard({ color: 0xffffff, roughness: 1, metalness: 0, side: THREE.FrontSide });
   m.name = 'terrain-apron';
-  ctx.materials.applyPbr(m, set, { repeatMetres: TILE });
-  m.onBeforeCompile = (shader) => {
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vWPosA;')
-      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPosA = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vWPosA;\n${GLSL_NOISE}`)
-      .replace('#include <map_fragment>', `#include <map_fragment>
-{
-  // second scale kills the tiling of one tile seen across kilometres
-  vec3 far = texture2D(map, vMapUv * 0.137 + 0.29).rgb;
-  diffuseColor.rgb = mix(diffuseColor.rgb, far, 0.5);
-  float macro = fbm(vWPosA.xz * 0.0068, 3);
-  float macro2 = snoise(vWPosA.xz * 0.0012 + 5.3);
-  // bare laterite blobs at the same 40-90 m scale the splat puts them on, so the apron breaks up
-  // the same way the playable terrain does instead of reading as one smooth sheet
-  float blob = smoothstep(0.42, 0.72, fbm(vWPosA.xz * 0.021 + 11.0, 3) * 0.5 + 0.5);
-  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.290, 0.158, 0.092), blob * 0.55);
-  diffuseColor.rgb *= 0.74 + 0.40 * macro;
-  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.86, 0.98, 0.70), smoothstep(0.15, 0.9, macro2) * 0.42);
-  float lumA = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-  diffuseColor.rgb = clamp(mix(vec3(lumA), diffuseColor.rgb, 1.18), 0.0, 1.0);
-}`);
+  const uniforms = {
+    tAlb: { value: layers.tAlb }, tNrm: { value: layers.tNrm }, tAux: { value: control.tAux },
+    uHalf: { value: world.half }, uInvCell: { value: 1 / world.terrain.cell }, uInvRes: { value: 1 / world.terrain.res },
+    uInvScaleA: { value: 1 / 3.7 }, uInvScaleB: { value: 1 / 29 }, uBlendDepth: { value: 0.30 },
   };
-  m.customProgramCacheKey = () => 'terrain-apron-v6';
-  m.userData.pbrSet = set;
+  m.userData.uniforms = uniforms;
+  m.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos; varying vec3 vWNormal;')
+      .replace('#include <defaultnormal_vertex>', '#include <defaultnormal_vertex>\nvWNormal = normalize(mat3(modelMatrix) * objectNormal);')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\n' + APRON_PARS)
+      .replace('#include <map_fragment>', APRON_FRAG)
+      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = roughness * tRough;')
+      .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(tNormalW, 0.0)).xyz);')
+      .replace('#include <aomap_fragment>', 'reflectedLight.indirectDiffuse *= tAo; reflectedLight.directDiffuse *= mix(1.0, tAo, 0.35);');
+  };
+  m.customProgramCacheKey = () => 'terrain-apron-v8';
   return m;
 }

@@ -18,7 +18,10 @@ conforming wooden-post fences with gates wherever a road crosses.
   `isBuildable`, `nearestHabitat`.
 - `habitats.js` — flood fill into `world.habitats` with stable ids, per-habitat stats, boundary tracing
   (used by `fences.js` and the public `boundary()`), and `getHabitatQuality`.
-- `overlay.js` — the ground overlay decal (mesh + shader + live data texture).
+- `overlay.js` — the ground overlay fill decal (mesh + shader + live data texture).
+- `boundaries.js` — the smooth dashed boundary ribbon: traces every region interface once (crack
+  following), melts 1-cell teeth (Taubin, clamped to ≤2 m of the true partition), rounds corners with
+  Chaikin cutting, and draws one animated marching-ants ribbon along the smoothed contour.
 - `fences.js` — instanced posts + wire rails, gate detection against `roads`.
 - `index.js` — module definition, event wiring, public API.
 - `showcase.js` — presets.
@@ -91,13 +94,17 @@ Consumed: `terrain:modified`, `terrain:ready`, `road:changed`, `building:placed`
 
 ## Rendering
 
-- **Overlay** (`overlay.js`, 1 draw call): a terrain-conforming mesh (128×128 quads, heights baked from
-  `world.getHeight`, rebuilt on `terrain:modified`) with a live `DataTexture` (R=zone id, G/B=habitatId
-  lo/hi byte) sampled per-fragment. The shader tints HABITAT/VISITOR/SERVICE fills, traces a soft
-  anti-aliased line at every zone/habitat boundary (metre-accurate regardless of mesh resolution) with an
-  animated world-space "marching ants" dash, and adds a plank-line tint inside VISITOR cells for the
-  boardwalk read. NONE and NO_BUILD never fill (see "Zone semantics" for why NO_BUILD staying invisible
-  matters — it covers every road and river on the map).
+- **Overlay** (`overlay.js` + `boundaries.js`, 2 draw calls): a terrain-conforming fill mesh (128×128
+  quads, heights baked from `world.getHeight`, rebuilt on `terrain:modified`) with a live `DataTexture`
+  (R=zone id, G/B=habitatId lo/hi byte) sampled per-fragment tints HABITAT/VISITOR/SERVICE fills and
+  feathers them into the ground over ~a cell, plus a plank-line tint inside VISITOR cells for the
+  boardwalk read. The boundary LINE is a separate ribbon (`boundaries.js`): region interfaces are traced
+  once each, corner-rounded, and drawn as one smooth animated "marching ants" contour (11.4 m dash cycle,
+  2.2 cycles/s) so boundaries read as smoothed zoning-tool lines at any camera angle, never as the 4 m
+  cell staircase. Every smoothed point is clamped to ≤2 m of the exact cell partition, so a line can cut
+  a single-cell corner but can never leak into a neighbouring region. NONE and NO_BUILD never fill (see
+  "Zone semantics" for why NO_BUILD staying invisible matters — it covers every road and river on the
+  map).
 - **Fences** (`fences.js`, 2 draw calls: posts, rails): `traceBoundaryEdges()` walks every outward-facing
   grid-cell edge of each habitat (each is exactly `world.grid.cell` = 4 m, matching real fence-post
   spacing). A post is instanced at every boundary corner, a two-wire rail spans every non-gate edge. An
@@ -124,10 +131,11 @@ spawns a few animals per habitat if `animals` is present, and turns the overlay 
 
 ## Measured (SwiftShader software GL, `tools/screenshot.mjs`, 1280×720)
 
-zoning's own group holds exactly 3 draw calls regardless of preset (1 overlay mesh + 2 fence
-`InstancedMesh`es for posts/rails — no per-habitat multiplication), well under the 20-call spec budget
-(overlay 1–2, fences ≤6). Figures below are for the **whole scene** (terrain + props + animals + roads +
-zoning together, as the screenshot tool reports) since that is what actually renders in the showcase.
+zoning's own group holds exactly 4 draw calls regardless of preset (1 overlay fill mesh + 1 boundary
+ribbon + 2 fence `InstancedMesh`es for posts/rails — no per-habitat multiplication), well under the
+20-call spec budget (overlay 1–2, fences ≤6). Figures below are for the **whole scene** (terrain + props
++ animals + roads + zoning together, as the screenshot tool reports) since that is what actually renders
+in the showcase.
 
 | preset | draw calls (scene) | triangles (scene) | console errors |
 |---|---|---|---|
@@ -142,14 +150,14 @@ were ~0.1–0.2 fps / 300–560 ms per frame across all four, dominated by `prop
 
 ## Known gaps (honest)
 
-- **Habitat outlines are grid-quantised (a 4 m staircase), not a smooth curve** — `paint()` only ever fills
-  whole grid cells, so an organic-looking blob is really a union of cell squares. The overlay shader draws
-  a bold, soft-edged, animated dashed line to make that boundary read as *intentionally drawn* rather than
-  jagged (this replaced an earlier pass where the line was only a faint 0.6 m antialiasing band, which at
-  in-game camera distances just looked like a hard/blocky cell edge with no visible dash — screenshotted,
-  caught, and fixed by widening the line to 1.4 m and pushing it to a bright gold at up to full alpha).
-  The underlying cell-grid shape itself, however, is not smoothed and will not be — that is the real shape
-  of what was painted, matching Cities: Skylines II's own zoning grid.
+- **Painted shapes are grid-quantised; only the drawn line is smoothed** — `paint()` only ever fills
+  whole grid cells, so an organic-looking blob is really a union of cell squares. Round 3 replaced the
+  shader's cell-staircase line with a traced-and-smoothed contour (Taubin + Chaikin in `boundaries.js`),
+  so the boundary reads as a Cities: Skylines II-style smooth dashed curve. The smoothing is clamped to
+  2 m of the exact partition: it can round a single-cell corner but cannot relocate a boundary. The
+  physical cell grid itself is untouched — `fences.js` still places posts on the exact cell edges (a
+  fence that follows the smoothed line would float off the cells it legally encloses), so up close the
+  fence and the overlay line can diverge by up to ~2 m around tight corners.
 - **The boardwalk plank tint uses `fwidth()`-based analytic antialiasing**, not mipmapping — it stays clean
   at the showcase's camera distances (verified in `close` and the near-top-down `overlay` preset) but a
   camera far closer to grazing-angle than either preset uses could still show minor shimmer, since `fwidth`

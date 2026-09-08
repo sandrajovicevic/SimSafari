@@ -3,7 +3,7 @@ export const Z = {
   ctx: null,
   world: null,
   group: null,
-  overlay: null,      // { mesh, material, dataTex, data:Uint8Array, dirty:bool, res }
+  overlay: null,      // { mesh, lineMesh, lineMat, lineGeo, material, dataTex, data:Uint8Array, dirty:bool, res }
   fences: null,        // { postMesh, railMesh, postGeo, railGeo, postMat, railMat }
   nextHabitatId: 1,
   overlayOn: false,
