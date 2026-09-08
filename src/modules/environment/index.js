@@ -43,6 +43,7 @@ const st = {  // lighting state (allocation-free)
   exposureTarget: 1, exposure: 1, exposureBias: 1, isMoonKey: false, nightLift: 0,
   weather: { cloud: 0.2, rain: 0, haze: 0.3, storm: 0 },     // smoothed (rendered) values
   weatherTarget: { cloud: 0.2, rain: 0, haze: 0.3 },
+  cloudAtten: 1, debugShadows: true,
   lutTurb: -1, lutMoonE: -1,
   celestialAngle: 0,
 };
@@ -104,7 +105,7 @@ function makeSky() {
       uLut: { value: R.lutRT.texture }, uNight: { value: R.nightTex }, uMoonTex: { value: R.moonTex },
       uSunDir: { value: st.sunDir }, uMoonDir: { value: st.moonDir },
       uSunDisc: { value: new THREE.Vector3() }, uMoonColor: { value: new THREE.Vector3() },
-      uSunDiscOn: { value: 1 }, uNightAmount: { value: 0 }, uStarScale: { value: 0.035 }, uCelestial: { value: new THREE.Matrix3() },
+      uSunDiscOn: { value: 1 }, uDiscVis: { value: 1 }, uNightAmount: { value: 0 }, uStarScale: { value: 0.035 }, uCelestial: { value: new THREE.Matrix3() },
       uGroundLit: { value: new THREE.Vector3() }, uHorizon: { value: new THREE.Vector3() }, uCloudDim: { value: 1 }, uCamHeight: { value: 100 },
     },
   });
@@ -262,8 +263,13 @@ function computeLighting() {
   sampler.update({ sunDir: st.sunDir, moonDir: st.moonDir, moonE: st.moonE, turbidity: st.turbidity });
   const sunT = sampler.sunT, moonT = sampler.moonT;
 
-  // cloud attenuation: overcast → 15 % direct, storm → 6 %
-  const cloudAtten = 1 - 0.85 * Math.pow(W.cloud, 1.6) - 0.09 * W.rain;
+  // cloud attenuation of the DIRECT light. Old curve left ~26 % direct at overcast (cloud 0.92) —
+  // hard directional shadows under a flat grey deck. The tail factor now drives ≥ 90 % cloud to
+  // near-zero direct: overcast → ~6 %, storm (cloud 1.0, rain 0.8) → ~2 %. Clear (0.18) and
+  // cloudy (0.55) are exactly the old values, so day/golden-hour looks are unchanged.
+  const cloudAtten = (1 - 0.85 * Math.pow(W.cloud, 1.6) - 0.09 * W.rain)
+    * (1 - 0.8 * smoothstep(0.75, 0.95, W.cloud));
+  st.cloudAtten = cloudAtten;
   st.sunColor.setRGB(sunT[0], sunT[1], sunT[2]);
   st.sunIntensity = SUN_KEY * cloudAtten * (st.sunDir.y > 0 ? 1 : 0);
   const sunKeyLum = st.sunIntensity * luminance(sunT) * Math.max(0, st.sunDir.y);
@@ -314,6 +320,10 @@ function computeLighting() {
   const dirLight = R.csm;
   dirLight.setColor(st.keyColor, st.keyIntensity);
   dirLight.direction.copy(st.keyDir).multiplyScalar(-1);
+  // below ~10 % direct, cast shadows stop reading as shading and read as dirt: gate the shadow
+  // maps off entirely (also saves the shadow passes under overcast/storm)
+  const wantShadows = cloudAtten > 0.10 && st.debugShadows;
+  for (let i = 0; i < R.csm.lights.length; i++) R.csm.lights[i].castShadow = wantShadows;
 
   // exposure from the scene key (partial adaptation, so noon stays bright and night stays dark-but-readable)
   const keyLum = st.keyIntensity * luminance([st.keyColor.r, st.keyColor.g, st.keyColor.b]) * Math.max(0, st.keyDir.y);
@@ -354,6 +364,8 @@ function computeLighting() {
   const su = R.skyMat.uniforms;
   const discScale = 24 * cloudAtten + 2;
   su.uSunDisc.value.set(sunT[0] * discScale, sunT[1] * discScale, sunT[2] * discScale);
+  // the post-tonemap disc fades out under thick cloud / rain so it cannot ghost through the deck
+  su.uDiscVis.value = (1 - smoothstep(0.5, 0.85, W.cloud)) * (1 - 0.7 * W.rain);
   const moonDisc = 0.9 * (0.3 + 0.7 * cloudAtten);
   su.uMoonColor.value.set(moonT[0] * moonDisc, moonT[1] * moonDisc, moonT[2] * moonDisc);
   su.uNightAmount.value = st.night * (1 - 0.7 * W.cloud);
@@ -487,7 +499,11 @@ const api = {
     if (flags.clouds !== undefined) R.clouds.visible = !!flags.clouds;
     if (flags.stars !== undefined) R.stars.visible = !!flags.stars;
     if (flags.rain !== undefined) R.rain.visible = !!flags.rain;
-    if (flags.shadows !== undefined) for (const l of R.csm.lights) l.castShadow = !!flags.shadows;
+    if (flags.shadows !== undefined) {
+      st.debugShadows = !!flags.shadows;
+      // respect the cloud gate too (computeLighting re-applies the combined state next frame)
+      for (let i = 0; i < R.csm.lights.length; i++) R.csm.lights[i].castShadow = st.debugShadows && st.cloudAtten > 0.10;
+    }
     st.debugFlags = flags;
   },
   /** Snapshot of the lighting state for debugging / critics. */

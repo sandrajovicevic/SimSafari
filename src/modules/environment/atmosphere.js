@@ -1,7 +1,7 @@
 // CPU side of the atmosphere: sun/moon astronomy for an equatorial savannah, single-scattering sky model
 // (same constants as the GPU LUT in shaders.js) used for sun colour, sky/horizon colours, fog and exposure.
 import * as THREE from 'three';
-import { DEG, clamp } from '../../core/Units.js';
+import { DEG, clamp, smoothstep } from '../../core/Units.js';
 
 // ---- physical constants shared with the GLSL LUT (metres) ----
 export const ATMOS = {
@@ -179,19 +179,54 @@ export class SkySampler {
     transmittance(s.sunDir.x, s.sunDir.y, s.sunDir.z, s.turbidity, this.sunTHigh, 8000);
     transmittance(s.moonDir.x, s.moonDir.y, s.moonDir.z, s.turbidity, this.moonT, 2);
     this._sky(0, 1, 0, s, this.zenith);
-    // horizon: average of 6 azimuths at +2° elevation
+    // horizon: average of 6 azimuths at +2° elevation (single scatter + the analytic afterglow)
     const h = this.horizon; h[0] = h[1] = h[2] = 0;
     const el = Math.sin(2 * DEG), ch = Math.cos(2 * DEG);
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2;
-      this._sky(Math.cos(a) * ch, el, Math.sin(a) * ch, s, this._tmp);
-      h[0] += this._tmp[0] / 6; h[1] += this._tmp[1] / 6; h[2] += this._tmp[2] / 6;
+      const dxa = Math.cos(a) * ch;
+      this._sky(dxa, el, Math.sin(a) * ch, s, this._tmp);
+      afterglow(dxa, el, Math.sin(a) * ch, s, _ag);
+      h[0] += (this._tmp[0] + _ag[0]) / 6; h[1] += (this._tmp[1] + _ag[1]) / 6; h[2] += (this._tmp[2] + _ag[2]) / 6;
     }
     const az = Math.atan2(s.sunDir.z, s.sunDir.x);
-    this._sky(Math.cos(az) * ch, el, Math.sin(az) * ch, s, this.horizonSun);
-    this._sky(-Math.cos(az) * ch, el, -Math.sin(az) * ch, s, this.horizonAnti);
+    const sxa = Math.cos(az) * ch;
+    this._sky(sxa, el, Math.sin(az) * ch, s, this.horizonSun);
+    afterglow(sxa, el, Math.sin(az) * ch, s, _ag);
+    this.horizonSun[0] += _ag[0]; this.horizonSun[1] += _ag[1]; this.horizonSun[2] += _ag[2];
+    this._sky(-sxa, el, -Math.sin(az) * ch, s, this.horizonAnti);
+    afterglow(-sxa, el, -Math.sin(az) * ch, s, _ag);
+    this.horizonAnti[0] += _ag[0]; this.horizonAnti[1] += _ag[1]; this.horizonAnti[2] += _ag[2];
   }
 }
 
 export function clamp01(v) { return clamp(v, 0, 1); }
+
+const _ag = [0, 0, 0];
+/**
+ * Analytic twilight afterglow — CPU mirror of afterglow() in shaders.js (ATMOS_GLSL); KEEP THE TWO
+ * IN SYNC. Pure single scattering decays to ~zero within a few degrees of sunset (all direct light
+ * paths out of the low atmosphere are earth-shadowed), but real twilight skies hold a long warm
+ * belt over the sunset point peaking around 8-12 deg of depression plus a faint pink anti-solar
+ * lobe (Belt of Venus). This adds that belt: bell in depression (onset 5.7 deg, full 9.2-10.9,
+ * gone ~19.5), hugging the horizon, concentrated toward the sun azimuth. Exactly zero above the
+ * horizon and by ~20 deg, so day / golden-hour / deep-night looks are untouched. Allocation-free.
+ * s: { sunDir (Vector3) }.
+ */
+export function afterglow(dx, dy, dz, s, out) {
+  const dep = -Math.asin(clamp(s.sunDir.y, -1, 1));
+  const act = smoothstep(0.10, 0.16, dep) * (1 - smoothstep(0.19, 0.34, dep));
+  if (act <= 0) { out[0] = out[1] = out[2] = 0; return out; }
+  const vert = Math.exp(-Math.max(8.5 * dy, -22 * dy));
+  const shl = Math.hypot(s.sunDir.x, s.sunDir.z) || 1e-4;
+  const dhl = Math.hypot(dx, dz) || 1e-4;
+  const ca = (dx * s.sunDir.x + dz * s.sunDir.z) / (dhl * shl);
+  const sunLobe = Math.pow(Math.max(ca, 0), 5);
+  const antiLobe = Math.pow(Math.max(-ca, 0), 10);
+  const k = ATMOS.sunE * 0.0013 * act * vert;
+  out[0] = k * (1.35 * sunLobe + 0.22 * antiLobe * 0.62);
+  out[1] = k * (1.35 * sunLobe * 0.40 + 0.22 * antiLobe * 0.38);
+  out[2] = k * (1.35 * sunLobe * 0.12 + 0.22 * antiLobe * 0.42);
+  return out;
+}
 export const _v = new THREE.Vector3();

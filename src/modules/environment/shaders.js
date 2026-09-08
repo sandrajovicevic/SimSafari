@@ -57,6 +57,27 @@ vec3 inscatter(vec3 o, vec3 d, vec3 s, float E, float turb, float g, out vec3 ou
 // equirect mapping with more resolution near the horizon
 vec2 dirToLut(vec3 d) { float u = atan(d.z, d.x) / (2.0 * PI) + 0.5; float v = 0.5 + 0.5 * sign(d.y) * sqrt(abs(d.y)); return vec2(u, v); }
 vec3 lutToDir(vec2 uv) { float a = (uv.x - 0.5) * 2.0 * PI; float sy = (uv.y - 0.5) * 2.0; float y = sign(sy) * sy * sy; float c = sqrt(max(0.0, 1.0 - y * y)); return vec3(cos(a) * c, y, sin(a) * c); }
+// Analytic twilight afterglow — cheap multiple-scattering proxy. Pure single scattering goes almost
+// exactly to zero a few degrees past sunset (every light path out of the lower atmosphere is
+// earth-shadowed), while real skies keep a long warm belt over the sunset point that peaks around
+// 8-12 deg of depression and fades over the following hour, plus a faint pink anti-solar lobe
+// (Belt of Venus). Bell-shaped in the sun's depression angle: onset ~5.7 deg, full by ~9.2, gone by
+// ~19.5 deg. Hugs the horizon, widens upward with a 1/e of ~8 deg. JS mirror: afterglow() in
+// atmosphere.js — keep the two in sync.
+vec3 afterglow(vec3 d, vec3 sunDir, float E) {
+  float dep = -asin(clamp(sunDir.y, -1.0, 1.0)); // > 0 when the sun is below the horizon (rad)
+  float act = smoothstep(0.10, 0.16, dep) * (1.0 - smoothstep(0.19, 0.34, dep));
+  if (act <= 0.0) return vec3(0.0);
+  float vert = exp(-max(8.5 * d.y, -22.0 * d.y));
+  vec2 dh = d.xz; dh /= max(length(dh), 1e-4);
+  vec2 sh = sunDir.xz; sh /= max(length(sh), 1e-4);
+  float ca = dot(dh, sh);
+  float sunLobe = pow(max(ca, 0.0), 5.0);
+  float antiLobe = pow(max(-ca, 0.0), 10.0);
+  vec3 warm = vec3(1.0, 0.40, 0.12);
+  vec3 pink = vec3(0.62, 0.38, 0.42);
+  return E * 0.0013 * act * vert * (1.35 * sunLobe * warm + 0.22 * antiLobe * pink);
+}
 `;
 
 // ---------- sky LUT (rendered to a 512x256 half-float RT whenever the sun/moon/turbidity change) ----------
@@ -71,6 +92,7 @@ void main(){
   vec3 o = vec3(0.0, Rg + ${A.observer.toFixed(1)}, 0.0);
   vec3 T; vec3 L = inscatter(o, d, uSunDir, uSunE, uTurbidity, uG, T);
   vec3 Tm; if (uMoonE > 0.0) L += inscatter(o, d, uMoonDir, uMoonE, uTurbidity, uG, Tm);
+  L += afterglow(d, uSunDir, uSunE);
   gl_FragColor = vec4(L, dot(T, vec3(0.333)));
 }`;
 
@@ -88,7 +110,7 @@ precision highp float;
 varying vec3 vWorldDir;
 uniform sampler2D uLut; uniform sampler2D uNight; uniform sampler2D uMoonTex;
 uniform vec3 uSunDir; uniform vec3 uMoonDir; uniform vec3 uSunDisc; uniform vec3 uMoonColor;
-uniform float uSunDiscOn; uniform float uNightAmount; uniform float uStarScale; uniform mat3 uCelestial;
+uniform float uSunDiscOn; uniform float uDiscVis; uniform float uNightAmount; uniform float uStarScale; uniform mat3 uCelestial;
 uniform vec3 uGroundLit; uniform vec3 uHorizon; uniform float uCloudDim; uniform float uCamHeight;
 ${ATMOS_GLSL}
 void main(){
@@ -96,6 +118,10 @@ void main(){
   vec4 lut = texture2D(uLut, dirToLut(d));
   vec3 col = lut.rgb;
   float mu = dot(d, uSunDir);
+  float sunAng = acos(clamp(mu, -1.0, 1.0));
+  float discMask = 0.0;
+  float ringMask = 0.0;
+  vec3 discCol = vec3(0.0);
   if (d.y < 0.0) {
     // distant savannah plain: ground albedo lit, then aerial perspective from the LUT. Converges to
     // the pure LUT sky colour exactly at d.y = 0 so the horizon line is continuous with the dome
@@ -107,12 +133,21 @@ void main(){
     vec3 ground = mix(plain, lut.rgb + plain, fade);
     col = mix(ground, lut.rgb, smoothstep(-0.012, 0.001, d.y));
   } else {
-    // sun: limb-darkened disc + tight corona (the wide Mie glow lives in the LUT)
-    float ang = acos(clamp(mu, -1.0, 1.0));
-    float disc = 1.0 - smoothstep(0.0044, 0.0050, ang);
-    float limb = sqrt(max(0.0, 1.0 - pow(ang / 0.0047, 2.0)));
-    vec3 sun = uSunDisc * (disc * (0.6 + 0.4 * limb) + 0.06 * exp(-ang * 90.0) + 0.012 * exp(-ang * 18.0));
-    col += sun * uSunDiscOn * smoothstep(-0.03, 0.02, uSunDir.y + 0.02);
+    // sun: limb-darkened disc + tight corona (the wide Mie glow lives in the LUT). The disc itself
+    // is composited AFTER tone mapping (see bottom): at exposure > ~1 the additive disc saturated
+    // to the same white as the surrounding Mie glow and disappeared into it (close view, 16-17 h).
+    float disc = 1.0 - smoothstep(0.0044, 0.0050, sunAng);
+    float limb = sqrt(max(0.0, 1.0 - pow(sunAng / 0.0047, 2.0)));
+    float gate = uSunDiscOn * smoothstep(-0.03, 0.02, uSunDir.y + 0.02) * uDiscVis;
+    // inner corona stays additive in HDR (uSunDisc already scales with cloud cover via discScale)
+    col += uSunDisc * (0.06 * exp(-sunAng * 90.0) + 0.012 * exp(-sunAng * 18.0)) * gate;
+    discMask = disc * gate;
+    discCol = uSunDisc * (0.6 + 0.4 * limb);
+    // glare-recovery ring: just outside the disc the forward Mie glow is saturated white, and no
+    // additive brightness can draw a disc there. A thin (0.3-0.6 deg) dip in the post-tonemap glow
+    // restores the edge contrast so disc + corona read at close range. Post-exposure only — the
+    // light itself, exposure controller and PMREM are untouched.
+    ringMask = (smoothstep(0.0054, 0.0066, sunAng) - smoothstep(0.0088, 0.0106, sunAng)) * gate;
     // stars & milky way in celestial frame
     if (uNightAmount > 0.001) {
       vec3 cd = uCelestial * d;
@@ -143,6 +178,13 @@ void main(){
   }
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
+  // sun disc, composited post-exposure with a clamped colour: the disc stays a readable white-hot
+  // disc with a warm rim at any exposure instead of saturating into the Mie glow, and it can never
+  // blow the sky (it only ever brightens its own ~0.3 deg patch). uDiscVis fades both disc and ring
+  // out under thick cloud/rain so they cannot ghost through an overcast deck.
+  gl_FragColor.rgb *= 1.0 - 0.32 * ringMask;
+  vec3 discT = clamp(discCol / (1.0 + discCol) * 1.3, 0.0, 1.0);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, discT, discMask);
   #include <colorspace_fragment>
 }`;
 
@@ -202,7 +244,8 @@ void main(){
     float silver = pow(max(mu, 0.0), 10.0) * (1.0 - thick) * 1.6;
     vec3 lit = uSunLight * (shade * (0.55 + 0.45 * (1.0 - thick)) + silver);
     vec3 amb = uAmbient * (0.8 - 0.45 * thick);
-    vec3 c = (lit + amb) * mix(1.0, 0.55, uStorm);
+    // rain load darkens the whole deck (storm dim), on top of the flatter storm shading
+    vec3 c = (lit + amb) * mix(1.0, 0.42, uStorm);
     float a = 1.0 - exp(-dens * 4.5);
     a *= smoothstep(0.0, 0.05, dy);
     // aerial perspective toward the horizon

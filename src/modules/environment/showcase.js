@@ -5,11 +5,11 @@ export const presets = {
   overview: { camera: { target: [0, 0], distance: 260, pitch: 32, yaw: 35 }, tod: 14, weather: 'clear', description: 'Early afternoon, clear sky with fair-weather cumulus; hard overhead light, short shadows' },
   dawn:     { camera: { target: [-10, 0], distance: 110, pitch: 9, yaw: 275 }, tod: 6.3, weather: { cloud: 0.3, rain: 0, haze: 0.55 }, description: 'Sunrise: hazy orange sun on the eastern horizon, long cool shadows, dust haze' },
   golden:   { camera: { target: [0, 0], distance: 120, pitch: 14, yaw: 40 }, tod: 17.6, weather: { cloud: 0.25, rain: 0, haze: 0.45 }, description: 'Golden hour: warm low sun from the west, long shadows, lit cumulus' },
-  dusk:     { camera: { target: [0, 0], distance: 150, pitch: 8, yaw: 75 }, tod: 18.7, weather: { cloud: 0.3, rain: 0, haze: 0.4 }, description: 'Civil twilight: sun just set, orange→blue gradient, afterglow on high clouds, first stars' },
+  dusk:     { camera: { target: [0, 0], distance: 150, pitch: 8, yaw: 73 }, tod: 18.7, weather: { cloud: 0.3, rain: 0, haze: 0.4 }, description: 'Civil twilight: sun just set WNW (the camera faces the sunset azimuth), orange afterglow belt over the horizon fading to blue, first stars' },
   night:    { camera: { target: [0, 0], distance: 130, pitch: 16, yaw: 190 }, tod: 22, weather: { cloud: 0.08, rain: 0, haze: 0.2 }, description: 'Moonlit night: blue-grey moonlight with soft shadows, star field and Milky Way' },
   overcast: { camera: { target: [0, 0], distance: 180, pitch: 24, yaw: 35 }, tod: 13, weather: 'overcast', description: 'Overcast midday: flat grey diffuse light, no hard shadows, low contrast' },
   storm:    { camera: { target: [0, 0], distance: 80, pitch: 12, yaw: 20 }, tod: 15, weather: 'storm', description: 'Rain storm: dark cloud deck, rain streaks driven by wind, heavy haze' },
-  close:    { camera: { target: [0, 0], distance: 170, pitch: 10, yaw: 60 }, tod: 16, weather: 'clear', description: 'Low angle 30 m above ground looking at the horizon: shadows sharp near, present far' },
+  close:    { camera: { target: [0, 0], distance: 170, pitch: 1, yaw: 72 }, tod: 17, weather: 'clear', description: 'Framed on the low sun (13 deg up at 17 h): sun disc + corona against the Mie glow, long sharp shadows across the stage' },
 };
 
 let stageGroup = null;
