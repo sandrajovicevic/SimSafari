@@ -33,6 +33,23 @@ float cracks(vec3 P, float f){
   float a=1.0-abs(snoise(w*f)); float b=1.0-abs(snoise(w*f*2.3+5.0));
   return pow(a,5.0)*0.7+pow(b,6.0)*0.4;
 }
+// Organic wrinkle field (round 3, elephant; rhino/hippo keep the simpler cracks()). The ridged
+// sample runs on a domain that is (a) rotated by a slowly varying direction field, (b)
+// anisotropically stretched so crest lines run long instead of closing into round dimples, and
+// (c) frequency-jittered so spacing varies continuously — no uniform dimple grid. The second
+// octave sits at the non-harmonic ratio x2.618 so the two crest sets never align into a lattice.
+// seed = uSeed, the per-variant bake seed forked from ctx.rng in builder.js, so every variant of
+// a species wrinkles differently.
+float wrinkles(vec3 P, float f, float seed){
+  float a=1.1*snoise(P*0.45+seed)+0.5*snoise(P*1.15+seed*1.7+4.0);
+  float ca=cos(a), sa=sin(a);
+  vec2 rx=mat2(ca,-sa,sa,ca)*P.xz;
+  vec3 q=vec3(rx.x*0.55,P.y,rx.y*0.75);
+  float fj=f*(1.0+0.38*snoise(P*0.85+seed*2.3+2.0));
+  float r1=pow(1.0-abs(snoise(q*fj+seed)),4.0);
+  float r2=pow(1.0-abs(snoise(q*fj*2.618+seed*3.1+7.0)),5.0);
+  return r1*0.75+r2*0.30;
+}
 `;
 
 // Each species: void skin(vec3 P, float part, float s, float v, float r, out vec3 alb, out float h, out float rough)
@@ -154,12 +171,21 @@ void skin(vec3 P, float part, float s, float v, float r, out vec3 alb, out float
   float dust=smoothstep(-0.25,0.65,fbm(P*1.1,3))*(0.35+0.65*(1.0-belly(v)));
   dust*=0.55+0.45*smoothstep(-0.35,0.5,P.y);
   alb=mix(grey,vec3(0.40,0.325,0.255),dust*0.62);
-  // ~2.5 cm wrinkles: fine enough to read as hide, coarse enough to survive the atlas texel size
-  float wr=cracks(P,42.0)*0.9+cracks(P,88.0)*0.35;
+  // Round 3: organic wrinkle network — wrinkles() replaces the old uniform ridged lattice (which
+  // still read slightly "golf ball"): per-region direction rotation, elongated crest lines,
+  // continuous frequency jitter and a non-harmonic second octave. Amplitude varies by body region:
+  // deepest at the neck, head, shoulder/hip leg masses and the knee/hock band; calmest across the
+  // flank panel (reg). Base frequency stays ~2.5 cm so the pattern still survives the atlas texel
+  // size, and the groove depth terms (albedo 0.16, height 0.30) are unchanged from round 2.
+  float reg=1.0;
+  reg+=0.40*ON(part,2.0)+0.28*ON(part,3.0);
+  reg+=0.38*leg*(smoothstep(0.55,0.12,s)+0.8*exp(-pow((s-0.46)*5.5,2.0)));
+  reg-=0.42*ON(part,1.0)*smoothstep(0.14,0.26,abs(v-0.5))*smoothstep(0.42,0.30,abs(v-0.5))*smoothstep(1.0,0.4,abs(P.z));
+  reg=max(reg,0.40);
+  float wr=wrinkles(P,40.0,uSeed);
   float folds=pow(0.5+0.5*sin(P.y*58.0+1.2*snoise(P*7.0)),4.0)*leg*0.7+pow(0.5+0.5*sin(s*250.0),5.0)*trunk*0.9;
-  float mid=pow(1.0-abs(snoise(P*16.0)),5.0)*0.5;
-  float creases=pow(0.5+0.5*sin(P.z*7.0+2.2*snoise(P*2.0)),10.0)*0.45*(1.0-leg)*(1.0-trunk);
-  float groove=clamp(wr+folds*0.7+mid+creases*0.6,0.0,1.0)*(1.0-tusk);
+  float creases=pow(0.5+0.5*sin(P.z*6.3+2.6*snoise(P*1.7+uSeed*1.3)+1.1*sin(P.y*3.7+uSeed*2.1)),10.0)*0.5*(1.0-leg)*(1.0-trunk);
+  float groove=clamp(wr*reg+folds*0.7+creases*0.6,0.0,1.0)*(1.0-tusk);
   alb*=1.0-0.16*groove;
   alb=mix(alb,alb*0.82,ear*smoothstep(0.7,1.0,s));
   alb=mix(alb,vec3(0.78,0.73,0.60)*(0.96+0.04*snoise(P*40.0)),tusk);

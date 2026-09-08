@@ -22,9 +22,16 @@ every skin is baked from GLSL, every motion is evaluated procedurally each frame
 * **Skin** (`skin.js`) — per-species GLSL evaluated in **bind-pose object space** (so patterns are
   seamless across parts), rasterised through position/info maps into the UV atlas as albedo, height →
   normal, and ORM. Zebra stripes are noise-warped, giraffe patches are 3D worley, cheetah spots worley,
-  elephant/rhino hide is crack-noise wrinkled with a low-frequency domain warp (round 2 — breaks the
-  "golf ball dimple" regularity a single-frequency ridged noise reads as), lion has a separate mane
-  part. **Colour is authored as true linear albedo** — elephant hide ~0.29-0.40, zebra black ~0.035 /
+  lion has a separate mane part. Elephant hide (round 3) is an **organic wrinkle network**
+  (`wrinkles()`): ridged noise on a domain rotated by a slowly varying direction field, stretched
+  anisotropically so crest lines run long instead of closing into round dimples, with a continuously
+  frequency-jittered spacing and a second octave at the non-harmonic ratio ×2.618 (so the two crest
+  sets never align into the lattice that still read as a faint "golf ball" in round 2's
+  domain-warped crack noise, which rhino/hippo keep). Wrinkle amplitude varies by body region —
+  deepest at the neck, head, shoulder/hip masses and the knee/hock band, calmest across the flank
+  panel. The per-variant bake seed (forked from `ctx.rng` in `builder.js`) enters the shader as
+  `uSeed`, so each variant wrinkles differently.
+  **Colour is authored as true linear albedo** — elephant hide ~0.29-0.40, zebra black ~0.035 /
   white ~0.55, lion tawny ~0.38 — per `core/Textures.js`'s `srgb:true` contract (see
   `CLAUDE.md` "Colour authoring"; the module carried compensation for the core double-encode bug
   mid-round and that compensation has been removed now that the core bug is fixed).
@@ -149,6 +156,14 @@ and is not reported.
 
 Draw calls and triangles are geometry-driven and unaffected by the lighting fixes below; re-measured
 after them anyway to confirm nothing regressed. All six still zero console errors.
+
+Round 3 (elephant skin rework, `wrinkles()`): shader-only — draw calls and triangles are bit-identical
+to the round-2 numbers above (before/after `close` both 53 / 3 286 900). Frame totals are now higher
+than the table (close 3.29 M tris) because another module's dense grass now loads into the showcase
+frame; the elephant's own geometry is unchanged. Re-verified at 1280×720, zero console errors:
+`animals-el-after-close-14` / `-waterhole-8` (77 draws) / `-night-21_5` (67 draws) plus four 3.4-5 m
+macro angles (`-macroA-14`, `-macroB-9`, `-macroC-14`, `-macroD-9`) showing the organic wrinkle field
+and round-2 leg anatomy (taper, joint swell, foot flare) holding up fresh.
 
 Round-1 baseline for `close`/`overview` (the only two the round-1 critic screenshotted): 21 / 652 054 / 0
 errors and 47 / 1 274 878 / **2 errors**. The round-2 rise is expected and accounted for: the giraffe
