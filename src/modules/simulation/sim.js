@@ -112,7 +112,7 @@ export class Simulation {
     this.lastReport = null;
     this.reports = [];
     this.habitatStats = new Map();
-    this.totals = { born: 0, died: 0, left: 0, poached: 0, predation: 0 };
+    this.totals = { born: 0, died: 0, left: 0, poached: 0, predation: 0, adopted: 0, unmanaged: 0 };
     if (w.visitors) {
       w.visitors.count = 0; w.visitors.inPark = 0;
       if (!(w.visitors.seenSpecies instanceof Map)) w.visitors.seenSpecies = new Map();
@@ -244,11 +244,20 @@ export class Simulation {
   _emit(name, payload) { try { this.hooks.emit?.(name, payload); } catch {} }
   _log(text) { try { this.hooks.log?.(text); } catch {} }
 
-  /** When the animals module owns world.animals, take its counts as truth (habitat = grid cell the animal stands on). */
+  /** When the animals module owns world.animals, reconcile the ledger against it: the world census
+   * decides how many animals of each species exist and where they stand (habitat = grid cell the
+   * animal stands on), but nothing may vanish uncounted. Diff per species, then place by census:
+   *   • world has more than the ledger → the surplus is ADOPTED into the ledger (booked in
+   *     totals.adopted) — e.g. the park demo spawning herds through the animals module directly;
+   *   • the ledger has more than the world → the absent animals are written off as a COUNTED
+   *     removal (r.left += k, totals.unmanaged += k, logged) — never silently zeroed.
+   * With the spawn/remove hooks in sync (the normal live game) both diffs are 0 every day and the
+   * result is identical to a plain census copy. Returns true when a reconciliation ran. */
   reconcileFromWorld() {
     const w = this.world;
     if (!w.animals || w.animals.size === 0 || !w.grid || typeof w.cellAt !== 'function') return false;
-    for (const m of this.pop.values()) for (const r of m.values()) r.n = 0;
+    // world census: species → habitat → count
+    const census = new Map();
     for (const a of w.animals.values()) {
       if (!a || !a.species) continue;
       let hid = a.habitat ?? a.habitatId;
@@ -257,8 +266,43 @@ export class Simulation {
         const id = w.grid.habitatId[c.index];
         hid = id || 0;
       }
-      this._rec(hid, a.species).n++;
+      let m = census.get(a.species);
+      if (!m) { m = new Map(); census.set(a.species, m); }
+      m.set(hid, (m.get(hid) || 0) + 1);
     }
+    // ledger census by species
+    const ledger = new Map();
+    for (const m of this.pop.values()) for (const [s, r] of m) if (r.n > 0) ledger.set(s, (ledger.get(s) || 0) + r.n);
+    // per-species diff: every animal crosses between ledger and world through a counted path
+    let adopted = 0, unmanaged = 0;
+    const species = new Set([...ledger.keys()].concat([...census.keys()]));
+    for (const s of species) {
+      let worldN = 0;
+      const m = census.get(s);
+      if (m) for (const n of m.values()) worldN += n;
+      const have = ledger.get(s) || 0;
+      if (worldN > have) {
+        adopted += worldN - have;
+      } else if (have > worldN) {
+        const missing = have - worldN;
+        unmanaged += missing;
+        let left = missing;
+        const hids = [...this.pop.keys()].sort();
+        for (const hid of hids) { // book the write-off on the records that claimed them
+          if (left <= 0) break;
+          const r = this.pop.get(hid).get(s);
+          if (!r || r.n <= 0) continue;
+          const k = Math.min(r.n, left);
+          r.n -= k; r.left += k; left -= k;
+        }
+        this._log(`reconcile: ${missing} ${s} on the books but absent from world.animals — written off as left`);
+      }
+    }
+    if (adopted) this.totals.adopted += adopted;
+    if (unmanaged) this.totals.unmanaged += unmanaged;
+    // placement follows the world census
+    for (const m of this.pop.values()) for (const r of m.values()) r.n = 0;
+    for (const [s, m] of census) for (const [hid, n] of m) this._rec(hid, s).n += n;
     return true;
   }
 

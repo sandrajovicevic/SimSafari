@@ -9,17 +9,23 @@ import { drawDashboard, PANEL_W, PANEL_H } from './panel.js';
 
 const CAM = { target: [0, 0], distance: 420, pitch: 42, yaw: 35 };
 
+// Right-sized crew for the staged parks: at ~100–120 staged animals the buildPark defaults
+// (10 keepers etc.) overstaff the park by ~$300/day — measured in the staged environment
+// (real buildings catalogue + animals speciesInfo) on 2026-09-08; with these crews the boom
+// and overview parks genuinely climb in cash instead of bleeding out (see README "Measured").
+const CREW = { keeper: 6, ranger: 2, guide: 4, maintenance: 3, lodge: 2 };
+
 export const presets = {
-  overview: { camera: CAM, tod: 15, days: 60, mode: 'overview', park: {},
-    description: '60 accelerated days of the default park: 5 habitats, loop road with spurs, lodge, 3 water holes, $25 tickets — cash, visitors and population sparklines plus the last daily report' },
-  boom: { camera: CAM, tod: 11, days: 60, mode: 'overview', park: { ticketPrice: 15, water: 0.2, shade: 0.1, roadKind: 'gravel' },
-    description: 'Cheap $15 tickets, wetter and shadier habitats, gravel loop road: happier herds breed, word of mouth lifts arrivals, cash climbs' },
+  overview: { camera: CAM, tod: 15, days: 60, mode: 'overview', park: { ticketPrice: 20, animalScale: 0.5, staff: CREW },
+    description: '60 accelerated days of the park at $20 volume tickets and a right-sized crew: 5 habitats, loop road with spurs, lodge, 3 water holes — cash climbs, the herd grows, sparklines plus the last daily report' },
+  boom: { camera: CAM, tod: 11, days: 60, mode: 'overview', park: { ticketPrice: 15, water: 0.2, shade: 0.1, roadKind: 'gravel', animalScale: 0.6, staff: CREW },
+    description: 'Cheaper $15 tickets, wetter and shadier habitats, gravel loop road: happier herds breed fast, word of mouth lifts arrivals above the overview park, cash climbs faster' },
   bust: { camera: CAM, tod: 17, days: 60, mode: 'overview', park: { ticketPrice: 80, water: -1, waterholes: false, lodge: false, roads: 'loop', cash: 15000, loan: 200000 },
-    description: 'No water in any habitat, $80 tickets, no lodge, a $200k loan: hippos and buffalo leave, visitors stay away, the bank forecloses' },
-  close: { camera: CAM, tod: 16.5, days: 30, mode: 'report',
-    description: 'Report close-up after 30 days: the habitat-quality matrix (every species × every habitat) that drives happiness, breeding and migration' },
-  night: { camera: CAM, tod: 21.5, days: 60, mode: 'overview', park: {},
-    description: 'The same 60-day run viewed at 21:30 — the dashboard is unlit HUD geometry so it stays readable at night' },
+    description: 'No water in any habitat, $80 tickets, no lodge, a $200k loan: the herds wither and never recover, visitors stay away after the first week, the bank forecloses (BANKRUPT)' },
+  close: { camera: CAM, tod: 16.5, days: 30, mode: 'report', park: { ticketPrice: 20, animalScale: 0.5, staff: CREW },
+    description: 'Report close-up after 30 days: the habitat-quality matrix (every species × every habitat) that drives happiness, breeding and migration, beside a living, growing population' },
+  night: { camera: CAM, tod: 21.5, days: 60, mode: 'overview', park: { ticketPrice: 20, animalScale: 0.5, staff: CREW },
+    description: 'The same park as overview viewed at 21:30 (each preset runs its own seeded stream, so the weather and events differ) — the dashboard is unlit HUD geometry so it stays readable at night' },
 };
 
 let S = null; // stage state
@@ -40,6 +46,15 @@ export async function stage(ctx, presetName, env = {}) {
   const park = buildPark(world, ctx.rng.fork('park:' + presetName), preset.park || {});
   const sim = new Simulation(world, ctx.rng.fork('sim:' + presetName + ':' + seed), env.hooks || {});
   applyPark(sim, park);
+  // The animals module (loaded alongside this showcase through the optional-dependency closure) owns
+  // world.animals, and reconcileFromWorld() takes that census as truth every day. Staged herds that
+  // exist only in the ledger would therefore be written off as unaccounted removals within days
+  // (measured 2026-09-08: the first birth's spawn made world.animals non-empty and the next
+  // reconcile collapsed all 193 staged animals to that 1 newborn, born/died/left ≈ 0) — so push
+  // every staged herd through the same spawn hook the sim itself uses, then plan day 1 from the
+  // real park instead of the empty one _init() saw.
+  for (const p of park.populations) { try { env.hooks?.spawn?.(p.species, p.habitatId, p.n); } catch (e) { ctx.log.warn(`staging ${p.species} failed: ${e.message}`); } }
+  sim.replan();
   env.setSim?.(sim);
   // 2. fast-forward
   const t0 = performance.now();

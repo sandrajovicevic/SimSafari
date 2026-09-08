@@ -3,6 +3,7 @@
   "wave": 3,
   "passThreshold": 8.5,
   "notes": [
+    "2026-09-08 simulation blocker FIXED and claims recovered (builder agent, orchestrator-verified; score 6.0 -> 9.0, status pass): root cause was subtler than suspected — staged parks hold their 193 animals only in the sim ledger, and the sim's FIRST birth spawns through the animals hook into world.animals, so from day 2 the daily reconcileFromWorld() copied that 1-animal census over the ledger (193 -> 1, born/died/left ~0; unit tests never saw it because the plain world's animals map is empty). Fix: per-species diff-and-count reconcile (surplus world animals adopted; ledger animals missing from the world written off as a COUNTED removal), plus showcase staging now mirrors every staged herd into world.animals via the same spawn hook + replan(). 89/89 tests (80 + 9 new incl. the 'staged pop ~= reported pop' regression), lint ok, same-seed determinism verified, and the live-game harness numbers are BYTE-IDENTICAL to the recorded baseline (net/d, elasticity, water, bankruptcy day 17, sightings 12 vs 0). Claims now reproduce: boom 38 births / 282 arrivals/d avg / +$36,766 over 60d; overview +$18,093 healthy cash; world==ledger at every preset, unmanaged 0. Toolchain nit discovered: --dom captures no longer write PNGs in this environment (png:null) — canvas captures used; affects screenshot tool, not the game.",
     "2026-09-08 zoning boundary dashes + world-edge apron RESOLVED (builder agent, orchestrator-verified): zoning gains boundaries.js — region interfaces traced once via crack-following, collinear runs merged, 1-cell water/paint-fringe teeth melted with 6 Taubin passes (clamped to <=2.0 m of the exact partition, topology cannot leak), corners rounded with 3x Chaikin, emitted as ONE indexed ribbon with arc-length attributes driving the dash cycle (11.4 m kept); overlay.js is now fill-only (4500c55 feathering preserved; ribbon = +1 draw). Verified: dashes read as smooth marching-ants contours (b5-zoning-overlay.png vs blind-zoning-overlay.png zigzags), no fill/fence regression (overview/close), lint ok, 0 errors. Terrain apron: the REAL fix was applied — apron material now samples the same packed splat layers through the identical two-scale UV scheme, height blend, detail-normal and tint chain, with an analytic plains control and a 20-220 m fade from baked control aux; the border now reads as continuous mottled plains (b2-game-overview-14/8.png vs fix4-game-overview-14.png). Residuals documented in terrain README: props/roads stop at the border (~15% tree-shadow brightness gap, partially compensated), far-field blotch positions differ (GLSL vs CPU noise). Interior splat untouched; 315 draws at game overview.",
     "2026-09-08 critic sweep part 1 (unreviewed presets, item 7): environment, audio, simulation reviewed with own screenshots (all JSONs errors=[], draws 59-81, within budget). environment: dusk shows NO afterglow 26 min after sunset while dawn at equal solar depression is excellent (5.6h scored 9) — staging yaw hides the glow plus the documented single-scatter anti-solar gap (MAJOR); close preset shows no sun disc at 16-17h, just blown Mie glow (MAJOR); overcast keeps hard shadows at cloud 0.92 because cloudAtten leaves 26% direct (MINOR-MAJOR); storm deck not darkened by rain (MINOR); README claims failed (dusk afterglow, sun-disc close-up, dark storm deck, dawn mist) -> claims cap rule: score 8.0 -> 6.0, status fail, recoverable after fixes. audio: genuinely working end to end — live meters (master -26.9 dB, animals bus -31.7 LIVE, 8 species spatialised 34-347 m), morning-chorus hour crossfade (birds 0.76 at 8h vs 0.47 midday), correct storm drop-offs, clean dusk transition; the wave-1 'animals bus -inf' minor is CLOSED by live evidence; keep 8.0, status fail -> near-pass; nits: wind layer 1.10 exceeds the panel's 0-1 scale, README tod table drifts. simulation: BLOCKER-class major — in every staged showcase park the 193 staged animals vanish within ~5 days with born/died/left/predation all ~0 (an uncounted removal path; suspect reconcileFromWorld() sim.js:248 zeroing internal counts uncounted whenever world.animals is non-empty — true on the live world, false in the unit tests, which is why 80/80 passed); the engine itself is innocent (plain-world baseline keeps 372 animals thriving 90 days; the live park demo grew 80->87 with births). Boom preset fails all three of its claims (pop 1, arrivals 70 < 100, cash -214k) and the README 'healthy cash' overview claim regressed. Claims cap rule: 9.0 -> 6.0, status fail — recoverable after the reconcile fix + re-staged presets. All scored findings are content/code, not renderer artifacts.",
     "2026-09-08 park economy + gameplay fidelity RESOLVED (builder agent, orchestrator-verified): (5) the demo park now BREAKS EVEN at $15 — net +383 $/day 30-day mean, +1,630 day-30, cash 250k -> 261k (was negative at every price; new elasticity table $10/12/15/20/25/40/60 -> arrivals 272/272/265/187/142/81/49, net -782/-246/+383/-1,267/-2,709/-4,749/-6,064). Content, not price tricks: 11 species (+rhino/ostrich/warthog), 3 water pumps (fix the vital-water gate that crushed woodland/kopje quality), 12 tents (48 beds, was 32 bed-capped), 18 staff, replan() after build (day-1 arrivals 25 -> 131). (6) Births were multiplicative-blocked, now 10-15 per 30 days at every price (was 0): drive gate re-tuned clamp01((h-0.45)/0.3) (was (h-0.5)/0.5, unreachable for 6 of 8 species), breed rates x1.5. Two genuine integration bugs found and fixed along the way: buildings' catalogueRows() drops the water field so the sim fallback matched 'pump' as generic (pump row added with water:1), and the habitat probe could never see an in-habitat pump because zoning carves the footprint out of habitatId (_inHabitat now probes the 5x5 neighbourhood). Harness additions: organic poaching (day 97 at low morale), drought (water 1.0->0.65, grass -30%, recovery), disease (vet x1.27, 7 excess deaths), prosperity chain (rich 0.85/0 poached/+449 vs starved 0.46/3 poached/-4,515). Original 6 scenarios semantically unchanged (elasticity, water coupling, sightings 12 vs 0, bankruptcy day 17, determinism identical). Tests 80/80 (58 originals + 22 new), lint clean, spend(amount,reason)+getSpendLog added per docs/requests/tools.md. game.gameplayFidelity is still recorded as 8.0 until the round-3 re-evaluation re-scores it.",
@@ -221,38 +222,28 @@
     "simulation": {
       "wave": 1,
       "domain": "sim",
-      "round": 3,
-      "score": 6.0,
-      "status": "fail",
+      "round": 4,
+      "score": 9.0,
+      "status": "pass",
       "errors": 0,
       "drawCalls": 2,
-      "reviewedBy": "critic-sweep",
-      "presetsSeen": [
-        "overview (DOM); round 2: full harness evidence (2026-09-08); round 3 (critic sweep): boom 12, bust 12/9, close 16.5, night 22 (DOM)"
-      ],
+      "reviewedBy": "orchestrator-verification",
+      "presetsSeen": "overview (DOM); round 2: full harness evidence (2026-09-08); round 3 (critic sweep): boom 12, bust 12/9, close 16.5, night 22 (DOM); round 4: boom/overview/close/night re-staged + re-shot after the reconcile fix (simulation-*.png, 2026-09-08)",
       "tests": {
         "file": "src/modules/simulation/test.mjs",
-        "passed": 80,
+        "passed": 89,
         "failed": 0,
         "deterministic": true,
-        "note": "58 original tests all hold + 22 new (births drive, room cap, replan, spend); same seed reproduces identical histories, different seed diverges"
+        "note": "80 original + 9 new (reconcile adoption/write-off, staged-pop stability, boom claims); same seed reproduces identical histories; live-game harness byte-identical to the 2026-09-08 baseline"
       },
       "issues": [
         {
-          "sev": "major",
-          "text": "BLOCKER-class (found by critic sweep 2026-09-08): in every staged showcase park the 193 staged animals vanish within ~5 days with born/died/left/predation all ~0 — an uncounted removal path. Suspect reconcileFromWorld() (sim.js:248-251) zeroes internal counts uncounted whenever world.animals is non-empty (true on the live world, false in unit tests — why 80/80 passed). Engine is innocent: plain-world baseline keeps 372 animals thriving 90 days, and the live park demo grew 80->87 with births. Fix: diff-and-count on reconcile + regression test 'staged pop ~= reported pop after N days'."
-        },
-        {
-          "sev": "major",
-          "text": "Boom preset fails all three of its claims (herds breed: 1 birth; arrivals lift: 70 < 100 base; cash climbs: -214k/60d) and the README overview 'healthy cash' claim regressed (-43k in the staged night park). Claims cap: unreproduced claims cap the module at 6."
+          "sev": "resolved",
+          "text": "FIXED and verified (2026-09-08): the staged-pop vanish blocker — reconcileFromWorld() now diff-and-counts per species (adopt surplus, count write-offs, placement follows the world census, no rng draws so the live path is byte-identical), and staging mirrors herds into world.animals. World==ledger at every preset (146/140/110/124/176), unmanaged 0. The unreproduced-claims cap is lifted: boom now shows 38 births, 282 arrivals/d, +$36.8k/60d; overview shows +$18k healthy cash (orchestrator read simulation-boom-12.png). Score restored to 9.0 pending the round-3 re-evaluation."
         },
         {
           "sev": "resolved",
           "text": "FIXED and demonstrated (2026-09-08): births = 0 was multiplicative — an unreachable happiness drive gate (6 of 8 species below (h-0.5)/0.5 > 0 due to the vital-water gate) times too-low breed rates. Drive gate re-tuned, breed rates x1.5, park pumps fix water quality at source; harness now shows 10-15 births per 30 days at every price with ecology intact (0 migrations, 3/3 lions, happiness 0.58-0.73). Poaching, drought, disease and the village-prosperity chain are now demonstrated by named harness scenarios. spend(amount,reason)/getSpendLog added per docs/requests/tools.md with tests."
-        },
-        {
-          "sev": "minor",
-          "text": "Only the overview preset has been reviewed; boom/bust/close/night not yet checked."
         },
         {
           "sev": "resolved",
@@ -866,6 +857,13 @@
       "module": "zoning",
       "round": 3,
       "score": 7.5,
+      "by": "orchestrator-verification",
+      "date": "2026-09-08"
+    },
+    {
+      "module": "simulation",
+      "round": 4,
+      "score": 9.0,
       "by": "orchestrator-verification",
       "date": "2026-09-08"
     }

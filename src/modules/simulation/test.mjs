@@ -248,6 +248,58 @@ console.log('births mechanics, spend() and forced events (round 3)');
   g.habitatId[gateCell.index] = hadGate;
 }
 
+console.log('staged population reconciliation (round-3 critic sweep)');
+{
+  // The showcase stages 193 animals via setPopulation() on a LIVE world whose animals module owns
+  // world.animals, and reconcileFromWorld() takes that census as truth at every day end.
+  // Regression (2026-09-08 critic sweep): the sim's first birth spawned through the animals hook,
+  // which made world.animals non-empty (1 newborn), and the next reconcile silently ZEROED the
+  // whole staged herd down to that 1 animal — 193 → 1 within days with born/died/left ≈ 0 and no
+  // counter moving. Any ledger animal the world has lost must be written off as a COUNTED removal.
+  const crash = makeSim(31);
+  crash.world.animals.set('an_1', { id: 'an_1', species: 'impala', x: -250, z: -250, habitat: 1 });
+  crash.sim.runDays(5);
+  const crashRep = crash.sim.getReport();
+  assert(crash.sim.totals.unmanaged === 192, `ledger-only staged animals are written off as counted removals, not dropped silently (${crash.sim.totals.unmanaged} unmanaged over 5 days)`);
+  assert(crash.sim.count() === crash.world.animals.size, `reported population follows the world census after the write-off (${crash.sim.count()} vs ${crash.world.animals.size} in world.animals)`);
+  assert(Object.values(crashRep.population).reduce((a, b) => a + b, 0) === crash.sim.count(), 'the daily report population equals the reconciled census (no phantoms)');
+  // The showcase path: stage() mirrors every staged herd into world.animals through the same
+  // spawn/remove hooks the animals module provides — 30 days later the population must still be
+  // there, and staged + born − died − left must equal exactly what is reported.
+  {
+    const world = createPlainWorld({ seed: 32 });
+    const rng = new Rng(32);
+    const park = buildPark(world, rng.fork('park'), {});
+    const add = (species, hid, n) => { for (let i = 0; i < n; i++) { const id = world.nextId('an'); world.animals.set(id, { id, species, x: 0, z: 0, habitat: hid }); } };
+    const removeAnimals = (species, hid, n) => { let l = n; for (const [id, a] of world.animals) { if (l <= 0) break; if (a.species !== species || a.habitat !== hid) continue; world.animals.delete(id); l--; } };
+    const sim = new Simulation(world, rng.fork('sim'), { spawn: add, remove: removeAnimals });
+    applyPark(sim, park);
+    for (const p of park.populations) add(p.species, p.habitatId, p.n); // what showcase.stage() now does
+    sim.replan();
+    sim.runDays(30);
+    const staged0 = park.populations.reduce((a, p) => a + p.n, 0);
+    const popNow = sim.count();
+    const repPop = Object.values(sim.getReport().population).reduce((a, b) => a + b, 0);
+    assert(world.animals.size === popNow && repPop === popNow, `mirrored staged park: world.animals ${world.animals.size} and report ${repPop} both equal the ledger (${popNow})`);
+    assert(popNow >= staged0, `staged population holds or grows over 30 days (${staged0} staged → ${popNow} on day 30)`);
+    assert(sim.totals.unmanaged === 0, `no unaccounted removals in the mirrored park (${sim.totals.unmanaged})`);
+    assert(staged0 + sim.totals.born - sim.totals.died - sim.totals.left === popNow,
+      `every animal accounted for: ${staged0} staged + ${sim.totals.born} born − ${sim.totals.died} died − ${sim.totals.left} left = ${popNow}`);
+    assert(sim.totals.born > 0, `the staged park breeds (${sim.totals.born} born in 30 days)`);
+  }
+  // Adoption: animals the world already has but the ledger lacks (the park demo spawns herds
+  // through the animals module before the sim ever saw them) join the ledger, booked as adopted.
+  {
+    const world = createPlainWorld({ seed: 33 });
+    const rng = new Rng(33);
+    buildPark(world, rng.fork('park'), {});
+    const sim = new Simulation(world, rng.fork('sim'), {});
+    for (let i = 0; i < 5; i++) world.animals.set(`an_${i}`, { id: `an_${i}`, species: 'zebra', x: 0, z: 0, habitat: 1 });
+    const ok = sim.reconcileFromWorld() === true && sim.count('zebra') === 5 && sim.totals.adopted === 5;
+    assert(ok, `world animals absent from the ledger are adopted, not dropped (zebra ${sim.count('zebra')}, adopted ${sim.totals.adopted})`);
+  }
+}
+
 console.log('events');
 {
   const all = [];

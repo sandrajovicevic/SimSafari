@@ -11,14 +11,24 @@ time speed 0/1/3/10 comes from `world.time`.
 
 * `sim.js` — the `Simulation` class: daily loop, ledger, population dynamics, visitor flow, events.
   Reads `world.habitats/animals/roads/buildings/vehicles` freely; writes `world.visitors` and
-  `world.economy` (its owned slices) and emits the matching events.
+  `world.economy` (its owned slices) and emits the matching events. When the animals module owns
+  `world.animals`, `reconcileFromWorld()` runs a diff-and-count each day end: the world census
+  decides where animals stand, per-species deltas cross only through counted paths (surplus world
+  animals are **adopted** into the ledger, booked in `totals.adopted`; ledger animals missing from
+  the world are written off as a counted removal, `r.left` + `totals.unmanaged`, never silently
+  zeroed — the 2026-09-08 critic sweep caught the old census-copy zeroing a whole staged showcase
+  herd down to the module's first spawned newborn).
 * `tables.js` — all balance numbers (species economics, staff roles/wages, arrival model constants).
 * `worldgen.js` — synthetic park builder used by its own showcase (a self-contained park so the
-  module can be screenshotted and tuned alone).
+  module can be screenshotted and tuned alone). The staged presets use it with a right-sized crew
+  and herd (see "Presets") because the staged environment loads the real buildings catalogue
+  through the optional-dependency closure, and its upkeeps price in.
 * `test.mjs` — deterministic tests (`node src/modules/simulation/test.mjs`), including a
   same-seed-reproduces-identical-90-day-history determinism check and a different-seed-diverges check,
-  plus round-3 births-mechanics tests (breeding needs happiness, the room term caps herds at capacity,
-  replan(), spend(), injectEvent).
+  round-3 births-mechanics tests (breeding needs happiness, the room term caps herds at capacity,
+  replan(), spend(), injectEvent) and staged-population reconciliation tests (a staged herd mirrored
+  into world.animals holds and stays accounted; a ledger-only herd is written off as counted
+  removals, never silently).
 * Habitat quality per species = weighted match of the species' preferences (grass/tree density,
   water proximity, roughness, herd space, predator distance) against each habitat's measured
   properties; `zoning.getHabitatQuality` delegates here.
@@ -88,24 +98,35 @@ headless with none of them present (that is how its tests run).
 
 ## Presets
 
-| preset | tod | what it shows |
+| preset | tod | what it shows (all measured 2026-09-08, staged environment, seed 1) |
 |---|---|---|
-| `overview` | 12 | synthetic park mid-game: healthy cash, visitors in park, report panel numbers |
-| `boom` | 12 | under-priced tickets + high reputation: arrivals surge |
-| `bust` | 12 | over-priced + unhappy animals: arrivals collapse, migration |
-| `close` | 16 | gate-area view of the synthetic park |
-| `night` | 22 | same park after dark |
+| `overview` | 15 | the synthetic park at $20 volume tickets, right-sized crew, ~98 staged animals: cash climbs (+$18k over 60 d, healthy), arrivals ~215/d (base 100), herd grows 98 → 140 with 46 births |
+| `boom` | 11 | same park pushed into a real boom — $15 tickets, wetter/shadier habitats, gravel road: births 38, arrivals ~282/d (well above base 100 and above overview), cash climbs +$37k over 60 d |
+| `bust` | 17 | over-priced + no water: births stall (5), 22 deaths, herd 193 → 176, arrivals collapse to 0, cash −$427k and the bank forecloses (BANKRUPT stamp on the panel) |
+| `close` | 16.5 | the habitat-quality matrix (every species × every habitat) beside a living, growing population |
+| `night` | 21.5 | same park as `overview` after dark, its own seeded stream (different weather/events) — the dashboard is unlit HUD geometry so it stays readable |
+
+Staged herds are spawned into `world.animals` through the same animals-module hook the sim itself
+uses, so `stage()` ends with `world.animals.size == sim.count()` and the population sparkline shows
+the real herd — not a ledger-only phantom (that mismatch is exactly what the old reconcile bug
+punished; the regression tests in test.mjs pin it).
 
 ## Measured
 
-* Tests: **80 passed, 0 failed** (`node src/modules/simulation/test.mjs`; 58 pre-round-3 — all
+* Tests: **89 passed, 0 failed** (`node src/modules/simulation/test.mjs`; 58 pre-round-3 — all
   still passing — plus 22 round-3 tests for the births mechanics, room cap, replan(), spend() and
-  injectEvent), determinism verified: the same seed reproduces an identical 90-day history; a
-  different seed diverges.
+  injectEvent, plus 9 staged-population reconciliation tests: the ledger-only write-off, the
+  mirrored showcase park (193 staged → 219 on day 30, every animal accounted: born/died/left),
+  and census adoption), determinism verified: the same seed reproduces an identical 90-day
+  history; a different seed diverges.
 * Live-park fidelity harness (`tools/fidelity.mjs`, 2026-09-08): **$15/day ticket breaks even**
   (net +$383/day mean over 30 days, day-30 net +$1,630), **10–15 births per 30 days at every
   measured price (was 0)**, 0 migrations, predators alive, poaching/drought/disease/prosperity
   chains all demonstrated — see the park README for the full table.
+* Staged showcase parks (2026-09-08, after the reconcile fix): `world.animals.size ==
+  sim.count()` at every preset; boom 146 animals / 38 births / 282 arrivals-per-day / cash
+  +$37k over 60 days; overview 140 / 46 births / 215 arrivals-per-day / cash +$18k — the preset
+  claims on the panel are what the run actually does.
 * Draw calls of the module itself: **2** (empty group + one helper); all visible geometry belongs to
   other modules.
 
