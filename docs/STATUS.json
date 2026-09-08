@@ -3,6 +3,7 @@
   "wave": 3,
   "passThreshold": 8.5,
   "notes": [
+    "2026-09-08 critic sweep part 1 (unreviewed presets, item 7): environment, audio, simulation reviewed with own screenshots (all JSONs errors=[], draws 59-81, within budget). environment: dusk shows NO afterglow 26 min after sunset while dawn at equal solar depression is excellent (5.6h scored 9) — staging yaw hides the glow plus the documented single-scatter anti-solar gap (MAJOR); close preset shows no sun disc at 16-17h, just blown Mie glow (MAJOR); overcast keeps hard shadows at cloud 0.92 because cloudAtten leaves 26% direct (MINOR-MAJOR); storm deck not darkened by rain (MINOR); README claims failed (dusk afterglow, sun-disc close-up, dark storm deck, dawn mist) -> claims cap rule: score 8.0 -> 6.0, status fail, recoverable after fixes. audio: genuinely working end to end — live meters (master -26.9 dB, animals bus -31.7 LIVE, 8 species spatialised 34-347 m), morning-chorus hour crossfade (birds 0.76 at 8h vs 0.47 midday), correct storm drop-offs, clean dusk transition; the wave-1 'animals bus -inf' minor is CLOSED by live evidence; keep 8.0, status fail -> near-pass; nits: wind layer 1.10 exceeds the panel's 0-1 scale, README tod table drifts. simulation: BLOCKER-class major — in every staged showcase park the 193 staged animals vanish within ~5 days with born/died/left/predation all ~0 (an uncounted removal path; suspect reconcileFromWorld() sim.js:248 zeroing internal counts uncounted whenever world.animals is non-empty — true on the live world, false in the unit tests, which is why 80/80 passed); the engine itself is innocent (plain-world baseline keeps 372 animals thriving 90 days; the live park demo grew 80->87 with births). Boom preset fails all three of its claims (pop 1, arrivals 70 < 100, cash -214k) and the README 'healthy cash' overview claim regressed. Claims cap rule: 9.0 -> 6.0, status fail — recoverable after the reconcile fix + re-staged presets. All scored findings are content/code, not renderer artifacts.",
     "2026-09-08 park economy + gameplay fidelity RESOLVED (builder agent, orchestrator-verified): (5) the demo park now BREAKS EVEN at $15 — net +383 $/day 30-day mean, +1,630 day-30, cash 250k -> 261k (was negative at every price; new elasticity table $10/12/15/20/25/40/60 -> arrivals 272/272/265/187/142/81/49, net -782/-246/+383/-1,267/-2,709/-4,749/-6,064). Content, not price tricks: 11 species (+rhino/ostrich/warthog), 3 water pumps (fix the vital-water gate that crushed woodland/kopje quality), 12 tents (48 beds, was 32 bed-capped), 18 staff, replan() after build (day-1 arrivals 25 -> 131). (6) Births were multiplicative-blocked, now 10-15 per 30 days at every price (was 0): drive gate re-tuned clamp01((h-0.45)/0.3) (was (h-0.5)/0.5, unreachable for 6 of 8 species), breed rates x1.5. Two genuine integration bugs found and fixed along the way: buildings' catalogueRows() drops the water field so the sim fallback matched 'pump' as generic (pump row added with water:1), and the habitat probe could never see an in-habitat pump because zoning carves the footprint out of habitatId (_inHabitat now probes the 5x5 neighbourhood). Harness additions: organic poaching (day 97 at low morale), drought (water 1.0->0.65, grass -30%, recovery), disease (vet x1.27, 7 excess deaths), prosperity chain (rich 0.85/0 poached/+449 vs starved 0.46/3 poached/-4,515). Original 6 scenarios semantically unchanged (elasticity, water coupling, sightings 12 vs 0, bankruptcy day 17, determinism identical). Tests 80/80 (58 originals + 22 new), lint clean, spend(amount,reason)+getSpendLog added per docs/requests/tools.md. game.gameplayFidelity is still recorded as 8.0 until the round-3 re-evaluation re-scores it.",
     "2026-09-08 animals skin rework + leg re-verification RESOLVED (builder agent, orchestrator-verified): the elephant's skin bump field was rebuilt from regular groove stacks/lattices to an organic wrinkles() field — domain rotated by a slowly varying direction field, anisotropically stretched (crest lines run long instead of closing into round dimples), continuously frequency-jittered, second octave at non-harmonic x2.618, amplitude varying by region (deeper at neck/head/leg masses, calmest on the flank); the third regular lattice and the sin(P.z*7) body bands were removed. Verified with fresh macro (3.4-5 m) and showcase (12 m) close-ups at 2 tods: irregular mottled hide, no lattice, wrinkle density higher on legs than flank; grey tone, groove depths, normal strength unchanged; draw calls bit-identical before/after (shader-only change). Round-2 leg anatomy (taper, knee/hock swell, foot flare, calm normals) RE-VERIFIED and passed as-is. Known remaining (pre-existing, out of scope): faceted pale patches on rump/hip at 12 m from tube-normal discontinuities — geometry, recorded in README. Note: frame triangles at close now read 3.29 M because another module's dense grass loads in the showcase frame — not animals geometry (bit-identical before/after).",
     "2026-09-08 waterline sparkle + grass mottle/dirt cracks RESOLVED (builder + verifier agents, orchestrator-verified): the real-GPU cross-check was done FIRST and the sparkle PERSISTS on real hardware (AMD RX 5700 XT via ANGLE D3D11) — a genuine shader bug, not a SwiftShader artifact. Protocol note: default headless silently falls back to SwiftShader-Vulkan; real-GPU checks must force --use-angle=d3d11 (permanent utility tools/gpu-check.mjs added). Root cause: wet-band roughness 0.34 + mip-averaged detail normals = GGX speckle clusters on banks/pan rims. Fix (terrain material.js/water.js): wet roughness 0.50, +0.35 roughness floor over 200-800 m, detail normals flatten to 15% past 700 m, water glint x0.1 by 800 m, odd-angle tile rotations. Grass mottle + dirt cracks (textures.js): the streak stamp is now a locally-rotated domain-warped two-octave field with a patchy mask; cracks are a wobbled two-scale worley at half contrast; palette colours untouched. Verification: 11/11 checks PASS — real-GPU before/after shows day speckle gone (game + savannah overviews), game close 14 shows the squiggle stamp softened to tufted grain and the tiled crack web GONE, game overview draws/tris bit-identical (284/4,617,129), lint ok, zero tuning attempts needed. Night findings: the dotted 'fence rings' at 21.5h are pale-SAND ALBEDO, byte-identical before/after (max ~RGB 178,157,123) — never specular, pre-existing, unchanged, and out of terrain scope to remove; residual night sparkle on road lines is roads' reflective paint (roads' scope). Protocol catches: game captures MUST pin &speed=0 (first captures drifted to 16.9h and were re-taken); terrain-satcheck.png no longer exists on disk — palette was judged against the blind day baselines.",
@@ -75,15 +76,13 @@
     "environment": {
       "wave": 1,
       "domain": "nature",
-      "round": 4,
-      "score": 8.0,
-      "status": "near-pass",
+      "round": 5,
+      "score": 6.0,
+      "status": "fail",
       "errors": 0,
       "drawCalls": 44,
-      "reviewedBy": "orchestrator-verification",
-      "presetsSeen": [
-        "golden, night, overview (post-fix); round 4: night re-tuned + game close 21.5/14 + savannah night (2026-09-08); dawn/dusk/storm/overcast/close still pending a fresh pass"
-      ],
+      "reviewedBy": "critic-sweep",
+      "presetsSeen": "golden, night, overview (post-fix); round 4: night re-tuned + game close 21.5/14 + savannah night (2026-09-08); dawn/dusk/storm/overcast/close still pending a fresh pass; round 5 (critic sweep): dawn 6.3/5.6, dusk 18.7/19.6, storm 15/17.5, overcast 13/8.5, close 17/16/6.5 (2026-09-08)",
       "issues": [
         {
           "sev": "resolved",
@@ -106,8 +105,16 @@
           "text": "FIXED (integrator, follow-up) and verified against animals' own ground-level night screenshot: the single ceiling of 4 fixed golden hour but left true night essentially unlit black (no HemisphereLight exists in this architecture; ambient is entirely IBL-via-exposure). Gated a separate, higher night-only ceiling (12) on `isMoonKey`. Verified: night is now dim but clearly readable — grass, animal silhouettes, a waterhole with reflection, river and escarpment all visible, not blown white or crushed black. Re-verified after the sampler fix: no regression (env-after-night.png)."
         },
         {
+          "sev": "major",
+          "text": "Dusk shows no afterglow: at 18.7h (26 min after sunset) the sky is near-black while dawn at equal solar depression (5.6h) is excellent (scored 9). Staging yaw hides the glow, plus the documented single-scatter anti-solar gap. Fix: re-stage yaw toward the sunset azimuth and add a cheap multiple-scattering term."
+        },
+        {
+          "sev": "major",
+          "text": "Close preset shows no sun disc at 16-17h — just blown glow ('sun disc + corona close-up' README claim not reproduced). Fix: clamp disc luminance pre-tonemap."
+        },
+        {
           "sev": "minor",
-          "text": "Only golden/night/overview re-shot after the sampler fix; dawn/dusk/storm/overcast/close should get a fresh pass before a formal critic round."
+          "text": "Overcast keeps hard directional shadows at cloud 0.92 (cloudAtten leaves ~26% direct); storm deck stays bright instead of darkening with rain; dawn mist claimed but absent; README/showcase tod drift (close 17 vs 16). Claims cap: unreproduced claims cap the module at 6."
         }
       ],
       "good": "The single highest-leverage module in the project, twice over: the 2026-09-04 exposure-ceiling work, and the 2026-09-05 sampler aliasing fix that turned out to be the true root cause of the project-wide 'washed out toward white' systemic blocker — every sky-dependent colour (fog, horizon, cloud ambient, exposure input) had been computed from a sky 10,000x too dark. Sky, sun, moon, stars, clouds, rain, CSM all work; README now exists with the full API and root-cause history."
@@ -209,14 +216,14 @@
     "simulation": {
       "wave": 1,
       "domain": "sim",
-      "round": 2,
-      "score": 9.0,
-      "status": "pass",
+      "round": 3,
+      "score": 6.0,
+      "status": "fail",
       "errors": 0,
       "drawCalls": 2,
-      "reviewedBy": "orchestrator-verification",
+      "reviewedBy": "critic-sweep",
       "presetsSeen": [
-        "overview (DOM); round 2: full harness evidence — elasticity at 7 prices, births, poaching, drought, disease, prosperity, sightings, bankruptcy, determinism (2026-09-08)"
+        "overview (DOM); round 2: full harness evidence (2026-09-08); round 3 (critic sweep): boom 12, bust 12/9, close 16.5, night 22 (DOM)"
       ],
       "tests": {
         "file": "src/modules/simulation/test.mjs",
@@ -226,6 +233,14 @@
         "note": "58 original tests all hold + 22 new (births drive, room cap, replan, spend); same seed reproduces identical histories, different seed diverges"
       },
       "issues": [
+        {
+          "sev": "major",
+          "text": "BLOCKER-class (found by critic sweep 2026-09-08): in every staged showcase park the 193 staged animals vanish within ~5 days with born/died/left/predation all ~0 — an uncounted removal path. Suspect reconcileFromWorld() (sim.js:248-251) zeroes internal counts uncounted whenever world.animals is non-empty (true on the live world, false in unit tests — why 80/80 passed). Engine is innocent: plain-world baseline keeps 372 animals thriving 90 days, and the live park demo grew 80->87 with births. Fix: diff-and-count on reconcile + regression test 'staged pop ~= reported pop after N days'."
+        },
+        {
+          "sev": "major",
+          "text": "Boom preset fails all three of its claims (herds breed: 1 birth; arrivals lift: 70 < 100 base; cash climbs: -214k/60d) and the README overview 'healthy cash' claim regressed (-43k in the staged night park). Claims cap: unreproduced claims cap the module at 6."
+        },
         {
           "sev": "resolved",
           "text": "FIXED and demonstrated (2026-09-08): births = 0 was multiplicative — an unreachable happiness drive gate (6 of 8 species below (h-0.5)/0.5 > 0 due to the vital-water gate) times too-low breed rates. Drive gate re-tuned, breed rates x1.5, park pumps fix water quality at source; harness now shows 10-15 births per 30 days at every price with ecology intact (0 migrations, 3/3 lions, happiness 0.58-0.73). Poaching, drought, disease and the village-prosperity chain are now demonstrated by named harness scenarios. spend(amount,reason)/getSpendLog added per docs/requests/tools.md with tests."
@@ -244,14 +259,14 @@
     "audio": {
       "wave": 1,
       "domain": "audio",
-      "round": 1,
+      "round": 2,
       "score": 8.0,
-      "status": "fail",
+      "status": "near-pass",
       "errors": 0,
       "drawCalls": 0,
-      "reviewedBy": "orchestrator-integration",
+      "reviewedBy": "critic-sweep",
       "presetsSeen": [
-        "night (DOM + analyser)"
+        "night (DOM + analyser, wave 1); round 2 (critic sweep): overview 15/8h, storm 17, close 16.5/19.5 — live meters, 8 species spatialised 34-347 m (2026-09-08)"
       ],
       "issues": [
         {
@@ -265,6 +280,14 @@
         {
           "sev": "resolved",
           "text": "README.md written 2026-09-05 by the integrator (full API, sound table, buses, known gaps). Also fixed the live ui→audio key mismatch: ui called play('ui_click') but the sound table key is 'click' — the click silently played nothing before."
+        },
+        {
+          "sev": "resolved",
+          "text": "CLOSED (2026-09-08 critic sweep): the wave-1 'animals/vehicles/ui buses read -inf at capture' minor — the animals bus now reads -31.7 dB LIVE with 8 species spatialised 34-347 m and rings on terrain (audio-overview-auto-dom.png). Vehicles/ui remain documented gaps."
+        },
+        {
+          "sev": "minor",
+          "text": "Wind layer reads 1.10, exceeding the panel's stated 0-1 scale; README preset tod table drifts from showcase.js; close-preset all-species burst measures 53-269 m vs the claimed 15-40 m (burst placed from target, ear 72 m away — wording, not a defect)."
         }
       ],
       "good": "Fully synthesised and genuinely working: AudioContext running, master -20.2 dBFS with a populated 40 Hz-16 kHz spectrum, and a correct night layer mix (insects 1.00, frogs 1.00, birds 0.15, wind 0.41). Spatialised lion, hyena, nightjar and elephant rumble scheduled with real distances (35-265 m)."
@@ -813,6 +836,27 @@
       "round": 3,
       "score": 8.0,
       "by": "orchestrator-verification",
+      "date": "2026-09-08"
+    },
+    {
+      "module": "environment",
+      "round": 5,
+      "score": 6.0,
+      "by": "critic-sweep",
+      "date": "2026-09-08"
+    },
+    {
+      "module": "audio",
+      "round": 2,
+      "score": 8.0,
+      "by": "critic-sweep",
+      "date": "2026-09-08"
+    },
+    {
+      "module": "simulation",
+      "round": 3,
+      "score": 6.0,
+      "by": "critic-sweep",
       "date": "2026-09-08"
     }
   ]
