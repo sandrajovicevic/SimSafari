@@ -122,11 +122,14 @@ export function buildPark(world, rng, opts = {}) {
   } else addRoad([[0, 470], [0, 380]], 'dirt');
   world.roads.version++;
   if (o.biome && world.terrain) {
-    // paint a biome per habitat on a plain (test) world so the terrain-derived grass path is exercised
+    // paint a biome per habitat on a plain (test) world so the terrain-derived grass path is exercised.
+    // Threshold note: a savannah woodland sits on grass, not bare dirt — only genuinely sparse
+    // (< 0.35) habitats paint as dirt. Painting the 0.45-grass woodland as dirt (grass stat 0.08)
+    // made every grass-loving species in it migrate (measured 2026-09-08: 18 left over 90 days).
     const t = world.terrain, r = t.res, c = t.cell;
     for (const H of world.habitats.values()) {
       const [x0, z0, x1, z1] = H.rect;
-      const b = H.grass > 0.8 ? 0 : H.grass > 0.55 ? 1 : 2;
+      const b = H.grass > 0.8 ? 0 : H.grass > 0.35 ? 1 : 2;
       for (let z = z0; z < z1; z += c) for (let x = x0; x < x1; x += c) {
         const ix = Math.round((x + half) / c), iz = Math.round((z + half) / c);
         if (ix >= 0 && ix < r && iz >= 0 && iz < r) t.biome[iz * r + ix] = b;

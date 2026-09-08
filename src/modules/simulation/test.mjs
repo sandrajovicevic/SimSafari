@@ -163,6 +163,91 @@ console.log('staff & village');
   assert(before === 3, 'starting staff applied');
 }
 
+console.log('births mechanics, spend() and forced events (round 3)');
+{
+  // births: the well-watered baseline park (keepers hired, habitats above the drive gate) breeds
+  const breed = run('breed-90d', 21, {}, 90);
+  assert(breed.sim.totals.born > 10, `a well-kept park breeds freely over 90 days (${breed.sim.totals.born} born)`);
+  assert(bust.sim.totals.born < breed.sim.totals.born / 10, `no water anywhere → happiness under the breeding drive → almost no births (${bust.sim.totals.born} vs ${breed.sim.totals.born} per 90 days)`);
+  // the room term caps births at carrying capacity: 400 impala on the plains are at/over capacity
+  const full = makeSim(22);
+  const plains = [...full.world.habitats.values()][0];
+  full.sim.setPopulation(plains.id, 'impala', 400);
+  full.sim.runDays(10);
+  const plainsBorn = full.sim.reports.slice(-10).reduce((a, r) => a + ((r.habitats[plains.id]?.species?.impala?.born) ?? 0), 0);
+  const plainsNow = full.sim.getReport().habitats[plains.id]?.species?.impala?.n ?? -1;
+  assert(plainsBorn === 0 && plainsNow >= 0 && plainsNow <= 400 && full.sim.totals.born > 0,
+    `at capacity the room term stops births in that habitat (${plainsBorn} born, herd ${plainsNow}/400) while other herds keep breeding (${full.sim.totals.born} park-wide)`);
+  // replan(): a park built after module init plans day 1 from an empty park (attraction 0)
+  const rp = makeSim(23);
+  const before = rp.sim.getState().plannedArrivals;
+  assert(rp.sim.attraction === 0, 'before replan, the day-1 plan sees an empty park (attraction 0)');
+  const after = rp.sim.replan();
+  assert(rp.sim.attraction > 0.5, `replan() re-derives attraction from the live population (${rp.sim.attraction.toFixed(2)})`);
+  assert(after > before, `replan() plans day 1 from the real park (${before} → ${after} planned arrivals)`);
+  // spend(): the public economy API other modules charge through (docs/requests/tools.md #1)
+  const sp = makeSim(24);
+  const cash0 = sp.world.economy.cash;
+  const afterCharge = sp.sim.spend(1500, 'terraform:raise');
+  assert(afterCharge === cash0 - 1500 && sp.world.economy.cash === cash0 - 1500, 'spend(1500) charges cash and returns the new balance');
+  const afterRefund = sp.sim.spend(-300, 'terraform:lower');
+  assert(afterRefund === cash0 - 1200, 'a negative spend() refunds');
+  assert(sp.sim.spend(0, 'noop') === cash0 - 1200 && sp.sim.spend(NaN, 'noop') === cash0 - 1200, 'spend(0/NaN) is a no-op on cash');
+  sp.sim.runDays(1);
+  assert(sp.events.some((e) => e.n === 'economy:updated' && e.p.spend === 1500 && e.p.reason === 'terraform:raise'), 'spend() emits economy:updated with the amount + reason');
+  const srep = sp.sim.getReport();
+  assert(srep.spend['terraform:raise'] === 1500 && srep.spend['terraform:lower'] === -300, `the daily report groups the day\'s spend by reason (${JSON.stringify(srep.spend)})`);
+  const log = sp.sim.getSpendLog(5);
+  assert(log.length === 2 && log[0].reason === 'terraform:raise' && log[1].amount === -300, 'getSpendLog() returns the {day, amount, reason} history');
+  // injectEvent(): forced events walk the same paths as the daily roll
+  const dr = makeSim(25);
+  const river = [...dr.world.habitats.values()].find((h) => h.name === 'River Bend');
+  const wetBefore = dr.sim.habitatStat(river, true).water;
+  const dev = dr.sim.injectEvent('drought', { duration: 12, strength: 1 });
+  assert(dev && dev.type === 'drought' && dr.sim.getReport() === null, 'injectEvent(drought) records the event (report only appears at day end)');
+  const wetAfter = dr.sim.habitatStat(river, true).water;
+  assert(wetAfter < wetBefore - 0.2, `drought dries the habitat stats (water ${wetBefore.toFixed(2)} → ${wetAfter.toFixed(2)})`);
+  dr.sim.runDays(1);
+  assert(dr.sim.getState().activeEvents.some((e) => e.type === 'drought'), 'the drought is active the next day');
+  const dz = makeSim(26);
+  dz.sim.runDays(2);
+  const vetBase = dz.sim.getReport().expenseBreakdown.vet;
+  dz.sim.injectEvent('disease', { species: 'zebra', duration: 8 });
+  dz.sim.runDays(1);
+  assert(dz.sim.getReport().expenseBreakdown.vet > vetBase, `disease raises vet spend ($${fmt(vetBase)} → $${fmt(dz.sim.getReport().expenseBreakdown.vet)})`);
+  assert(dz.sim.getReport().activeEvents.some((e) => e.type === 'disease' && e.species === 'zebra'), 'activeEvents carries the diseased species');
+  const po = makeSim(27);
+  const lions0 = po.sim.count('lion');
+  const rep0 = po.sim.getState().reputation;
+  const pev = po.sim.injectEvent('poachers', { species: 'lion', n: 1 });
+  assert(pev && pev.type === 'poachers' && po.sim.count('lion') === lions0 - 1, `poachers remove the animal (${lions0} → ${po.sim.count('lion')} lions)`);
+  assert(po.sim.getState().reputation < rep0 && po.sim.totals.poached === 1, 'poaching costs reputation and books totals.poached');
+  assert(makeSim(28).sim.injectEvent('nope') === null, 'injectEvent rejects unknown types');
+  // a water pump inside a habitat must count even though zoning carves the building's own footprint
+  // out of the habitat (occupancy → NO_BUILD → habitatId 0): the stat attributes by neighbourhood
+  const wp = makeSim(29);
+  const wood = [...wp.world.habitats.values()].find((h) => h.name === 'Giraffe Woodland');
+  const g = wp.world.grid, gres = g.res;
+  const midCell = wood.cells[Math.floor(wood.cells.length / 2)];
+  const mix = midCell % gres, miz = (midCell - mix) / gres;
+  const centre = wp.world.cellCenter(mix, miz);
+  const hadMid = g.habitatId[midCell];
+  wp.world.buildings.set('pump_test', { id: 'pump_test', type: 'pump', x: centre.x, z: centre.z, rot: 0 });
+  g.habitatId[midCell] = 0; // simulate zoning carving the footprint under the pump
+  const stWith = wp.sim.habitatStat(wood, true);
+  assert(stWith.waterholes === 1 && stWith.water >= 1, `a pump inside a habitat is attributed despite the carved footprint (waterholes ${stWith.waterholes}, water ${stWith.water.toFixed(2)})`);
+  wp.world.buildings.delete('pump_test');
+  g.habitatId[midCell] = hadMid;
+  const gateCell = wp.world.cellAt(0, 0);
+  const hadGate = g.habitatId[gateCell.index];
+  g.habitatId[gateCell.index] = 0;
+  wp.world.buildings.set('pump_far', { id: 'pump_far', type: 'pump', x: 0, z: 0, rot: 0 });
+  const stFar = wp.sim.habitatStat(wood, true);
+  assert(stFar.waterholes === 0, `a pump outside every habitat is not attributed (waterholes ${stFar.waterholes})`);
+  wp.world.buildings.delete('pump_far');
+  g.habitatId[gateCell.index] = hadGate;
+}
+
 console.log('events');
 {
   const all = [];

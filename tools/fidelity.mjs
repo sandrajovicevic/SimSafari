@@ -34,7 +34,7 @@ const URL_BASE = args.url || process.env.SIM_URL || 'http://127.0.0.1:5173';
 const SEED = +(args.seed || 1);
 const DAYS = +(args.days || 30);
 const TIMEOUT = +(args.timeout || 120000);
-const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism']);
+const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep']);
 
 async function launch() {
   const gpuArgs = ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-gpu-sandbox', '--no-sandbox', '--autoplay-policy=no-user-gesture-required'];
@@ -234,6 +234,181 @@ async function scenarioDeterminism(browser, baselineA, baselineB) {
   return result;
 }
 
+// -------------------------------------------------------------------------------------------------
+// Round-3 scenarios (2026-09-08) — all ADDITIVE; the six scenarios above are untouched.
+// -------------------------------------------------------------------------------------------------
+
+/** Poaching: strip the guard (no rangers, poverty wages → morale collapses) and the organic,
+ * ranger-staffing-driven poach risk fires on its own — no forced events. 100 deterministic days. */
+async function scenarioPoaching(browser) {
+  const { page, errors } = await loadGame(browser, { label: 'poaching' });
+  const out = await page.evaluate(async (days) => {
+    const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+    for (const role of sim.staffRoles()) {
+      const st = sim.getState().staff[role];
+      if (role === 'ranger') sim.fire(role, st.n);
+      sim.setWage(role, 10);
+    }
+    const rep0 = sim.getState().reputation;
+    const animals0 = window.__SIM__.world.animals.size;
+    sim.markStart();
+    const poachEvents = [];
+    for (let i = 0; i < days / 10; i++) {
+      sim.runDays(10);
+      for (const r of sim.getReports(10)) for (const e of r.events) if (e.type === 'poachers') poachEvents.push({ day: e.day, text: e.text });
+      await new Promise((r) => setTimeout(r));
+    }
+    const st = sim.getState();
+    return {
+      poached: st.totals.poached, poachEvents,
+      moraleEnd: +st.morale.toFixed(3),
+      reputationStart: +rep0.toFixed(3), reputationEnd: +st.reputation.toFixed(3),
+      animalsStart: animals0, animalsEnd: window.__SIM__.world.animals.size,
+      lionsEnd: st.population.lion ?? 0, elephantsEnd: st.population.elephant ?? 0, rhinosEnd: st.population.rhino ?? 0,
+    };
+  }, 100);
+  const result = { scenario: 'poaching', result: out, consoleErrors: errors };
+  writeJson('poaching', result);
+  await page.close();
+  return result;
+}
+
+/** Drought: forced via the sim's debug injectEvent (same code path as the daily roll), then the
+ * effect chain is measured: habitat water/grass stats drop → habitat quality drops for the thirsty
+ * species → extra deaths; stats recover after the drought expires. */
+async function scenarioDrought(browser) {
+  const { page, errors } = await loadGame(browser, { label: 'drought' });
+  const out = await page.evaluate(async () => {
+    const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+    const world = window.__SIM__.world;
+    const stats = () => {
+      const o = {};
+      for (const h of world.habitats.values()) {
+        const st = sim.habitatStat(h, true);
+        o[h.name] = { water: +st.water.toFixed(2), grass: +st.grass.toFixed(2) };
+      }
+      return o;
+    };
+    sim.markStart();
+    const before = stats();
+    const ev = sim.injectEvent('drought', { duration: 14, strength: 1 });
+    sim.runDays(7);
+    const during = stats();
+    const midReports = sim.getReports(7);
+    const deathsDuring = midReports.reduce((a, r) => a + r.died, 0);
+    const activeDuring = midReports.every((r) => r.activeEvents.some((e) => e.type === 'drought'));
+    const habitatsMid = midReports[midReports.length - 1].habitats;
+    sim.runDays(21);
+    const after = stats();
+    const tail = sim.getReports(21);
+    const deathsAfter = tail.reduce((a, r) => a + r.died, 0);
+    return {
+      event: ev, notified: midReports.some((r) => r.events.some((e) => e.type === 'drought')), activeDuring,
+      before, during, after,
+      deathsDuring7: deathsDuring, deathsAfter21: deathsAfter,
+      wetlandQualityDuring: Object.values(habitatsMid).find((h) => /wetland/i.test(h.name))?.species?.hippo ?? null,
+      droughtOver: !sim.getState().activeEvents.some((e) => e.type === 'drought'),
+    };
+  });
+  const result = { scenario: 'drought', result: out, consoleErrors: errors };
+  writeJson('drought', result);
+  await page.close();
+  return result;
+}
+
+/** Disease: forced outbreak among the impala — vet spend roughly 2.5x for the species while active,
+ * measurable excess deaths, then it runs its course. */
+async function scenarioDisease(browser) {
+  const { page, errors } = await loadGame(browser, { label: 'disease' });
+  const out = await page.evaluate(async () => {
+    const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+    sim.markStart();
+    sim.runDays(2);
+    const vetBase = sim.getReports(2).reduce((a, r) => a + r.expenseBreakdown.vet, 0) / 2;
+    const ev = sim.injectEvent('disease', { species: 'impala', duration: 10 });
+    sim.runDays(10);
+    const during = sim.getReports(10);
+    const vetDuring = during.reduce((a, r) => a + r.expenseBreakdown.vet, 0) / 10;
+    let impalaDeaths = 0;
+    for (const r of during) for (const h of Object.values(r.habitats)) impalaDeaths += h.species?.impala?.died ?? 0;
+    sim.runDays(14);
+    const afterDied = sim.getReports(14).reduce((a, r) => a + r.died, 0);
+    return {
+      event: ev, vetBasePerDay: Math.round(vetBase), vetDuringPerDay: Math.round(vetDuring),
+      vetMultiple: +(vetDuring / Math.max(1, vetBase)).toFixed(2),
+      impalaDeathsDuring: impalaDeaths, parkDeathsAfter: afterDied,
+      diseaseOver: !sim.getState().activeEvents.some((e) => e.type === 'disease'),
+      impalaEnd: sim.getState().population.impala ?? 0,
+    };
+  });
+  const result = { scenario: 'disease', result: out, consoleErrors: errors };
+  writeJson('disease', result);
+  await page.close();
+  return result;
+}
+
+/** Village prosperity: the same park run rich (volume price, fair wages) vs starved ($60 tickets,
+ * poverty wages) — prosperity, feed cost per animal (the prosperity multiplier) and the organic
+ * poach exposure all move together. Two fresh pages, both deterministic on the seed. */
+async function scenarioProsperity(browser) {
+  const run = async (label, starved) => {
+    const { page, errors } = await loadGame(browser, { label });
+    const r = await page.evaluate(async (starved) => {
+      const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+      if (starved) {
+        sim.setTicketPrice(60);
+        for (const role of sim.staffRoles()) sim.setWage(role, 10);
+      }
+      const animals0 = Object.values(sim.getState().population || {}).reduce((a, b) => a + b, 0);
+      sim.markStart();
+      sim.runDays(45);
+      const rs = sim.getReports(45);
+      const last = rs[rs.length - 1];
+      const st = sim.getState();
+      return {
+        arrivalsPerDay: +(rs.reduce((a, r) => a + r.visitors, 0) / rs.length).toFixed(1),
+        prosperity: last.prosperity, morale: last.morale, efficiency: last.efficiency,
+        feedPerDay: Math.round(rs.reduce((a, r) => a + r.expenseBreakdown.feed, 0) / rs.length),
+        feedPerAnimalPerDay: +(rs.reduce((a, r) => a + r.expenseBreakdown.feed, 0) / rs.length / Math.max(1, animals0)).toFixed(2),
+        poached: st.totals.poached,
+        netPerDay: Math.round(rs.reduce((a, r) => a + r.net, 0) / rs.length),
+        consoleErrors: [],
+      };
+    }, starved);
+    await page.close();
+    return { ...r, consoleErrors: errors };
+  };
+  const rich = await run('prosperity-rich', false);
+  const starved = await run('prosperity-starved', true);
+  const out = {
+    rich, starved,
+    chain: {
+      prosperityRisesWithSuccess: rich.prosperity > starved.prosperity + 0.15,
+      feedCheaperWhenProsperous: rich.feedPerAnimalPerDay < starved.feedPerAnimalPerDay,
+      poachExposureFallsWithProsperity: rich.poached <= starved.poached,
+    },
+  };
+  const result = { scenario: 'prosperity', result: out, consoleErrors: [...rich.consoleErrors, ...starved.consoleErrors] };
+  writeJson('prosperity', result);
+  return result;
+}
+
+/** Price sweep around the volume price (the elasticity scenarios' $10/25/40/60 with $12/15/20 added):
+ * where the price-factor clamp (2.0 at ≈$12) stops paying, and whether any price breaks even. */
+async function scenarioPriceSweep(browser) {
+  const consoleErrors = [];
+  const prices = [];
+  for (const price of [12, 15, 20]) {
+    console.log(`[price-sweep] 30 days @ $${price}`);
+    const r = await scenarioBaseline(browser, { price, label: `sweep-${price}` });
+    consoleErrors.push(...(r.consoleErrors || []));
+    prices.push({ price, arrivalsPerDay: r.result.arrivalsPerDay, incomePerDay: r.result.incomePerDay, expensesPerDay: r.result.expensesPerDay, netPerDay: r.result.netPerDay, satisfactionEnd: r.result.satisfactionEnd, born: r.result.born, left: r.result.left });
+  }
+  const result = { scenario: 'price-sweep', result: { prices }, consoleErrors };
+  writeJson('price-sweep', result);
+  return result;
+}
+
 function writeJson(name, data) {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const p = path.join(OUT_DIR, `fidelity-${name}.json`);
@@ -280,6 +455,30 @@ function writeJson(name, data) {
       const b2 = await scenarioBaseline(browser, { price: 25, label: 'determinism-rerun' });
       results.determinism = await scenarioDeterminism(browser, base, b2);
       console.log(JSON.stringify(results.determinism, null, 2));
+    }
+    if (SCENARIOS.includes('poaching')) {
+      console.log('[poaching] rangers fired + poverty wages, 100 organic days');
+      results.poaching = await scenarioPoaching(browser);
+      console.log(JSON.stringify(results.poaching.result, null, 2));
+    }
+    if (SCENARIOS.includes('drought')) {
+      console.log('[drought] injected 14-day drought, stats + quality + recovery');
+      results.drought = await scenarioDrought(browser);
+      console.log(JSON.stringify(results.drought.result, null, 2));
+    }
+    if (SCENARIOS.includes('disease')) {
+      console.log('[disease] injected impala outbreak, vet + deaths + recovery');
+      results.disease = await scenarioDisease(browser);
+      console.log(JSON.stringify(results.disease.result, null, 2));
+    }
+    if (SCENARIOS.includes('prosperity')) {
+      console.log('[prosperity] rich vs starved park, 45 days each');
+      results.prosperity = await scenarioProsperity(browser);
+      console.log(JSON.stringify(results.prosperity.result, null, 2));
+    }
+    if (SCENARIOS.includes('price-sweep')) {
+      results['price-sweep'] = await scenarioPriceSweep(browser);
+      console.log(JSON.stringify(results['price-sweep'].result, null, 2));
     }
   } finally {
     await browser.close();

@@ -15,8 +15,10 @@ time speed 0/1/3/10 comes from `world.time`.
 * `tables.js` — all balance numbers (species economics, staff roles/wages, arrival model constants).
 * `worldgen.js` — synthetic park builder used by its own showcase (a self-contained park so the
   module can be screenshotted and tuned alone).
-* `test.mjs` — 58 deterministic tests (`node src/modules/simulation/test.mjs`), including a
-  same-seed-reproduces-identical-90-day-history determinism check and a different-seed-diverges check.
+* `test.mjs` — deterministic tests (`node src/modules/simulation/test.mjs`), including a
+  same-seed-reproduces-identical-90-day-history determinism check and a different-seed-diverges check,
+  plus round-3 births-mechanics tests (breeding needs happiness, the room term caps herds at capacity,
+  replan(), spend(), injectEvent).
 * Habitat quality per species = weighted match of the species' preferences (grass/tree density,
   water proximity, roughness, herd space, predator distance) against each habitat's measured
   properties; `zoning.getHabitatQuality` delegates here.
@@ -35,8 +37,20 @@ setTicketPrice(p)                                 // clamped 0..500
 takeLoan(amount) / repayLoan(amount)              // ~0.0004/day interest accrual
 hire(role, n=1) / fire(role, n=1)                 // 'ranger' 'keeper' 'guide' 'maintenance' 'lodge'
 setWage(role, wage) / staffRoles() → string[]
+spend(amount, reason) → cash | null               // charge (+) / refund (−) — the public economy API
+                                                  //   other modules use instead of writing
+                                                  //   world.economy.cash (docs/requests/tools.md #1);
+                                                  //   logs {day, amount, reason}, emits economy:updated
+getSpendLog(n=50) → [{day, amount, reason}]
 buyAnimals(species, habitatId, n=1) → {ok, cost}  // spawns via the animals hook in a habitat cell
 setPopulation(habitatId, species, n)
+habitatStat(habitat, force) → stats               // measured water/shade/cover/grass/roughness/area
+                                                  //   behind scoreHabitat (cached per day)
+replan() → plannedArrivals                        // re-plan today from the live state (demo/debug:
+                                                  //   a park built after init() spawns animals and sets
+                                                  //   its price after day 1 was already planned)
+injectEvent(type, opts) → event | null            // debug/harness: force 'drought' | 'disease' |
+                                                  //   'poachers' through the normal event paths
 speed(n) / reset(seed) / runDays(n) / markStart()
 species(name) → row / allSpecies() → row[]        // sim-side table: price, feed, vet, space, prefs
 getSim() → Simulation                             // raw instance (debugging / composers:
@@ -47,11 +61,15 @@ getSim() → Simulation                             // raw instance (debugging /
 `report` shape (sim.js): `{day, cash, income, expenses, net, incomeBreakdown, expenseBreakdown,
 visitors, inParkPeak, lodgeNights, satisfaction, satisfactionBreakdown, reputation, attraction,
 population, happiness, habitats, born, died, left, predation, staff, staffCoverage, morale,
-prosperity, efficiency, season, weather, loans, bankrupt, events, activeEvents}`.
+prosperity, efficiency, spend, season, weather, loans, bankrupt, events, activeEvents}`.
 
 Key balance numbers (tables.js): base arrivals 100/day at reputation 0.5; reference price 25 with
-elasticity 1.3; group size 4 per vehicle; tours 4 h; gate open 7–16; bankruptcy at cash < −50,000
-for 5 consecutive days; animals migrate after 3 consecutive days unhappy (< 0.30).
+elasticity 1.3 (the price factor clamps at 2.0, i.e. ≈$12 and below all arrive the same); group size
+4 per vehicle; tours 4 h; gate open 7–16; bankruptcy at cash < −50,000 for 5 consecutive days;
+animals migrate after 3 consecutive days unhappy (< 0.30); breeding drive ramps from happiness 0.45
+to full at 0.75 (round-3 retune: the old hard 0.5 gate × the old 0.0015–0.008/day breed rates
+measured 0 births in the demo's first month — births per animal per day at full happiness now
+0.002–0.011 by species, and the room term 1 − n/capacity still caps herds at carrying capacity).
 
 ### Events
 
@@ -80,8 +98,14 @@ headless with none of them present (that is how its tests run).
 
 ## Measured
 
-* Tests: **58 passed, 0 failed** (`node src/modules/simulation/test.mjs`), determinism verified:
-  the same seed reproduces an identical 90-day history (cash d90 $326,597); a different seed diverges.
+* Tests: **80 passed, 0 failed** (`node src/modules/simulation/test.mjs`; 58 pre-round-3 — all
+  still passing — plus 22 round-3 tests for the births mechanics, room cap, replan(), spend() and
+  injectEvent), determinism verified: the same seed reproduces an identical 90-day history; a
+  different seed diverges.
+* Live-park fidelity harness (`tools/fidelity.mjs`, 2026-09-08): **$15/day ticket breaks even**
+  (net +$383/day mean over 30 days, day-30 net +$1,630), **10–15 births per 30 days at every
+  measured price (was 0)**, 0 migrations, predators alive, poaching/drought/disease/prosperity
+  chains all demonstrated — see the park README for the full table.
 * Draw calls of the module itself: **2** (empty group + one helper); all visible geometry belongs to
   other modules.
 

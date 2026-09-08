@@ -9,19 +9,26 @@
  * breed = births per animal per day at full happiness. lifespan in days. feed/vet = $ per animal per day.
  * rarity = visitor appeal (0..1). visibility = how easy it is to spot from a vehicle. nocturnal = night activity share.
  */
+// breed rates retuned 2026-09-08 (round 3): the old 0.0015–0.008/day values were calibrated so that
+// a herd at happiness ~0.55 (drive 0.1 under the old 0.5 gate) produced ~0.07 expected births per
+// month — the demo park measured 0 births in 30 days at every price point (tools/fidelity.mjs).
+// Rates are now ~1.5x and the drive gate ramps from happiness 0.45 (sim.js): a moderately happy
+// herd (h ≈ 0.6–0.7) adds a visible ~1–3 individuals per month while the room term (1 − n/capacity)
+// still caps growth at carrying capacity, and a full 90 days of growth stays inside the feed bill
+// (test.mjs: "a well-designed park makes money"). Births per animal per day at FULL happiness = breed.
 export const SPECIES = Object.freeze({
-  elephant:   { diet: 'mixed',    rarity: 0.90, visibility: 1.00, herd: 8,  space: 5000,  prefs: { grass: 0.50, trees: 0.60, water: 0.80, roughness: 0.20, cover: 0.30 }, predatorTolerance: 0.90, breed: 0.0015, lifespan: 60 * 365, feed: 60, vet: 8, price: 12000, nocturnal: 0.30 },
-  giraffe:    { diet: 'browser',  rarity: 0.80, visibility: 0.95, herd: 6,  space: 3500,  prefs: { grass: 0.40, trees: 0.80, water: 0.30, roughness: 0.15, cover: 0.30 }, predatorTolerance: 0.60, breed: 0.0030, lifespan: 25 * 365, feed: 30, vet: 5, price: 6000,  nocturnal: 0.20 },
-  zebra:      { diet: 'grazer',   rarity: 0.50, visibility: 0.80, herd: 12, space: 1200,  prefs: { grass: 0.85, trees: 0.20, water: 0.60, roughness: 0.15, cover: 0.15 }, predatorTolerance: 0.30, breed: 0.0050, lifespan: 20 * 365, feed: 15, vet: 3, price: 1500,  nocturnal: 0.20 },
-  wildebeest: { diet: 'grazer',   rarity: 0.40, visibility: 0.75, herd: 20, space: 900,   prefs: { grass: 0.90, trees: 0.15, water: 0.60, roughness: 0.10, cover: 0.10 }, predatorTolerance: 0.35, breed: 0.0060, lifespan: 18 * 365, feed: 14, vet: 3, price: 1000,  nocturnal: 0.25 },
-  buffalo:    { diet: 'grazer',   rarity: 0.55, visibility: 0.80, herd: 15, space: 1500,  prefs: { grass: 0.80, trees: 0.30, water: 0.80, roughness: 0.20, cover: 0.30 }, predatorTolerance: 0.60, breed: 0.0040, lifespan: 20 * 365, feed: 22, vet: 4, price: 2500,  nocturnal: 0.30 },
-  lion:       { diet: 'predator', rarity: 0.95, visibility: 0.60, herd: 6,  space: 9000,  prefs: { grass: 0.50, trees: 0.40, water: 0.40, roughness: 0.30, cover: 0.50 }, predatorTolerance: 1.00, breed: 0.0030, lifespan: 15 * 365, feed: 45, vet: 7, price: 9000,  nocturnal: 0.50 },
-  cheetah:    { diet: 'predator', rarity: 0.85, visibility: 0.50, herd: 2,  space: 12000, prefs: { grass: 0.70, trees: 0.20, water: 0.30, roughness: 0.10, cover: 0.30 }, predatorTolerance: 1.00, breed: 0.0020, lifespan: 12 * 365, feed: 30, vet: 6, price: 8000,  nocturnal: 0.10 },
-  hippo:      { diet: 'grazer',   rarity: 0.70, visibility: 0.70, herd: 8,  space: 1000,  prefs: { grass: 0.60, trees: 0.20, water: 1.00, roughness: 0.05, cover: 0.20 }, predatorTolerance: 0.90, breed: 0.0030, lifespan: 40 * 365, feed: 40, vet: 6, price: 7000,  nocturnal: 0.60 },
-  rhino:      { diet: 'grazer',   rarity: 0.95, visibility: 0.85, herd: 3,  space: 5000,  prefs: { grass: 0.70, trees: 0.40, water: 0.60, roughness: 0.30, cover: 0.40 }, predatorTolerance: 0.80, breed: 0.0015, lifespan: 40 * 365, feed: 45, vet: 8, price: 15000, nocturnal: 0.30 },
-  warthog:    { diet: 'mixed',    rarity: 0.30, visibility: 0.60, herd: 5,  space: 600,   prefs: { grass: 0.70, trees: 0.30, water: 0.40, roughness: 0.20, cover: 0.40 }, predatorTolerance: 0.30, breed: 0.0080, lifespan: 12 * 365, feed: 8,  vet: 2, price: 400,   nocturnal: 0.10 },
-  ostrich:    { diet: 'mixed',    rarity: 0.50, visibility: 0.85, herd: 8,  space: 1200,  prefs: { grass: 0.70, trees: 0.10, water: 0.20, roughness: 0.10, cover: 0.10 }, predatorTolerance: 0.40, breed: 0.0060, lifespan: 35 * 365, feed: 10, vet: 2, price: 900,   nocturnal: 0.10 },
-  impala:     { diet: 'browser',  rarity: 0.35, visibility: 0.70, herd: 25, space: 500,   prefs: { grass: 0.60, trees: 0.50, water: 0.50, roughness: 0.20, cover: 0.40 }, predatorTolerance: 0.25, breed: 0.0070, lifespan: 12 * 365, feed: 7,  vet: 2, price: 500,   nocturnal: 0.15 },
+  elephant:   { diet: 'mixed',    rarity: 0.90, visibility: 1.00, herd: 8,  space: 5000,  prefs: { grass: 0.50, trees: 0.60, water: 0.80, roughness: 0.20, cover: 0.30 }, predatorTolerance: 0.90, breed: 0.0020, lifespan: 60 * 365, feed: 60, vet: 8, price: 12000, nocturnal: 0.30 },
+  giraffe:    { diet: 'browser',  rarity: 0.80, visibility: 0.95, herd: 6,  space: 3500,  prefs: { grass: 0.40, trees: 0.80, water: 0.30, roughness: 0.15, cover: 0.30 }, predatorTolerance: 0.60, breed: 0.0040, lifespan: 25 * 365, feed: 30, vet: 5, price: 6000,  nocturnal: 0.20 },
+  zebra:      { diet: 'grazer',   rarity: 0.50, visibility: 0.80, herd: 12, space: 1200,  prefs: { grass: 0.85, trees: 0.20, water: 0.60, roughness: 0.15, cover: 0.15 }, predatorTolerance: 0.30, breed: 0.0070, lifespan: 20 * 365, feed: 15, vet: 3, price: 1500, nocturnal: 0.20 },
+  wildebeest: { diet: 'grazer',   rarity: 0.40, visibility: 0.75, herd: 20, space: 900,   prefs: { grass: 0.90, trees: 0.15, water: 0.60, roughness: 0.10, cover: 0.10 }, predatorTolerance: 0.35, breed: 0.0080, lifespan: 18 * 365, feed: 14, vet: 3, price: 1000, nocturnal: 0.25 },
+  buffalo:    { diet: 'grazer',   rarity: 0.55, visibility: 0.80, herd: 15, space: 1500,  prefs: { grass: 0.80, trees: 0.30, water: 0.80, roughness: 0.20, cover: 0.30 }, predatorTolerance: 0.60, breed: 0.0055, lifespan: 20 * 365, feed: 22, vet: 4, price: 2500, nocturnal: 0.30 },
+  lion:       { diet: 'predator', rarity: 0.95, visibility: 0.60, herd: 6,  space: 9000,  prefs: { grass: 0.50, trees: 0.40, water: 0.40, roughness: 0.30, cover: 0.50 }, predatorTolerance: 1.00, breed: 0.0040, lifespan: 15 * 365, feed: 45, vet: 7, price: 9000,  nocturnal: 0.50 },
+  cheetah:    { diet: 'predator', rarity: 0.85, visibility: 0.50, herd: 2,  space: 12000, prefs: { grass: 0.70, trees: 0.20, water: 0.30, roughness: 0.10, cover: 0.30 }, predatorTolerance: 1.00, breed: 0.0030, lifespan: 12 * 365, feed: 30, vet: 6, price: 8000,  nocturnal: 0.10 },
+  hippo:      { diet: 'grazer',   rarity: 0.70, visibility: 0.70, herd: 8,  space: 1000,  prefs: { grass: 0.60, trees: 0.20, water: 1.00, roughness: 0.05, cover: 0.20 }, predatorTolerance: 0.90, breed: 0.0040, lifespan: 40 * 365, feed: 40, vet: 6, price: 7000,  nocturnal: 0.60 },
+  rhino:      { diet: 'grazer',   rarity: 0.95, visibility: 0.85, herd: 3,  space: 5000,  prefs: { grass: 0.70, trees: 0.40, water: 0.60, roughness: 0.30, cover: 0.40 }, predatorTolerance: 0.80, breed: 0.0020, lifespan: 40 * 365, feed: 45, vet: 8, price: 15000, nocturnal: 0.30 },
+  warthog:    { diet: 'mixed',    rarity: 0.30, visibility: 0.60, herd: 5,  space: 600,   prefs: { grass: 0.70, trees: 0.30, water: 0.40, roughness: 0.20, cover: 0.40 }, predatorTolerance: 0.30, breed: 0.0110, lifespan: 12 * 365, feed: 8,  vet: 2, price: 400,   nocturnal: 0.10 },
+  ostrich:    { diet: 'mixed',    rarity: 0.50, visibility: 0.85, herd: 8,  space: 1200,  prefs: { grass: 0.70, trees: 0.10, water: 0.20, roughness: 0.10, cover: 0.10 }, predatorTolerance: 0.40, breed: 0.0080, lifespan: 35 * 365, feed: 10, vet: 2, price: 900,   nocturnal: 0.10 },
+  impala:     { diet: 'browser',  rarity: 0.35, visibility: 0.70, herd: 25, space: 500,   prefs: { grass: 0.60, trees: 0.50, water: 0.50, roughness: 0.20, cover: 0.40 }, predatorTolerance: 0.25, breed: 0.0100, lifespan: 12 * 365, feed: 7,  vet: 2, price: 500,   nocturnal: 0.15 },
 });
 
 export const SPECIES_ORDER = Object.freeze(Object.keys(SPECIES));
@@ -41,6 +48,11 @@ export const BUILDINGS = Object.freeze([
   { key: 'tower',      match: ['tower', 'lookout'],             upkeep: 40, closeness: 0.10 },
   { key: 'ranger',     match: ['ranger', 'patrol', 'station'],  upkeep: 90, patrol: 1 },
   { key: 'waterhole',  match: ['water', 'pond', 'dam', 'pan'],  upkeep: 40, water: 0.30 },
+  // water pump & trough (buildings catalogue 'pump'): the catalogue intends water: 1 — a pump fully
+  // waters its habitat — but its catalogueRows() serialization drops the effect fields, so this
+  // fallback row is what the sim actually reads (measured 2026-09-08: pumps were invisible and the
+  // demo's dry habitats stayed below the breeding drive).
+  { key: 'pump',       match: ['pump', 'trough'],               upkeep: 130, water: 1 },
   { key: 'shop',       match: ['shop', 'kiosk', 'store', 'souvenir'], upkeep: 60, shop: 1 },
   { key: 'restaurant', match: ['restaurant', 'cafe', 'diner'],  upkeep: 120, lodgeQuality: 0.10, shop: 0.5 },
   { key: 'vet',        match: ['vet', 'clinic', 'hospital'],    upkeep: 150, vet: 1 },

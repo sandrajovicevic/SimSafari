@@ -151,12 +151,17 @@ function regionNear(zoning, world, x, z, maxDist, claimed) {
 // ---------------------------------------------------------------------------------------------
 
 const SPECIES = {
-  plains: [['zebra', 10], ['wildebeest', 10], ['impala', 14]],
-  browsers: [['giraffe', 4], ['elephant', 5]],
+  // Round-3 content growth (2026-09-08): 8 → 11 species. Variety is the satisfaction term the sim
+  // weights highest that content can move (variety = Σ sighting-probability / 7), and attraction
+  // feeds arrivals; rhino/ostrich/warthog are cheap feed, small herds, and their enclosure space
+  // clears tables.space with room to breed (plains ≈ 31 k m²: rhino cap 6, ostrich cap 26).
+  plains: [['zebra', 10], ['wildebeest', 10], ['impala', 14], ['ostrich', 6], ['rhino', 2]],
+  browsers: [['giraffe', 4], ['elephant', 5], ['warthog', 6]],
   // the pride shares its kopje habitat with impala: the sim's predator score is prey/(predators×8),
   // so a prey-less kopje is unliveable by construction (the round-1 demo lost all 5 lions inside
   // 12 days). predation is gentle — one kill per lion per ~33 days (tables.predationRate 0.03).
-  predators: [['lion', 3], ['impala', 10]],
+  // Impala 10 → 14 lifts the lions' prey score 0.42 → 0.58 now that a pump lifted their water term.
+  predators: [['lion', 3], ['impala', 14]],
   // herds are sized to their enclosure: the wetland region is bankside strips (the channel is
   // NO_BUILD), and buffalo at 8 in it carried a −0.6 overcrowding penalty on happiness
   wetland: [['hippo', 3], ['buffalo', 3]],
@@ -311,12 +316,22 @@ export async function buildPark(ctx, opts = {}) {
     placed.ranger = placeBuilding(ctx, buildings, 'ranger', lodgeAnchor.x, lodgeAnchor.z + 55, rng, { spread: 55 });
     placed.parking = placeBuilding(ctx, buildings, 'parking', lodgeAnchor.x + 15, lodgeAnchor.z - 55, rng, { spread: 55 });
     // tented camp: the lodge's 24 beds turn away most of the 35 % of arrivals that want a night
-    // (CONST.lodgeShare); tents add 2 beds each at ~5 % of the lodge's upkeep — the cheapest beds in
-    // the catalogue and the most SimSafari-1998 silhouette in it.
+    // (CONST.lodgeShare) — at the volume price (~230-260 arrivals/day) demand is ~56 nights, so the
+    // demo pitches 12 tents (24 cheap beds at $95/day each vs ~$100/night earned; every tent is
+    // ~+10 $/day when the bed cap binds, and the cap binds all month). Round 3: 4 → 12.
     placed.tents = [];
-    for (const [dx, dz] of [[-58, -20], [-52, 12], [-30, 32], [22, 30]]) {
+    for (const [dx, dz] of [[-58, -20], [-52, 12], [-30, 32], [22, 30], [45, -15], [38, 22], [-12, -42], [60, -2], [-45, -45], [55, 15], [-35, 50], [70, -15]]) {
       const t = placeBuilding(ctx, buildings, 'tent', lodgeAnchor.x + dx, lodgeAnchor.z + dz, rng, { spread: 26 });
       if (t) placed.tents.push(t);
+    }
+
+    // Water pumps in the three habitats the terrain doesn't water (the wetland has the river): the
+    // catalogue's `water: 1` is exactly what the sim's habitatStat adds to a habitat's water stat,
+    // and the vital-water gate had crushed those habitats to q 0.16–0.30 (elephants/lions below the
+    // breeding drive, one dry season from migrating). SimSafari-1998's own lever: you kept animals
+    // by placing water sources. Must precede step 8's resolveRegions (flatten re-floods zones).
+    for (const [key, anchor] of [['pumpPlains', plainsAnchor], ['pumpBrowsers', browsersAnchor], ['pumpPredators', predatorsAnchor]]) {
+      if (anchor) placed[key] = placeBuilding(ctx, buildings, 'pump', anchor.x, anchor.z, rng, { spread: 24 });
     }
 
     // hide overlooking the wetland, from beside its access spur, facing the water
@@ -410,20 +425,23 @@ export async function buildPark(ctx, opts = {}) {
   // ---- 8b. opening economy: a staffed park at volume pricing -----------------------------------------
   // Zero staff means zero animal care (happiness = quality × (0.7 + 0.3·care)), which parks every
   // marginal habitat one dry season from the 3-day migration threshold; keepers are what make births
-  // possible. Ticket price: the arrival model's elasticity makes total revenue peak BELOW the
-  // reference price — lodge + shop income scale with arrivals while tickets scale with price
-  // (measured 2026-09-06, tools/fidelity.mjs: $10 → 269 arrivals, +$155/day; $25 → 130, −$71/day;
-  // $60 → 44, −$2,740/day). The demo opens cheap and busy; reputation ramps from there.
+  // possible. Ticket price: the arrival model's price factor clamps at 2.0 (≈ $12 and below all
+  // arrive identically), so $15 sells the same crowds for +50 % at the gate vs $10 while staying
+  // under the fair-price line (fairness = 1 down to ~$50 attraction-adjusted) — measured
+  // 2026-09-08, tools/fidelity.mjs price-sweep. The demo opens cheap and busy; reputation ramps
+  // from there. replan() re-plans day 1 AFTER the animals/price/staff exist — without it day 1 is
+  // planned from the empty init-time park (attraction 0, ~25 arrivals).
   let staffed = 0;
   if (simulation) {
-    simulation.setTicketPrice(10);
+    simulation.setTicketPrice(15);
     const nAnim = Object.values(report.animals).reduce((s, n) => s + n, 0);
     const hire = (role, n) => { if (n > 0) { try { simulation.hire(role, n); staffed += n; } catch {} } };
-    hire('keeper', Math.max(2, Math.ceil(nAnim / 20)));   // one keeper per 20 animals
-    hire('guide', 4);                                     // ~250 arrivals/day at the volume price
-    hire('maintenance', 2);                               // ~10 buildings + ~7 km of road
+    hire('keeper', Math.max(2, Math.ceil(nAnim / 20)));   // one keeper per 20 animals (≈80 → 4)
+    hire('guide', 7);                                     // full coverage at ~280 arrivals/day
+    hire('maintenance', 2);                               // ~19 buildings + ~7 km of road (deliberately under: wages)
     hire('lodge', 3);                                     // lodge + tented camp beds
     hire('ranger', 2);                                    // poaching suppression across 4 habitats
+    try { simulation.replan?.(); } catch {}
     report.staff = staffed;
   }
   if (sim) { try { sim.markStart(); } catch {} }

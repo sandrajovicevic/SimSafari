@@ -3,6 +3,7 @@
   "wave": 3,
   "passThreshold": 8.5,
   "notes": [
+    "2026-09-08 park economy + gameplay fidelity RESOLVED (builder agent, orchestrator-verified): (5) the demo park now BREAKS EVEN at $15 — net +383 $/day 30-day mean, +1,630 day-30, cash 250k -> 261k (was negative at every price; new elasticity table $10/12/15/20/25/40/60 -> arrivals 272/272/265/187/142/81/49, net -782/-246/+383/-1,267/-2,709/-4,749/-6,064). Content, not price tricks: 11 species (+rhino/ostrich/warthog), 3 water pumps (fix the vital-water gate that crushed woodland/kopje quality), 12 tents (48 beds, was 32 bed-capped), 18 staff, replan() after build (day-1 arrivals 25 -> 131). (6) Births were multiplicative-blocked, now 10-15 per 30 days at every price (was 0): drive gate re-tuned clamp01((h-0.45)/0.3) (was (h-0.5)/0.5, unreachable for 6 of 8 species), breed rates x1.5. Two genuine integration bugs found and fixed along the way: buildings' catalogueRows() drops the water field so the sim fallback matched 'pump' as generic (pump row added with water:1), and the habitat probe could never see an in-habitat pump because zoning carves the footprint out of habitatId (_inHabitat now probes the 5x5 neighbourhood). Harness additions: organic poaching (day 97 at low morale), drought (water 1.0->0.65, grass -30%, recovery), disease (vet x1.27, 7 excess deaths), prosperity chain (rich 0.85/0 poached/+449 vs starved 0.46/3 poached/-4,515). Original 6 scenarios semantically unchanged (elasticity, water coupling, sightings 12 vs 0, bankruptcy day 17, determinism identical). Tests 80/80 (58 originals + 22 new), lint clean, spend(amount,reason)+getSpendLog added per docs/requests/tools.md. game.gameplayFidelity is still recorded as 8.0 until the round-3 re-evaluation re-scores it.",
     "2026-09-08 animals skin rework + leg re-verification RESOLVED (builder agent, orchestrator-verified): the elephant's skin bump field was rebuilt from regular groove stacks/lattices to an organic wrinkles() field — domain rotated by a slowly varying direction field, anisotropically stretched (crest lines run long instead of closing into round dimples), continuously frequency-jittered, second octave at non-harmonic x2.618, amplitude varying by region (deeper at neck/head/leg masses, calmest on the flank); the third regular lattice and the sin(P.z*7) body bands were removed. Verified with fresh macro (3.4-5 m) and showcase (12 m) close-ups at 2 tods: irregular mottled hide, no lattice, wrinkle density higher on legs than flank; grey tone, groove depths, normal strength unchanged; draw calls bit-identical before/after (shader-only change). Round-2 leg anatomy (taper, knee/hock swell, foot flare, calm normals) RE-VERIFIED and passed as-is. Known remaining (pre-existing, out of scope): faceted pale patches on rump/hip at 12 m from tube-normal discontinuities — geometry, recorded in README. Note: frame triangles at close now read 3.29 M because another module's dense grass loads in the showcase frame — not animals geometry (bit-identical before/after).",
     "2026-09-08 waterline sparkle + grass mottle/dirt cracks RESOLVED (builder + verifier agents, orchestrator-verified): the real-GPU cross-check was done FIRST and the sparkle PERSISTS on real hardware (AMD RX 5700 XT via ANGLE D3D11) — a genuine shader bug, not a SwiftShader artifact. Protocol note: default headless silently falls back to SwiftShader-Vulkan; real-GPU checks must force --use-angle=d3d11 (permanent utility tools/gpu-check.mjs added). Root cause: wet-band roughness 0.34 + mip-averaged detail normals = GGX speckle clusters on banks/pan rims. Fix (terrain material.js/water.js): wet roughness 0.50, +0.35 roughness floor over 200-800 m, detail normals flatten to 15% past 700 m, water glint x0.1 by 800 m, odd-angle tile rotations. Grass mottle + dirt cracks (textures.js): the streak stamp is now a locally-rotated domain-warped two-octave field with a patchy mask; cracks are a wobbled two-scale worley at half contrast; palette colours untouched. Verification: 11/11 checks PASS — real-GPU before/after shows day speckle gone (game + savannah overviews), game close 14 shows the squiggle stamp softened to tufted grain and the tiled crack web GONE, game overview draws/tris bit-identical (284/4,617,129), lint ok, zero tuning attempts needed. Night findings: the dotted 'fence rings' at 21.5h are pale-SAND ALBEDO, byte-identical before/after (max ~RGB 178,157,123) — never specular, pre-existing, unchanged, and out of terrain scope to remove; residual night sparkle on road lines is roads' reflective paint (roads' scope). Protocol catches: game captures MUST pin &speed=0 (first captures drifted to 16.9h and were re-taken); terrain-satcheck.png no longer exists on disk — palette was judged against the blind day baselines.",
     "2026-09-08 wild night legibility RESOLVED (builder agent, orchestrator-verified): environment/index.js adds a night-only lift — NIGHT_LIFT 9 (moon-key boost, moon-elevation-compensated) and NIGHT_HEMI 0.035 starlight/airglow hemisphere — both gated on st.night and exactly 0 by day; the exposure ceiling (12), sky, stars, PMREM and all day/golden-hour paths are untouched. The wild close view at 21.5h that blind-scored 5.5 as a near-black frame is now legible (~7): terrain mottle, tree/animal silhouettes, the lodge roof, kopje and red dirt all read while the frame is still clearly night (game-close-21_5-tune2.png; JSON: hour 21.5 paused, 0 errors, 326 draws unchanged). The moonlit waterhole got BETTER, not washed out (sav-night-tune2.png — moon glint, elephant at the pan, cloud structure), and the day control game-close-14-afterfix.png is character-identical to the blind baseline. Remaining: foreground self-shadowed canopies stay near-black by design; new-moon nights intentionally remain dark; the real-GPU cross-check remains pending project-wide.",
@@ -208,23 +209,27 @@
     "simulation": {
       "wave": 1,
       "domain": "sim",
-      "round": 1,
+      "round": 2,
       "score": 9.0,
       "status": "pass",
       "errors": 0,
       "drawCalls": 2,
-      "reviewedBy": "orchestrator-integration",
+      "reviewedBy": "orchestrator-verification",
       "presetsSeen": [
-        "overview (DOM)"
+        "overview (DOM); round 2: full harness evidence — elasticity at 7 prices, births, poaching, drought, disease, prosperity, sightings, bankruptcy, determinism (2026-09-08)"
       ],
       "tests": {
         "file": "src/modules/simulation/test.mjs",
-        "passed": 58,
+        "passed": 80,
         "failed": 0,
         "deterministic": true,
-        "note": "same seed reproduces an identical 90-day history (cash d90 $326,597); a different seed diverges"
+        "note": "58 original tests all hold + 22 new (births drive, room cap, replan, spend); same seed reproduces identical histories, different seed diverges"
       },
       "issues": [
+        {
+          "sev": "resolved",
+          "text": "FIXED and demonstrated (2026-09-08): births = 0 was multiplicative — an unreachable happiness drive gate (6 of 8 species below (h-0.5)/0.5 > 0 due to the vital-water gate) times too-low breed rates. Drive gate re-tuned, breed rates x1.5, park pumps fix water quality at source; harness now shows 10-15 births per 30 days at every price with ecology intact (0 migrations, 3/3 lions, happiness 0.58-0.73). Poaching, drought, disease and the village-prosperity chain are now demonstrated by named harness scenarios. spend(amount,reason)/getSpendLog added per docs/requests/tools.md with tests."
+        },
         {
           "sev": "minor",
           "text": "Only the overview preset has been reviewed; boom/bust/close/night not yet checked."
@@ -505,14 +510,14 @@
     "park": {
       "wave": 3,
       "domain": "built",
-      "round": 2,
+      "round": 3,
       "score": 8.0,
       "status": "near-pass",
       "errors": 0,
-      "drawCalls": 223,
-      "reviewedBy": "integrator-verification",
+      "drawCalls": 258,
+      "reviewedBy": "orchestrator-verification",
       "presetsSeen": [
-        "round 1: all 7; round 2: fidelity-harness 30-day runs + blind game views (overview/close × 8/14/21.5, DOM, 2026-09-07)"
+        "round 1: all 7; round 2: fidelity-harness 30-day runs + blind game views (2026-09-07); round 3: expanded demo (11 species, pumps, tents) verified by harness + park-overview-14.png (258 draws / 4.33M tris, 0 errors)"
       ],
       "issues": [
         {
@@ -520,8 +525,8 @@
           "text": "FIXED (commit 4500c55) and verified by the fidelity harness (2026-09-07): month one now has 0 migrations (was 29), lions survive (were all gone by day 12), day-30 cash $209,298 from $250,000, and the live game is deterministic — same seed reproduces an identical 30-day history. Habitat discs offset off the loop road, regions re-resolved after late terrain edits, species spawn as herds inside their named region (0 strays on seeds 1+2)."
         },
         {
-          "sev": "minor",
-          "text": "Economy: the demo park is cash-flow negative at EVERY measured price point — net -951/-1357/-3203/-4596 $/day at $10/$25/$40/$60 (elasticity itself is correct: 249/129/72/41 arrivals/day). Population health was bought with a staff roster whose expense base no measured price covers; a player following the demo's lead cannot reach break-even in month one. Profitability needs content that grows arrivals (species variety, attractions), not price tuning."
+          "sev": "resolved",
+          "text": "FIXED (2026-09-08): the demo park breaks even at $15 — net +383 $/day 30-day mean (+1,630 day-30), first viable price of 7 measured. Arrivals grow via content: 11 species, habitat water pumps (vital-gate fix), 48 tent beds (was 32-capped), replan() after build. Elasticity stays plausible (272 arrivals at $10 down to 49 at $60). Profitability at higher prices remains future content work, but a player following the demo's lead can now reach break-even in month one."
         },
         {
           "sev": "minor",
@@ -536,7 +541,7 @@
           "text": "FIXED and verified: the demo clock no longer races showcase captures — setSpeed(1) now applies only in the live game and only when the clock is not explicitly paused. Previously every ?module=park screenshot landed at a random night hour (~35 game-hours burned during the 40-frame settle at ~1 fps); the first park-overview shot was black."
         }
       ],
-      "good": "The playable game exists and starts itself: with no ?module=, park builds the whole demo on core:ready — gate, lodge complex, loop road with spurs, 4 fenced habitats, hides + tower, 60+ animals, 4 tours, sim at speed 1 — verified 0 errors across all 15 modules (game shots 276-326 draws, 4.6-5.9M tris, inside budget). Round-2 rebalancing (commit 4500c55) made month one ecologically healthy and the live game deterministic; the fidelity harness now measures price elasticity, water-quality coupling, bankruptcy and the sightings chain with real numbers. UI verified visible over the live park. Remaining: month-one cash flow is negative at every measured price (minor above)."
+      "good": "The playable game exists and starts itself: park builds the whole demo on core:ready — gate, lodge complex, loop road with spurs, 4 fenced habitats, hides + tower, 60+ animals across 11 species, 4 tours, sim at speed 1 — verified 0 errors. Round-2 rebalancing made month one ecologically healthy and deterministic; round 3 (2026-09-08) made it economically viable: $15 breaks even (+383 $/day mean), births 10-15/30d, poaching/drought/disease/prosperity all harness-demonstrated, spend() API added. UI verified visible over the live park. Remaining minors: tour-preset truck on the kopje plateau (documented gap); predator-road sighting live-path needs real hardware."
     }
   },
   "game": {
@@ -792,6 +797,20 @@
     {
       "module": "animals",
       "round": 4,
+      "score": 8.0,
+      "by": "orchestrator-verification",
+      "date": "2026-09-08"
+    },
+    {
+      "module": "simulation",
+      "round": 2,
+      "score": 9.0,
+      "by": "orchestrator-verification",
+      "date": "2026-09-08"
+    },
+    {
+      "module": "park",
+      "round": 3,
       "score": 8.0,
       "by": "orchestrator-verification",
       "date": "2026-09-08"

@@ -23,16 +23,23 @@ generated:
 * **Four fenced habitats** (`zoning.paint`, several overlapping discs per habitat for an organic
   boundary — real fences and gates appear automatically wherever a road crosses, per `zoning`'s own
   boundary-edge gate detection):
-  * **Plains** — zebra, wildebeest, impala — sited at one loop vertex chosen for being the *most
+  * **Plains** — zebra, wildebeest, impala, ostrich, rhino — sited at one loop vertex chosen for being the *most
     open* (farthest from any kopje/river/pan) of the six.
-  * **Acacia Woodland** (browsers) — giraffe, elephant — the second-most-open loop vertex; the
+  * **Acacia Woodland** (browsers) — giraffe, elephant, warthog — the second-most-open loop vertex; the
     browsers' own patch gets an extra, denser acacia pass (`props.scatter` with `acacia.density:1.6`
     layered on top of the base scatter, `clear:false`) so "browsers ... with acacias" is literally
     true, not just incidentally likely.
-  * **Pride Kopje** (predators) — lions — centred on the largest kopje `terrain.getFeatures()`
-    reports for the active seed, reached by a dirt spur off the loop vertex nearest that kopje.
+  * **Pride Kopje** (predators) — lions sharing the habitat with an impala herd (the sim's predator
+    score is prey/(predators×8): a prey-less kopje is unliveable by construction) — centred on the
+    largest kopje `terrain.getFeatures()` reports for the active seed, reached by a dirt spur off the
+    loop vertex nearest that kopje.
   * **River Wetland** — hippo, buffalo — centred beside (not inside) the river channel, at whichever
     bank is dry ground, reached by the second dirt spur.
+  * **Water pumps** in the three habitats the terrain doesn't water (plains, woodland, kopje): the
+    catalogue's `water: 1` per pump is exactly what the simulation's habitat stats add to a habitat's
+    water, and the sim's vital-water gate had pinned those habitats at quality 0.16–0.30 — below the
+    breeding drive, one dry season from migrating. SimSafari-1998's own lever: you kept animals by
+    placing water sources. Eleven species roam the park in total.
 * **Two hides and a viewing tower** at the wetland, the plains and the pride kopje respectively,
   placed the same spiral-search way as every other building.
 * **Props scattered by biome** — the base game scatters automatically via `props`' own
@@ -40,10 +47,15 @@ generated:
   gated on `!ctx.isShowcase`, so a lone `?module=park` run would otherwise be bare ground).
 * **Four safari vehicles on tour** (`traffic.startTour({from, stops, durationHours: 4})`), routed from
   the gate to different combinations of the four habitats via real graph node ids.
-* **Simulation at speed 1** (`ctx.app.setSpeed(1)`) with the economy left at its untouched, sane
-  defaults (`world.economy`: $250,000 cash, $25 ticket price — this module places buildings/animals
-  through each module's raw API, the same way every other builder's showcase does, which has no cost
-  side effect; only the player's `tools` module charges for construction).
+* **Simulation at speed 1** (`ctx.app.setSpeed(1)`) with a staffed, volume-priced opening economy
+  (round 3, `build.js` step 8b): $15 tickets (the arrival model's price factor clamps at 2.0 —
+  ≈$12 and below all arrive identically — so $15 sells the same crowds for more at the gate),
+  4 keepers (one per ~20 animals — the care term is what makes births possible), 7 guides (full
+  coverage at ~250 arrivals/day), 2 maintenance, 3 lodge staff, 2 rangers, then
+  `simulation.replan()` so day 1 is planned from the real park instead of the empty init-time one
+  (attraction 0 planned ~25 arrivals; the real park plans ~250). Buildings and animals are placed
+  through each module's raw API, the same way every other builder's showcase does, which has no
+  cost side effect; only the player's `tools` module charges for construction.
 * `ui` and `audio` need nothing from this module — `ui` shows itself whenever it isn't showcasing a
   *different* module (so it's visible in the full game and hidden in `?module=park`, per spec), and
   `audio`'s ambience runs unconditionally once the engine is unlocked by a user gesture.
@@ -111,27 +123,30 @@ re-anchors its camera onto whatever actually got placed for the active seed, fol
 
 ## Gameplay-loop verification (measured)
 
-Scripted in-browser run against the live demo park (seed 1, 2026-09-05), driving the modules'
-public APIs exactly as a player/tool would: `simulation.runDays(30)` per phase,
-`simulation.setTicketPrice`, `terrain.setWaterLevel`, `roads.addRoad` + `traffic.startTour`,
-counting `visitor:sighting` events on the bus. Real numbers, not projections:
+Scripted by `tools/fidelity.mjs` against the live demo park (seed 1, 2026-09-08, round 3 — clock
+paused, sim time advanced through `simulation.runDays`, vehicle time pumped through the real
+`update()`). Every scenario is a fresh page of the full game with the demo auto-built; existing six
+scenarios unchanged, five added this round (`poaching`, `drought`, `disease`, `prosperity`,
+`price-sweep`). Real numbers, not projections:
 
 | experiment | measured result |
 |---|---|
-| **Baseline, 30 days @ $25** | 100 arrivals/day, satisfaction 0.644, cash $250k → **$230,060**, **29 animals left the park**, 0 births |
-| **Ticket price → $60, 30 days** | arrivals **100 → 26/day** (−74 %; the arrival model's elasticity 1.3 predicts (25/60)^1.3 ≈ 0.29 — matches), satisfaction 0.644 → 0.491, cash → **$122,528** — the dearer month earns *less* once fixed upkeep is paid: raising price past demand is a real loss, not a cheat |
-| **Water table dropped 6 m, 30 days** | 3 more animals left, 1 died. Weak signal, and the baseline's own 29 departures dwarf it — see the balance note below |
-| **Road past the predators + tour** | 0 sightings before, 0 after in 2×90 s of accelerated real time. **Not demonstrable under SwiftShader**: vehicles advance on real-time dt, so at ~1 fps software rendering a tour travels ~150 m in 3 minutes. The wiring (tour sight-stop → `visitor:sighting` → satisfaction) is unit-visible in `tours.js`/`sim.js`; verifying the loop end-to-end needs real hardware (expected: minutes of 60 fps, not hours of 1 fps) |
+| **Price elasticity, 30 days each** ($10/12/15/20/25/40/60) | arrivals 272/272/265/187/142/81/49 per day; net −782/−246/**+383**/−1,267/−2,709/−4,749/−6,064 $/day — **$15 breaks even** (day-30 net +$1,630, cash $250k → $261k). The price-factor clamp (2.0 at ≈$12) means $10 and $12 draw identical crowds, so $15 is strictly the better opening price |
+| **Births (the round-2 blocker)** | **12 born in 30 days at $25, 10–15 at every measured price (was 0 at every price)** — the drive gate (happiness 0.45→0.75), ~1.5× breed rates, keeper care and the water pumps compound; population grows 80 → 87 in month one with **0 migrations** and all 3 lions alive |
+| **Water table −6 m, 30 days** | the pumped plains stays healthy (q 0.92 — the player's infrastructure works); the *unpumped* wetland collapses hippo quality 0.93 → **0.21** — the coupling the spec asks for, on the habitat the player hasn't invested in |
+| **Sightings loop** | 12 sightings over 1800 vehicle-seconds with the demo tours vs **0 with all vehicles removed**; the daily report feeds satisfaction (day-1 arrivals 131 — `replan()` fixed the empty-park day-1 plan that used to plan ~25) |
+| **Bankruptcy** | $0 tickets + 40×5 staff → flagged day 17, `sim:bankrupt` emitted, −$24.6k/day |
+| **Poaching** (additive) | rangers fired + $10 wages → morale 0.34 → poachers take 2 ostrich on day 97 organically ("Rangers are stretched thin") — risk is the ranger/morale/prosperity function, not a scripted event |
+| **Drought** (additive, injected via `simulation.injectEvent`) | 14-day drought: habitat water 1.0 → 0.65 and grass −30% while active, hippo quality 0.62 → 0.51, stats fully recover after; even pumped habitats lose 0.35 — pumps don't drought-proof |
+| **Disease** (additive, injected) | impala outbreak: vet spend +27% park-wide (2.5× for the species), 7 excess impala deaths during vs 1 after, runs its course |
+| **Village prosperity** (additive) | rich park (271 arrivals/day): prosperity 0.85, efficiency 0.85, **0 poached**, net +449/day — starved park ($60, poverty wages): prosperity 0.46, efficiency 0.71, 3 poached, net −4,515/day. Park success → village prosperity → cheaper feed, better upkeep, poaching suppression |
 
-**Balance finding for whoever tunes the demo next:** the park as built loses ~$650/day and bleeds
-~1 animal/day at the default ticket price — 29 animals migrate out in the first month because at
-least one habitat's quality sits below the 0.30 unhappiness-migration threshold for 3+ consecutive
-days. The economy survives (no bankruptcy risk at these numbers), but a starting layout that keeps
-every habitat above threshold would make the demo's first month read healthier.
+All runs: 0 console errors; same seed reproduces identical 30-day cash (determinism check).
 
-`happiness` per report came back undefined in this harness (the field exists per-habitat, not as a
-single scalar on the daily report — `getReport().habitats` carries it); the migration counts above
-are the observable consequence and are the numbers the spec asks for.
+**Round-3 balance finding:** the demo now opens at $15 with 11 species, 48 beds (lodge + tented
+camp), three water pumps and an 18-person staff, and clears break-even from day ~9 — month one
+means +$383/day and the ecology is healthy at every measured price. The economics are still
+inelastic above the clamp (≤$12) — ticket price below ~$12 is donated margin.
 
 ## Measured performance
 

@@ -72,6 +72,9 @@ const api = {
   /** Habitat quality for a species in [0,1]. habitat: id or habitat object. */
   scoreHabitat: (habitat, species, opts) => (sim ? sim.scoreHabitat(habitat, species, opts) : 0),
   explainHabitat: (habitat, species) => (sim ? sim.explainHabitat(habitat, species) : null),
+  /** Measured per-habitat statistics (water/shade/cover/grass/roughness/area) the scorer uses; cached
+   * per day, `force=true` recomputes (after terrain/zone edits or a forced event). */
+  habitatStat: (habitat, force) => (sim ? sim.habitatStat(habitat, force) : null),
   getReport: () => sim?.getReport() ?? null,
   getReports: (days) => sim?.getReports(days) ?? [],
   getState: () => sim?.getState() ?? null,
@@ -80,6 +83,17 @@ const api = {
   setTicketPrice: (p) => sim?.setTicketPrice(p),
   takeLoan: (amount) => sim?.takeLoan(amount) ?? 0,
   repayLoan: (amount) => sim?.repayLoan(amount) ?? 0,
+  /** Charge (positive) or refund (negative) `amount` against cash — the public economy API other
+   * modules use instead of writing world.economy.cash (docs/requests/tools.md #1). */
+  spend: (amount, reason) => (sim ? sim.spend(amount, reason) : null),
+  /** Recent spend()/refund log: {day, amount, reason}, oldest last. */
+  getSpendLog: (n) => (sim ? sim.getSpendLog(n) : []),
+  /** Recompute today's arrival plan from the live state (demo/debug — a park built after init()
+   * spawns animals and sets its price after day 1 was already planned). */
+  replan: () => (sim ? sim.replan() : 0),
+  /** Force a seeded event now through the normal event paths: 'drought' | 'disease' | 'poachers'
+   * (debug / fidelity harness). opts: {species, n, strength, duration}. */
+  injectEvent: (type, opts) => (sim ? sim.injectEvent(type, opts) : null),
   hire: (role, n = 1) => sim?.hire(role, n) ?? 0,
   fire: (role, n = 1) => sim?.fire(role, n) ?? 0,
   setWage: (role, wage) => sim?.setWage(role, wage) ?? 0,

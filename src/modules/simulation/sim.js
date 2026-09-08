@@ -104,6 +104,8 @@ export class Simulation {
     this.activeEvents = [];
     this.arrivalsMult = 1;
     this.eventsToday = [];
+    this.spendToday = {};
+    this.spendLog = [];
     this.negativeDays = 0;
     this.bankrupt = false;
     this.speedValue = 1;
@@ -294,14 +296,17 @@ export class Simulation {
       }
       if (n > 0) { grass = g / n; roughness = clamp01(rsum / n * 2.5); }
     }
-    // buildings inside the habitat
+    // buildings inside the habitat — a building's own footprint is carved out of its habitat as
+    // NO_BUILD (zoning recomputeNoBuild zeroes habitatId under occupancy), so a water pump or hide
+    // placed inside a habitat never sits ON a habitat cell: attribute it by probing the surrounding
+    // cells too (round-3 fix — without this the demo's pumps were invisible and the vital-water gate
+    // stayed crushed; measured elephant q 0.23 before and after placing a pump inside its habitat).
     let waterholes = 0, hidesNear = 0;
     if (w.buildings && w.grid && typeof w.cellAt === 'function') {
       for (const b of w.buildings.values()) {
-        if (!b) continue;
-        const c = w.cellAt(b.x, b.z);
+        if (!b || !this._inHabitat(b, hid)) continue;
         const k = this.building(b.type);
-        if (w.grid.habitatId[c.index] === hid) { if (k.water) waterholes += k.water; if (k.closeness) hidesNear++; }
+        if (k.water) waterholes += k.water; if (k.closeness) hidesNear++;
       }
     }
     const drought = this._eventStrength('drought');
@@ -312,6 +317,23 @@ export class Simulation {
     st = { key, id: hid, area, water, shade, cover, grass: clamp01(grass * (1 - drought * 0.3)), roughness, roadCoverage, waterholes, hidesNear, drought };
     this.habitatStats.set(hid, st);
     return st;
+  }
+
+  /** True when building b sits on, or borders, habitat hid. zoning's recomputeNoBuild carves a
+   * building's footprint out of its habitat (occupancy → NO_BUILD → habitatId 0) — measured, the
+   * carve for a 9×7 m pump is a ~4×3-cell block, so probe the 5×5 cell neighbourhood (±10 m): a
+   * water pump or hide placed inside a habitat borders habitat cells, while a building outside
+   * every habitat has none within reach. */
+  _inHabitat(b, hid) {
+    const w = this.world;
+    const c = w.cellAt(b.x, b.z);
+    const g = w.grid, res = g.res;
+    for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+      const nx = c.ix + dx, nz = c.iz + dz;
+      if (nx < 0 || nz < 0 || nx >= res || nz >= res) continue;
+      if (g.habitatId[nz * res + nx] === hid) return true;
+    }
+    return false;
   }
 
   /** Fraction of a habitat's cells within 80 m of a road point (visitors can only see what roads reach). */
@@ -491,6 +513,7 @@ export class Simulation {
     this._overnight = this.lodgeNights;
     this.lodgeNights = 0;
     this.eventsToday = [];
+    this.spendToday = {};
   }
 
   /** Attraction index of the park: rarity-weighted species presence (0..1). */
@@ -527,6 +550,7 @@ export class Simulation {
       born: popInfo.born, died: popInfo.died, left: popInfo.left, predation: popInfo.predation,
       staff: Object.fromEntries(STAFF_ORDER.map((r) => [r, this.staff[r].n])), staffCoverage: this.staffCoverage,
       morale: +this.morale.toFixed(3), prosperity: +this.prosperity.toFixed(3), efficiency: +this.efficiency.toFixed(3),
+      spend: Object.fromEntries(Object.entries(this.spendToday).map(([k, v]) => [k, Math.round(v)])),
       season: this.dayPlan.season, weather: this.dayPlan.weather, loans: Math.round(w.economy?.loans || 0), bankrupt: this.bankrupt,
       events: this.eventsToday.slice(), activeEvents: this.activeEvents.map((e) => ({ type: e.type, daysLeft: e.until - day, species: e.species })),
     };
@@ -690,10 +714,13 @@ export class Simulation {
         const observed = this._observedHappiness(hid, s);
         if (observed !== null) hTarget = 0.5 * hTarget + 0.5 * observed;
         r.happiness = clamp01(lerp(r.happiness, hTarget, 0.35));
-        // births
+        // births: drive ramps from happiness 0.45 to full at 0.75 (a herd needs a genuinely good
+        // habitat to breed — SimSafari's "population growth needs happiness > threshold" — but a
+        // merely-decent one still breeds slowly instead of never; measured 2026-09-08, the old
+        // hard 0.5 gate × small breed constants gave the demo park 0 births in 30 days)
         let b = 0;
         if (r.n >= 2) {
-          const drive = clamp01((r.happiness - 0.5) / 0.5);
+          const drive = clamp01((r.happiness - 0.45) / 0.3);
           const room = clamp01(1 - r.n / r.capacity);
           b = poisson(this.rng, r.n * sp.breed * drive * room * (wet ? 1.3 : 1));
         }
@@ -947,6 +974,73 @@ export class Simulation {
     amount = Math.min(Math.max(0, Math.round(+amount || 0)), eco.loans || 0, Math.max(0, eco.cash));
     eco.cash -= amount; eco.loans -= amount;
     return amount;
+  }
+
+  /** Charge (positive) or refund (negative) `amount` against cash — the public way for other modules
+   * (tools charging for a terraform stroke / road / building placement; docs/requests/tools.md #1) to
+   * move money without writing world.economy.cash directly. The move is logged under `reason` (the
+   * daily report's `spend` map + getSpendLog) and economy:updated is emitted. Returns the new cash
+   * balance, or null when there is no economy. */
+  spend(amount, reason = 'misc') {
+    const eco = this.world.economy;
+    if (!eco) return null;
+    const amt = Math.round((+amount || 0) * 100) / 100;
+    if (!Number.isFinite(amt) || amt === 0) return Math.round(eco.cash);
+    eco.cash -= amt; // positive = charge, negative = refund
+    const why = String(reason || 'misc').slice(0, 80);
+    this.spendToday[why] = (this.spendToday[why] || 0) + amt;
+    this.spendLog.push({ day: this.clock.day, amount: amt, reason: why });
+    if (this.spendLog.length > 400) this.spendLog.shift();
+    this._emit('economy:updated', { cash: Math.round(eco.cash), income: 0, expenses: 0, day: this.clock.day, spend: amt, reason: why });
+    return Math.round(eco.cash);
+  }
+
+  /** The recent spend()/refund log, oldest last: {day, amount, reason} (docs/requests/tools.md #1). */
+  getSpendLog(n = 50) { return this.spendLog.slice(-Math.max(1, n)); }
+
+  /** Recompute today's arrival plan from the current live state (demo/debug). A park built after this
+   * module's init() spawns its animals and sets its price after _init() already planned day 1 from an
+   * empty park (attraction 0 → ~25 arrivals instead of ~250); call replan() once after building to
+   * plan day 1 from the real population. Safe before the day's first tick; mid-day it zeroes today's
+   * arrivals ledger. Returns the planned arrivals. */
+  replan() { this._planDay(); return Math.round(this.dayPlan.arrivals); }
+
+  /** Debug/demo: force an event now through the same code paths the daily roll uses (fidelity harness,
+   * ui debug). type: 'drought' | 'disease' | 'poachers'. opts: {species, n, strength, duration}.
+   * Draws only from the injected rng — same seed, same outcome. Returns the event record, or null for
+   * an unknown type or when no animals are present for the animal events. */
+  injectEvent(type, opts = {}) {
+    const day = this.clock.day;
+    const rng = this.rng;
+    const record = () => this.eventsToday[this.eventsToday.length - 1] || null;
+    if (type === 'drought') {
+      const d = opts.duration ?? rng.int(10, 25);
+      this._addEvent(day, { type: 'drought', level: 'warn', duration: d, strength: opts.strength ?? rng.range(0.6, 1), text: `Drought: water holes are shrinking across the park (about ${d} days)` });
+      for (const h of this.habitatStats.values()) h.key = '';
+      return record();
+    }
+    if (type === 'disease') {
+      const present = Object.keys(this.population());
+      if (!present.length) return null;
+      const s = opts.species && present.includes(opts.species) ? opts.species : rng.pick(present);
+      const d = opts.duration ?? rng.int(7, 14);
+      this._addEvent(day, { type: 'disease', level: 'warn', species: s, duration: d, text: `Disease outbreak among the ${s} (vet costs up, ${d} days)` });
+      return record();
+    }
+    if (type === 'poachers') {
+      const pop = this.population();
+      const present = Object.keys(pop);
+      if (!present.length) return null;
+      const targets = present.filter((s) => this.species(s).rarity >= 0.7);
+      const s = opts.species && present.includes(opts.species) ? opts.species : targets.length ? rng.pick(targets) : rng.pick(present);
+      const n = Math.max(1, Math.min(pop[s], opts.n ?? rng.int(1, 3)));
+      this._killAnimals(s, n);
+      this.totals.poached += n;
+      this.reputation = clamp01(this.reputation - 0.05);
+      this._addEvent(day, { type: 'poachers', level: 'error', species: s, text: `Poachers killed ${n} ${s}!` });
+      return record();
+    }
+    return null;
   }
   hire(role, n = 1) { if (!this.staff[role]) return 0; this.staff[role].n = Math.max(0, this.staff[role].n + Math.round(n)); return this.staff[role].n; }
   fire(role, n = 1) { if (!this.staff[role]) return 0; this.staff[role].n = Math.max(0, this.staff[role].n - Math.round(n)); return this.staff[role].n; }
