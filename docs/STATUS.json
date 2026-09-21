@@ -1,8 +1,9 @@
 {
-  "updated": "2026-09-14",
+  "updated": "2026-09-21",
   "wave": 3,
   "passThreshold": 8.5,
   "notes": [
+    "2026-09-21 round-4 blind visual test + fidelity re-run completed — the 'final evaluation' step from pause-2026-09-08-evening.md's plan. Fresh 1920x1080 captures, same protocol as round 3 (docs/critic/game-round3-blind.md): game.blindVisual 6.9 -> 7.8, savannah subset 7.0 -> 7.9, savannah module 7.5 -> 8.0. Confirmed resolved with real screenshots: waterline sparkle (the most-cited round-3 defect), kopje pride legibility, grass mottle stamp, tiled crack motif, world-edge apron. tools/fidelity.mjs re-run clean (0 errors, numbers match the recorded baseline within rounding — determinism holds, nothing regressed from the environment shader changes). Two things found and filed rather than smoothed over: a hard black patch in the savannah waterhole's pan centre (new minor, was visible in round 3's own shot too but never filed), and a real discrepancy where the live game's `close` camera preset at 21.5h does not read as legible as environment's own 09-08 history note claims for the same shot — recorded honestly in game's issues and docs/critic/game-round4-blind.md rather than re-averaged away. Full detail in that file.",
     "2026-09-14 critic sweep part 2 completed (ui/traffic/tools/zoning previously-unreviewed presets — the prior WIP session started this same sweep, ran ~38 min, then stopped with no file written, per pause-2026-09-08-evening.md): all 16 shots (ui report/panel/toolbar/close/night DOM; traffic overview/sighting/night; tools road/terrain/close/night; zoning night) rendered 0 errors, within budget, and were actually read. Results: ui moves to PASS (8.0 -> 8.5, round 3) — all 6 presets now confirmed strong, genuinely Cities:Skylines-II-calibre; traffic 7.5 -> 8.0 (round 2) — sighting and night both strong, overview's known vehicle-scale-at-distance framing issue is unchanged, not new; tools stays 8.0 but round 2 with full 6-preset coverage confirmed (road/terrain/close/night all good, no defects); zoning stays 7.5, round 4, night preset confirmed good. One cross-module plausibility note surfaced and filed under ui rather than chased down: an individual animal's wellbeing panel showed 0% happy against need bars all reading 50-83%, worth animals/simulation checking.",
     "2026-09-14 session resumed after a gap and found the CI dev-agent (.github/workflows/dev-agent.yml, GLM via Z.ai) has been a silent no-op since the 2026-09-08 evening pause: it 'runs' successfully on schedule every day but its own gate step shows every real step (checkout, install, run agent) skipped, because ZAI_API_KEY was never set as a repo secret — confirmed via the Actions API job logs (run 34709819871 and others), not assumed. No code changes happened on main between the 09-08 evening WIP commit (bb5e210) and this session. Per user instruction the automation is being treated as dead going forward; this and future sessions drive the remaining work directly. Picked up exactly where docs/requests/pause-2026-09-08-evening.md left off: the two WIP fixes it marked 'CODE DONE, verification pending' (environment's close-preset sun disc and dusk afterglow) had never actually been screenshotted before that session was cut off. Verified both from scratch: dusk held up as coded (real evidence, no change needed); the sun disc did NOT — investigated with a raw pixel readback (projected uSunDir through the camera matrix to find its exact screen pixel) rather than trust the code comment, found it was compositing correctly but rendering only ~3px across, genuinely too small to read — fixed with a legibility scale (DISC_K=4.5), not the compositing fix the WIP comment described. Also found and fixed a second, unclaimed bug while re-verifying storm/overcast: storm's own auto-exposure was cancelling out its intentional rain-darkening (storm measured brighter than overcast, the opposite of the design), fixed with a rain-gated exposure damper; overcast's hard-shadow claim held up on inspection. environment: 6.0/fail -> 8.0/near-pass (round 6, orchestrator-verification, full detail in the module's own issues list and README history). This is the same kind of near-miss the traffic module's own round-1 entry already warned about — verify with a screenshot actually read, every time, regardless of how confident a prior commit message sounds.",
     "2026-09-08 simulation blocker FIXED and claims recovered (builder agent, orchestrator-verified; score 6.0 -> 9.0, status pass): root cause was subtler than suspected — staged parks hold their 193 animals only in the sim ledger, and the sim's FIRST birth spawns through the animals hook into world.animals, so from day 2 the daily reconcileFromWorld() copied that 1-animal census over the ledger (193 -> 1, born/died/left ~0; unit tests never saw it because the plain world's animals map is empty). Fix: per-species diff-and-count reconcile (surplus world animals adopted; ledger animals missing from the world written off as a COUNTED removal), plus showcase staging now mirrors every staged herd into world.animals via the same spawn hook + replan(). 89/89 tests (80 + 9 new incl. the 'staged pop ~= reported pop' regression), lint ok, same-seed determinism verified, and the live-game harness numbers are BYTE-IDENTICAL to the recorded baseline (net/d, elasticity, water, bankruptcy day 17, sightings 12 vs 0). Claims now reproduce: boom 38 births / 282 arrivals/d avg / +$36,766 over 60d; overview +$18,093 healthy cash; world==ledger at every preset, unmanaged 0. Toolchain nit discovered: --dom captures no longer write PNGs in this environment (png:null) — canvas captures used; affects screenshot tool, not the game.",
@@ -507,27 +508,31 @@
     "savannah": {
       "wave": 3,
       "domain": "nature",
-      "round": 3,
-      "score": 7.5,
+      "round": 4,
+      "score": 8.0,
       "status": "near-pass",
       "errors": 0,
       "drawCalls": 185,
       "reviewedBy": "orchestrator-verification",
       "presetsSeen": [
-        "round 1: all 10; round 2: fresh 2026-09-07 blind captures of overview, waterhole, kopje, night (tools/shots/blind-sav-*.png); round 3: kopje re-staged + waterhole regression check (sav-kopje-fix-d/-e.png, sav-waterhole-fixd.png, 2026-09-07)"
+        "round 1: all 10; round 2: fresh 2026-09-07 blind captures of overview, waterhole, kopje, night (tools/shots/blind-sav-*.png); round 3: kopje re-staged + waterhole regression check (sav-kopje-fix-d/-e.png, sav-waterhole-fixd.png, 2026-09-07); round 4: fresh 1920x1080 round-4 blind set (blind4-sav-*.png, 2026-09-21), see docs/critic/game-round4-blind.md"
       ],
       "issues": [
         {
           "sev": "resolved",
-          "text": "FIXED and verified (tools/shots/sav-kopje-fix-d.png / -e.png, 2026-09-07): the male lion is unmistakable at 8 m — dark mane, tan flank, legs grounded, a lioness standing right third and another lying left, kopje backdrop, sun behind the lens. Root cause was three stacked occluders invisible to the terrain-only LOS check: the spot sat on the kopje's steep skirt (legs swallowed by a rock lip), a tall dead shrub ~3 m off the cleared lane leaned across the subject, and a giant boulder rooted beside the lens filled half the frame; dead-centre front light also flattened the male toward the old 'pale box'. showcase.js now requires dry AND slope < 0.14 at the spot, seeds the bearing 20° off the sun for three-quarter light, marches the camera (8→30 m) requiring camera-spot slope < 0.18, and widens props.clear to a ±3.5 m corridor, a 9 m podium at the male, a 5 m patch per lioness and a 20 m fore-court at the lens; hold pins behaviour so the settle cannot wander the pride off. Both captures use an identical camera (d=8, pitch 10, yaw −87.1°) — the lottery is gone. Draw calls 185 (was 190); waterhole unchanged at 200. Remaining nit: the male's flank reads pale-bright at full front-rake — a lighting tune, not an occlusion defect."
+          "text": "FIXED and verified (tools/shots/sav-kopje-fix-d.png / -e.png, 2026-09-07; RE-CONFIRMED 2026-09-21 with a fresh 1080p capture, blind4-sav-kopje.png): the male lion is unmistakable at 8 m — dark mane, tan flank, legs grounded, a lioness standing right third and another lying left, kopje backdrop, sun behind the lens. Root cause was three stacked occluders invisible to the terrain-only LOS check: the spot sat on the kopje's steep skirt (legs swallowed by a rock lip), a tall dead shrub ~3 m off the cleared lane leaned across the subject, and a giant boulder rooted beside the lens filled half the frame; dead-centre front light also flattened the male toward the old 'pale box'. showcase.js now requires dry AND slope < 0.14 at the spot, seeds the bearing 20° off the sun for three-quarter light, marches the camera (8→30 m) requiring camera-spot slope < 0.18, and widens props.clear to a ±3.5 m corridor, a 9 m podium at the male, a 5 m patch per lioness and a 20 m fore-court at the lens; hold pins behaviour so the settle cannot wander the pride off. Both captures use an identical camera (d=8, pitch 10, yaw −87.1°) — the lottery is gone. Draw calls 185 (was 190); waterhole unchanged at 200. Remaining nit: the male's flank reads pale-bright at full front-rake — a lighting tune, not an occlusion defect."
         },
         {
           "sev": "resolved",
           "text": "PARTIALLY RESOLVED (2026-09-08): the texture-pattern half of this minor is fixed via terrain's grass rework — the synthetic squiggle stamp at midday (overview through close) is now a soft tufted grain (fix4-game-close-14.png). STILL OPEN: the uniform golden glow across the whole sward at low sun (pure diffuse now that grass roughness is 1.0) — a lighting/shading tell, strongest at park-lodge; needs an environment/materials pass, not textures."
         },
         {
+          "sev": "resolved",
+          "text": "FIXED and verified (2026-09-21, blind4-sav-overview.png at 1920x1080): the waterline sparkle blotches at the waterhole rim and upper river are gone — same fix as the terrain module's own 2026-09-08 real-GPU roughness/detail-normal work, now confirmed from the savannah composer's own overview camera. Bank and pan-rim read clean."
+        },
+        {
           "sev": "minor",
-          "text": "White sparkle blotches overlap vegetation at the waterhole rim and upper river in overview shots (blind-sav-overview.png) — reads as specular aliasing; needs a real-GPU cross-check before treating as a shader bug."
+          "text": "NEW (2026-09-21, blind4-sav-waterhole.png): a hard-edged black patch sits in the pan centre, under the umbrella acacia's canopy — was visible in round 3's own waterhole shot too but never filed as its own issue (only mentioned in the blind-test notes). Reads like the tree's canopy shadow on the water plane going fully opaque/unlit rather than blending with the pan's ambient reflection. Everything else in this shot is strong (elephants, zebras, kopje backdrop, detailed acacia crown) — this is the one defect holding waterhole back from a clean top score."
         },
         {
           "sev": "resolved",
@@ -582,9 +587,9 @@
     }
   },
   "game": {
-    "round": 3,
+    "round": 4,
     "score": null,
-    "blindVisual": 6.9,
+    "blindVisual": 7.8,
     "gameplayFidelity": 8.0,
     "integration": {
       "loads": true,
@@ -594,6 +599,14 @@
       "triangles": 4617129
     },
     "issues": [
+      {
+        "sev": "resolved",
+        "text": "DONE (2026-09-21): round-4 blind visual test re-ran the exact round-3 protocol at 1920x1080 (game.blindVisual 6.9 -> 7.8; savannah subset 7.0 -> 7.9). Confirmed resolved: waterline sparkle (the most-cited round-3 defect, gone from both game and savannah overview shots), kopje pride legibility, grass mottle stamp, tiled crack motif. New/carried-over finding filed under savannah: a hard black patch in the waterhole's pan centre. Full per-image scores and a discrepancy note (game-close-21.5 did not read as legible as environment's own 09-08 history note claims — see below) in docs/critic/game-round4-blind.md."
+      },
+      {
+        "sev": "minor",
+        "text": "Discrepancy found 2026-09-21: environment's STATUS history claims the live game's `close` camera preset at 21.5h (game-close-21_5-tune2.png, 09-08) reads '~7, terrain mottle and lodge roof all read'. A fresh capture of the same core camera preset at the same hour this round does not match that — it reads close to the original 5.5, dominated by dense self-shadowed tree canopy in the fixed camera's foreground. The underlying night-ambient fix is not in question (the midground past the canopy is legible); either the 09-08 shot caught a luckier camera/prop state, or terrain/props density near world origin increased after 09-08 and pushed more canopy into this exact framing. Not root-caused this round — recorded honestly rather than re-averaged away. Worth a follow-up."
+      },
       {
         "sev": "resolved",
         "text": "FIXED (2026-09-05, environment/atmosphere.js): the round-1 SYSTEMIC 'everything washes out toward white' blocker was never a tone-mapping or albedo-authoring problem — it was a CPU sky-sampler aliasing bug that made every sky-derived colour ~10^4x too dim, driving the exposure controller to its ceiling and fog/horizon colours to near-black. Full root cause under environment's entry. The earlier 'author darker to compensate' guidance was a workaround over a defect and is wrong."
@@ -921,6 +934,20 @@
       "score": 7.5,
       "by": "orchestrator-verification",
       "date": "2026-09-14"
+    },
+    {
+      "module": "savannah",
+      "round": 4,
+      "score": 8.0,
+      "by": "orchestrator-verification",
+      "date": "2026-09-21"
+    },
+    {
+      "module": "game",
+      "round": 4,
+      "score": 7.8,
+      "by": "orchestrator-blind-visual",
+      "date": "2026-09-21"
     }
   ]
 }
