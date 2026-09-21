@@ -406,31 +406,30 @@
     "traffic": {
       "wave": 2,
       "domain": "built",
-      "round": 2,
+      "round": 3,
       "score": 8,
-      "status": "near-pass",
+      "status": "fail",
       "errors": 0,
-      "drawCalls": 106,
-      "reviewedBy": "orchestrator-verification",
+      "drawCalls": 155,
+      "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
-        "close",
-        "overview, sighting, night (sweep-traffic-*.png, 2026-09-14)"
+        "overview 16",
+        "close 16.5",
+        "sighting 17.5",
+        "night 21.5",
+        "stats() readback (extra)"
       ],
       "issues": [
         {
-          "sev": "info",
-          "text": "Verification took several attempts because the overview preset (camera distance 430m) makes a 4-5m vehicle imperceptibly small — I initially misread this as 'no vehicles rendering' and, worse, briefly misdiagnosed it as a missing kit.setBodyMatrix() call based on a flawed grep pattern ('setMatrix' is not a substring of 'setBodyMatrix') before re-checking and finding the wiring is correct. The close preset settles it cleanly: vehicles are real, positioned, and rendering. Recorded so the mistake isn't repeated."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED (all remaining presets independently reviewed, 2026-09-14): sighting (sweep-traffic-sighting.png) is genuinely strong — a real safari vehicle with visible seated passengers pulled up near a grazing herd, a legible wildlife-sighting moment. night (sweep-traffic-night.png) is also strong — working headlight cones lighting the road ahead, reflective road-paint dashes, correct dark ambient, vehicle silhouette with passengers still readable. Both close the 'not yet independently reviewed' gap with no defects found."
+          "sev": "minor",
+          "text": "overview preset (430m camera) makes vehicles nearly invisible -- disclosed honestly in the README as a presentation flaw, and independently confirmed to be exactly as significant as claimed (6 vehicles per stats(), genuinely present but unreadable at this distance)."
         },
         {
           "sev": "minor",
-          "text": "Overview preset's vehicle scale-at-distance (sweep-traffic-overview.png, 2026-09-14: two bridges and the road graph are clearly visible but no vehicle reads at this distance) is a legitimate framing concern for the module's own showcase, even though it isn't a rendering bug — worth a closer default camera or a labelled close-up inset. Unchanged since round 1; not a regression."
+          "text": "Ambient vehicles never sight-stop (only tours do); passengers are static with no boarding animation -- both disclosed, consistent with what was observed."
         }
       ],
-      "good": "Genuinely good: a real open safari truck with tiered bench seats, clearly visible seated passengers in varied clothing colours, ribbed canopy roof, roof rack, spare wheel, khaki body paint, and a visible ground contact shadow. World-state vehicle spawning verified directly (6 vehicles with plausible, in-bounds positions). Zero console errors, 106 draw calls at close, all modules load together cleanly. Round 2 (2026-09-14) verified the two presets that most exercise the module's actual gameplay purpose — sighting and night — and both hold up well; all 4 presets are now independently confirmed."
+      "good": "Safari truck at close range is one of the better individual assets in the project (tiered bench seating, individually coloured passengers, canopy, roof rack, spare wheel). Sighting behaviour real and demonstrated. Night headlights and reflective road paint both convincing. Own-module budget independently confirmed via stats() (18 draws for 6 vehicles, well inside <=80-for-10 spec) and updateMs (0.66-0.70ms, well inside 2ms budget). API matches README; dispose() thorough."
     },
     "tools": {
       "wave": 2,
@@ -984,6 +983,13 @@
       "module": "props",
       "round": 3,
       "score": 7,
+      "by": "independent-critic-agent",
+      "date": "2026-09-21"
+    },
+    {
+      "module": "traffic",
+      "round": 3,
+      "score": 8,
       "by": "independent-critic-agent",
       "date": "2026-09-21"
     }
