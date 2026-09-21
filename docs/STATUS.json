@@ -71,56 +71,40 @@
     "environment": {
       "wave": 1,
       "domain": "nature",
-      "round": 6,
-      "score": 8,
-      "status": "near-pass",
+      "round": 7,
+      "score": 6,
+      "status": "fail",
       "errors": 0,
       "drawCalls": 44,
-      "reviewedBy": "orchestrator-verification",
-      "presetsSeen": "golden, night, overview (post-fix); round 4: night re-tuned + game close 21.5/14 + savannah night (2026-09-08); round 5 (critic sweep): dawn 6.3/5.6, dusk 18.7/19.6, storm 15/17.5, overcast 13/8.5, close 17/16/6.5 (2026-09-08); round 6: dusk/close/overcast/storm re-verified with fresh screenshots + raw pixel readbacks, night/game-overview regression-checked (2026-09-14)",
+      "reviewedBy": "independent-critic-agent",
+      "presetsSeen": [
+        "overview 14",
+        "dawn 6.3",
+        "golden 17.6",
+        "dusk 18.7",
+        "night 22",
+        "overcast 13",
+        "storm 15",
+        "close 17",
+        "overview-lowpitch (extra)",
+        "golden-lowpitch (extra)",
+        "overcast-lowpitch (extra)"
+      ],
       "issues": [
         {
-          "sev": "resolved",
-          "text": "FIXED and verified (2026-09-08, game-close-21_5-tune2.png / sav-night-tune2.png / game-close-14-afterfix.png): wild night legibility. A night-only moon-key lift (NIGHT_LIFT 9, moon-elevation-compensated) plus a starlight/airglow hemisphere floor (NIGHT_HEMI 0.035), both gated on st.night and zero by day. The 21.5h wild close view is legible (~7, was 5.5) with day/golden-hour character unchanged and the night waterhole improved, not washed. Draw calls unchanged (module night 44; game close 326 — the hemisphere adds none). CAVEAT added 2026-09-21: a fresh capture of the exact same live-game `close` preset at 21.5h no longer matches this ~7 claim (reads close to 5.5 again) — investigated and explained, not a fix regression, under game's own round-4 blind-test issues below. The fix itself (ground/midground legibility) still holds; this specific fixed camera happens to sit inside a dense tree cluster whose self-shadowed canopy tops dominate the frame at this preset's ~66 m elevation, a known documented limitation (see Known gaps), most likely made more prominent by later terrain/props density changes near world origin."
+          "sev": "major",
+          "text": "overview (pitch 32) and overcast (pitch 24) presets: entire view frustum points below horizontal given 45deg FOV, so almost no sky is visible -- just flat ground haze. overview is the primary midday sky/cloud/shadow shot and fails to show sky at all. Re-aiming to pitch 10 on the same preset/weather confirms the sky itself is fine underneath -- a showcase camera-authoring bug."
         },
         {
-          "sev": "resolved",
-          "text": "FIXED and verified (env-before-golden.png → env-after-golden.png): golden-hour sky no longer washes to white and the hard dark horizon band is gone — blue is retained overhead with a warm horizon. ROOT CAUSE was a genuine bug, not authoring: atmosphere.js lightDepth() reused scatter()'s view-density scratch array _d, so every CPU-sampled sky radiance came out ~10^4x too dim (measured zenith 7e-6 vs physical ~0.5). The exposure controller, reading a near-black sky, climbed to its ceiling; the visible 'sky' was the blown-out cloud deck; fog/aerial colours near black made the band. The GPU LUT was unaffected (GLSL locals), which is why sun colour was always right. Fixed by a separate scratch array (_ds); noon zenith now (0.53, 0.60, 0.79), golden hour keeps (0.04, 0.08, 0.15) blue overhead."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED and verified (same before/after pair): sky dome's below-horizon branch now converges to the pure LUT sky colour at d.y = 0 (was a 50% uHorizon blend leaving a step wherever the ground term was darker than the sky — every golden hour)."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED (integrator, commit e3a6999) and verified: the exposure ceiling was 60, hitting 5.46x at golden hour and 60x at night — every material several-fold overexposed. Lowered to 4 for day/golden-hour. Verified: golden-hour test spheres now show correct value separation (dark box reads dark, gold sphere reads gold) instead of clipping to white."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED (integrator, follow-up) and verified against animals' own ground-level night screenshot: the single ceiling of 4 fixed golden hour but left true night essentially unlit black (no HemisphereLight exists in this architecture; ambient is entirely IBL-via-exposure). Gated a separate, higher night-only ceiling (12) on `isMoonKey`. Verified: night is now dim but clearly readable — grass, animal silhouettes, a waterhole with reflection, river and escarpment all visible, not blown white or crushed black. Re-verified after the sampler fix: no regression (env-after-night.png)."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED and verified (2026-09-14, env-dusk-check.png): dusk afterglow. A prior WIP session (commit bb5e210) re-staged the yaw toward the sunset azimuth and added an analytic multiple-scattering term but never read its own verification screenshot before the session was cut off by a rate limit — re-shot and read it fresh this round: a genuine warm orange afterglow belt along the horizon fading to blue-purple with visible stars, matching the preset's own description. No further change needed."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED and verified (2026-09-14, env-close-k45.png + golden/dawn regression shots): close preset sun disc. The same prior WIP session's fix (a post-tonemap glare-recovery ring) was also unverified — investigated from scratch by projecting uSunDir through the live camera matrix to find the sun's exact screen pixel and reading raw pixel values there (a Python/PIL readback, not eyeballing). Found the disc WAS compositing correctly (white core inside a darkened ring, as designed) but projected to only a ~3px core / ~7px outer ring at this preset's 45deg-vertical-FOV/500px frame — genuinely too small to read as a disc, which is what the critic actually saw as 'just blown glow'. Root cause was legibility scale, not the compositing math. Fixed with a DISC_K=4.5 non-physical enlargement of every angular constant in the disc/ring/corona math (moonR and the physical atmosphere model untouched) — a standard game-rendering cheat, not a claimed physical correction. Cross-checked golden and dawn for regressions: both show a natural, non-exaggerated disc+halo, an improvement over their prior blown-glow look too."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED and verified (2026-09-14, env-overcast.png): overcast hard shadows. Screenshot shows flat, diffuse lighting with no visible hard shadow lines on the test objects or ground, matching the preset's own 'no hard shadows' description. Whatever landed in the prior WIP commit's cloudAtten/castShadow-gate change works; this round supplies the missing verification screenshot."
+          "sev": "major",
+          "text": "No cumulus clouds visible at any fair-weather coverage tested (overview cloud=0.18, dawn=0.3, golden=0.25), despite golden/overview preset descriptions explicitly promising cumulus. Cloud shader works fine at high coverage (overcast renders a full streaky deck) -- there appears to be no response between invisible and solid overcast; verified with camera re-aimed to guarantee sky in frame, not a framing artifact."
         },
         {
           "sev": "minor",
-          "text": "PARTIALLY FIXED (2026-09-14): storm deck brightness. Root cause found and fixed: CLOUD_FRAG's own mix(1.0,0.42,uStorm) deck-dimming was being cancelled by the auto-exposure controller reading the resulting darker scene and raising toneMappingExposure to compensate — measured storm's own exposure (1.41) was HIGHER than plain overcast's (1.32), and storm's on-screen sky read brighter (avg RGB ~168 vs overcast's ~129), the exact opposite of the intended mood. Fixed with stormDamp = 1 - 0.35*W.rain multiplied into exposureTarget (gated on rain only; verified overcast's own exposure/screenshot is bit-for-bit unchanged). After: storm exposure 1.03 (below overcast's), sky avg RGB ~147 (down from ~168). Residual, honestly not yet closed: ~147 is still a little above overcast's ~129, so storm reads about as bright as overcast rather than clearly darker — the inversion bug is fixed, the mood tuning is not finished. Doesn't cap the module (real, measured improvement with a specific residual gap, not an unreproduced claim)."
-        },
-        {
-          "sev": "minor",
-          "text": "Dawn mist: showcase.js's own description already says 'dust haze' (matches what renders — a horizon haze gradient, haze:0.55), not the literal ground-fog 'mist' the original critic note assumed from the README wording. README/showcase tod drift on close (17 vs 16) is resolved — both now consistently say 17."
+          "text": "Storm sky brightness (about 147 avg RGB per README) still reads a bit above overcast (about 129) despite the \"dark cloud deck\" description -- disclosed by the builder as a first, un-tuned correction."
         }
       ],
-      "good": "The single highest-leverage module in the project, twice over: the 2026-09-04 exposure-ceiling work, and the 2026-09-05 sampler aliasing fix that turned out to be the true root cause of the project-wide 'washed out toward white' systemic blocker — every sky-dependent colour (fog, horizon, cloud ambient, exposure input) had been computed from a sky 10,000x too dark. Sky, sun, moon, stars, clouds, rain, CSM all work; README now exists with the full API and root-cause history. Round 6 also caught a real process gap worth remembering: a prior session's WIP commit claimed two majors 'CODE DONE, verification pending' and was cut off by a rate limit before ever reading its own screenshots — one claim (dusk) held up untouched, the other (sun disc) did not hold up as coded and needed a real fix once actually looked at. Underscores the project's own rule: nothing is fixed until a screenshot is actually read."
+      "good": "Sunrise/golden/dusk gradients are convincing and well time-differentiated; close preset sun disc+corona genuinely legible (DISC_K fix verified, not just claimed); night balances legibility vs darkness well with real stars/Milky Way; storm is the best-executed weather state (full cloud deck + wind-driven rain). API matches README exactly, update() allocation-free, dispose() thorough."
     },
     "animals": {
       "wave": 1,
@@ -938,6 +922,13 @@
     {
       "module": "terrain",
       "round": 4,
+      "score": 6,
+      "by": "independent-critic-agent",
+      "date": "2026-09-21"
+    },
+    {
+      "module": "environment",
+      "round": 7,
       "score": 6,
       "by": "independent-critic-agent",
       "date": "2026-09-21"
