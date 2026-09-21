@@ -31,62 +31,48 @@
     "terrain": {
       "wave": 1,
       "domain": "nature",
-      "round": 3,
-      "score": 8.0,
-      "status": "near-pass",
+      "round": 4,
+      "score": 6,
+      "status": "fail",
       "errors": 0,
-      "drawCalls": 40,
-      "reviewedBy": "orchestrator-verification",
+      "drawCalls": 44,
+      "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
-        "plains",
-        "escarpment",
-        "kopje (via roads-check2/roads-final-bridge); round 3: overview 15, plains 16.5, escarpment 7, night 21.5 + game overview/close 14, overview 8/21.5, real-GPU D3D11 pair (fix4-*, gpu-check-after-*, 2026-09-08)"
+        "overview 15",
+        "plains 16.5",
+        "kopje 17",
+        "river 9",
+        "escarpment 7",
+        "close 16",
+        "night 21.5",
+        "close 6.5 (extra)",
+        "overview 12 (extra)"
       ],
       "issues": [
         {
-          "sev": "resolved",
-          "text": "FIXED and real-GPU-verified (2026-09-08, gpu-check-after-game-overview-14.png / gpu-check-after-sav-overview-14.png): waterline sparkle — genuine specular aliasing (persists on RX 5700 XT D3D11). Wet roughness 0.50, distance roughness floor, detail-normal flattening, glint falloff; day speckle gone, palette bit-identical."
+          "sev": "major",
+          "text": "Night water renders brighter than the sky and ground (measured pixel readback: water RGB~83,85,67 vs ground ~33,25,11 vs sky ~22,18,14) — contradicts the README claim that forcing envMapIntensity=0.10 fixed water blowing out to white; the same failure mode reproduces at night."
         },
         {
-          "sev": "resolved",
-          "text": "FIXED and verified (2026-09-08, fix4-game-close-14.png vs blind-game-close-14.png): the synthetic squiggle mottle stamp is now a domain-warped two-octave tufted grain, and the tiled crack motif on red dirt is gone (wobbled two-scale worley at half contrast). Palette unchanged — ochre/gold + red laterite as previously verified."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED and verified (tools/shots/terrain-final-escarpment.png): the black smear is gone. True triplanar projection blended by squared normal gives real weathered rock striation on the cliff face, correct grey-brown colour, no black band anywhere."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED and verified (tools/shots/roads-final-bridge.png, same terrain visible under the bridge): river is now dark tannin-stained with a tight sun glint and visible depth absorption, not blown-out white."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED and verified (tools/shots/terrain-satcheck.png, props-final-acacia.png): saturation is now correct — plausible dry-season ochre/gold with red laterite, no fluorescent yellow, no black horizon band."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED per builder report, plausible from roads-check2.png background: kopjes rebuilt as angular stacked-boulder forms rather than smooth blobs. Not independently close-verified this round."
+          "sev": "major",
+          "text": "Escarpment cliff face is a repeating uniform-width vertical-fluted column motif, visible at overview and escarpment showcase distances (not just extreme close range as the README frames it) — reads as procedural repetition rather than natural stratified rock."
         },
         {
           "sev": "minor",
-          "text": "Apron (world-edge floating-slab fix) not independently verified by the orchestrator — builder reports a matching-palette continuation ring with a previously-inverted winding now fixed. Worth one grazing-angle screenshot to confirm."
+          "text": "Water has no visible ripple/flow structure at river or close presets — reads as a flat murky slab; disclosed in README but confirmed in these shots."
         },
         {
           "sev": "minor",
-          "text": "Builder's own README flags near-total-black night ground as shared across environment/props/terrain — a general night ambient-response issue, not terrain-specific. See environment's entry."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED (2026-09-08): world-edge apron extended to the true splat material (same packed layers, two-scale UVs, height blend, detail normals, tint chain + analytic plains control with 20-220 m fade). Border step no longer reads at overview; residuals documented in README (props/roads border stop, far-field blotch mismatch)."
+          "text": "Night ground is close to unlit black (confirmed by pixel readback, ~RGB 33,25,11); disclosed as a shared cross-module issue, not terrain-specific."
         }
       ],
-      "good": "Four of five round-1 blockers/majors independently verified fixed this round with real screenshots, not just builder claims. This module has moved further than any other in the project. Not yet given a formal pass — needs a fresh independent multi-preset, multi-time-of-day critic pass rather than the orchestrator's spot checks — but it is very plausibly at or near the 8.5 bar."
+      "good": "Kopjes are genuinely angular stacked-block forms with correct shadowing (round-3 claim verified). Plains/close grass and laterite patchwork read convincingly as dry-season savannah with no obvious tiling. Draw calls and triangles comfortably within budget across every preset; zero console errors."
     },
     "environment": {
       "wave": 1,
       "domain": "nature",
       "round": 6,
-      "score": 8.0,
+      "score": 8,
       "status": "near-pass",
       "errors": 0,
       "drawCalls": 44,
@@ -140,7 +126,7 @@
       "wave": 1,
       "domain": "nature",
       "round": 4,
-      "score": 8.0,
+      "score": 8,
       "status": "near-pass",
       "errors": 0,
       "drawCalls": 62,
@@ -238,7 +224,7 @@
       "wave": 1,
       "domain": "sim",
       "round": 4,
-      "score": 9.0,
+      "score": 9,
       "status": "pass",
       "errors": 0,
       "drawCalls": 2,
@@ -271,7 +257,7 @@
       "wave": 1,
       "domain": "audio",
       "round": 2,
-      "score": 8.0,
+      "score": 8,
       "status": "near-pass",
       "errors": 0,
       "drawCalls": 0,
@@ -307,7 +293,7 @@
       "wave": 1,
       "domain": "nature",
       "round": 2,
-      "score": 8.0,
+      "score": 8,
       "status": "near-pass",
       "errors": 0,
       "drawCalls": 204,
@@ -378,7 +364,7 @@
       "wave": 2,
       "domain": "built",
       "round": 2,
-      "score": 8.0,
+      "score": 8,
       "status": "near-pass",
       "errors": 0,
       "drawCalls": 276,
@@ -410,7 +396,7 @@
       "wave": 2,
       "domain": "nature",
       "round": 2,
-      "score": 8.0,
+      "score": 8,
       "status": "near-pass",
       "errors": 0,
       "drawCalls": 139,
@@ -446,7 +432,7 @@
       "wave": 2,
       "domain": "built",
       "round": 2,
-      "score": 8.0,
+      "score": 8,
       "status": "near-pass",
       "errors": 0,
       "drawCalls": 106,
@@ -475,7 +461,7 @@
       "wave": 2,
       "domain": "built",
       "round": 2,
-      "score": 8.0,
+      "score": 8,
       "status": "near-pass",
       "errors": 0,
       "drawCalls": 87,
@@ -509,7 +495,7 @@
       "wave": 3,
       "domain": "nature",
       "round": 4,
-      "score": 8.0,
+      "score": 8,
       "status": "near-pass",
       "errors": 0,
       "drawCalls": 185,
@@ -553,7 +539,7 @@
       "wave": 3,
       "domain": "built",
       "round": 3,
-      "score": 8.0,
+      "score": 8,
       "status": "near-pass",
       "errors": 0,
       "drawCalls": 258,
@@ -590,7 +576,7 @@
     "round": 4,
     "score": null,
     "blindVisual": 7.8,
-    "gameplayFidelity": 8.0,
+    "gameplayFidelity": 8,
     "integration": {
       "loads": true,
       "modulesOk": 15,
@@ -637,14 +623,14 @@
     {
       "module": "terrain",
       "round": 1,
-      "score": 6.0,
+      "score": 6,
       "by": "orchestrator-integration",
       "date": "2026-09-02"
     },
     {
       "module": "environment",
       "round": 1,
-      "score": 7.0,
+      "score": 7,
       "by": "orchestrator-integration",
       "date": "2026-09-02"
     },
@@ -658,35 +644,35 @@
     {
       "module": "roads",
       "round": 1,
-      "score": 6.0,
+      "score": 6,
       "by": "orchestrator-integration",
       "date": "2026-09-02"
     },
     {
       "module": "ui",
       "round": 1,
-      "score": 8.0,
+      "score": 8,
       "by": "orchestrator-integration",
       "date": "2026-09-02"
     },
     {
       "module": "simulation",
       "round": 1,
-      "score": 9.0,
+      "score": 9,
       "by": "orchestrator-integration",
       "date": "2026-09-02"
     },
     {
       "module": "audio",
       "round": 1,
-      "score": 8.0,
+      "score": 8,
       "by": "orchestrator-integration",
       "date": "2026-09-02"
     },
     {
       "module": "effects",
       "round": 1,
-      "score": 6.0,
+      "score": 6,
       "by": "orchestrator-integration",
       "date": "2026-09-02"
     },
@@ -700,7 +686,7 @@
     {
       "module": "terrain",
       "round": 2,
-      "score": 8.0,
+      "score": 8,
       "by": "orchestrator-integration",
       "date": "2026-09-04"
     },
@@ -714,21 +700,21 @@
     {
       "module": "props",
       "round": 2,
-      "score": 8.0,
+      "score": 8,
       "by": "orchestrator-integration",
       "date": "2026-09-04"
     },
     {
       "module": "buildings",
       "round": 2,
-      "score": 8.0,
+      "score": 8,
       "by": "orchestrator-integration",
       "date": "2026-09-04"
     },
     {
       "module": "zoning",
       "round": 1,
-      "score": 7.0,
+      "score": 7,
       "by": "orchestrator-integration",
       "date": "2026-09-04"
     },
@@ -742,7 +728,7 @@
     {
       "module": "tools",
       "round": 1,
-      "score": 8.0,
+      "score": 8,
       "by": "orchestrator-integration",
       "date": "2026-09-04"
     },
@@ -756,35 +742,35 @@
     {
       "module": "animals",
       "round": 3,
-      "score": 8.0,
+      "score": 8,
       "by": "orchestrator-integration",
       "date": "2026-09-04"
     },
     {
       "module": "environment",
       "round": 3,
-      "score": 8.0,
+      "score": 8,
       "by": "integrator-verification",
       "date": "2026-09-05"
     },
     {
       "module": "environment",
       "round": 4,
-      "score": 8.0,
+      "score": 8,
       "by": "orchestrator-verification",
       "date": "2026-09-08"
     },
     {
       "module": "terrain",
       "round": 3,
-      "score": 8.0,
+      "score": 8,
       "by": "orchestrator-verification",
       "date": "2026-09-08"
     },
     {
       "module": "effects",
       "round": 2,
-      "score": 8.0,
+      "score": 8,
       "by": "integrator-verification",
       "date": "2026-09-05"
     },
@@ -798,14 +784,14 @@
     {
       "module": "park",
       "round": 1,
-      "score": 8.0,
+      "score": 8,
       "by": "integrator-verification",
       "date": "2026-09-05"
     },
     {
       "module": "park",
       "round": 2,
-      "score": 8.0,
+      "score": 8,
       "by": "integrator-verification",
       "date": "2026-09-07"
     },
@@ -833,7 +819,7 @@
     {
       "module": "ui",
       "round": 2,
-      "score": 8.0,
+      "score": 8,
       "by": "integrator-verification",
       "date": "2026-09-07"
     },
@@ -847,42 +833,42 @@
     {
       "module": "animals",
       "round": 4,
-      "score": 8.0,
+      "score": 8,
       "by": "orchestrator-verification",
       "date": "2026-09-08"
     },
     {
       "module": "simulation",
       "round": 2,
-      "score": 9.0,
+      "score": 9,
       "by": "orchestrator-verification",
       "date": "2026-09-08"
     },
     {
       "module": "park",
       "round": 3,
-      "score": 8.0,
+      "score": 8,
       "by": "orchestrator-verification",
       "date": "2026-09-08"
     },
     {
       "module": "environment",
       "round": 5,
-      "score": 6.0,
+      "score": 6,
       "by": "critic-sweep",
       "date": "2026-09-08"
     },
     {
       "module": "audio",
       "round": 2,
-      "score": 8.0,
+      "score": 8,
       "by": "critic-sweep",
       "date": "2026-09-08"
     },
     {
       "module": "simulation",
       "round": 3,
-      "score": 6.0,
+      "score": 6,
       "by": "critic-sweep",
       "date": "2026-09-08"
     },
@@ -896,14 +882,14 @@
     {
       "module": "simulation",
       "round": 4,
-      "score": 9.0,
+      "score": 9,
       "by": "orchestrator-verification",
       "date": "2026-09-08"
     },
     {
       "module": "environment",
       "round": 6,
-      "score": 8.0,
+      "score": 8,
       "by": "orchestrator-verification",
       "date": "2026-09-14"
     },
@@ -917,14 +903,14 @@
     {
       "module": "traffic",
       "round": 2,
-      "score": 8.0,
+      "score": 8,
       "by": "orchestrator-verification",
       "date": "2026-09-14"
     },
     {
       "module": "tools",
       "round": 2,
-      "score": 8.0,
+      "score": 8,
       "by": "orchestrator-verification",
       "date": "2026-09-14"
     },
@@ -938,7 +924,7 @@
     {
       "module": "savannah",
       "round": 4,
-      "score": 8.0,
+      "score": 8,
       "by": "orchestrator-verification",
       "date": "2026-09-21"
     },
@@ -947,6 +933,13 @@
       "round": 4,
       "score": 7.8,
       "by": "orchestrator-blind-visual",
+      "date": "2026-09-21"
+    },
+    {
+      "module": "terrain",
+      "round": 4,
+      "score": 6,
+      "by": "independent-critic-agent",
       "date": "2026-09-21"
     }
   ]
