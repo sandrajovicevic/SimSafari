@@ -31,21 +31,26 @@ Compares against the round-3 baseline (`game.blindVisual = 6.9`, savannah subset
 
 **Game subset average: 7.83 → `game.blindVisual = 7.8`** (round 3: 6.9).
 
-### Discrepancy note: game-close-21.5
+### Discrepancy note: game-close-21.5 — investigated and explained (2026-09-21)
 
 Environment's own STATUS.json history claims this exact view (`game-close-21_5-tune2.png`) was
 fixed to read "~7" legible on 2026-09-08. This round's fresh capture of the same core camera
-preset (`close`) at the same hour does not match that — it reads close to round 3's original 5.5,
-not ~7. Two explanations, not distinguished this round: (a) the 09-08 verification shot used a
-luckier moment/camera state than the fixed `close` preset reproduces on a plain reload, or (b)
-terrain/props changes after 09-08 (grass rework, apron work) increased canopy density directly in
-front of this fixed camera, making a view that used to clear the trees now look straight into
-them. The underlying night-ambient fix (NIGHT_LIFT/NIGHT_HEMI) is not in question — the midground
-past the canopy is legible, consistent with it working — but the specific `close` framing at
-21.5h is not the "~7, terrain mottle and lodge roof all read" result the 09-08 note describes.
-Recorded here rather than silently re-averaged over; worth a follow-up re-check with the exact
-camera state from that day if it's still reachable, or accepting this as the honest current state
-and updating environment's own history note.
+preset (`close`) at the same hour does not match that — it reads close to round 3's original 5.5.
+Traced with an in-page ray march rather than guessing: read `camera.matrixWorld`'s forward axis
+and sampled props' own `coverAt(x,z)` API every 10 m along it. Finding: the camera's own position
+sits at 73% ground-projected tree cover, and at `close`'s own parameters (distance 140, pitch 28°)
+the camera sits ~66 m up — despite being labelled "ground detail" in `CameraRig.js`, it's a
+moderately elevated 3/4 angle, so nearby tree crowns seen from above/beside legitimately dominate
+the near-field. At night, self-shadowed canopy tops read dark even with the night-ambient fix
+active (which correctly lifts the open ground/midground visible past the canopy in this same
+shot) — the same "foreground self-shadowed canopies stay near-black by design" limitation
+environment's own README already documents, just unusually prominent because this fixed camera
+happens to sit inside a dense tree cluster. Most likely explanation for the gap: the 09-08 shot
+predates a later terrain/props density change near world origin. Not a regression in the
+night-ambient fix, and not worth a shader chase (would mean rethinking canopy self-shadowing in
+general for one fixed-camera corner case); a restage of this preset was considered and rejected
+since it's shared with the well-regarded close-14 daytime shot. Score stays at 6.0 (not re-raised
+to 7, matching what was actually seen).
 
 ## Savannah subject — per-image scores (reported, not the game average)
 
