@@ -225,35 +225,35 @@
     "simulation": {
       "wave": 1,
       "domain": "sim",
-      "round": 4,
+      "round": 5,
       "score": 9,
       "status": "pass",
       "errors": 0,
       "drawCalls": 2,
-      "reviewedBy": "orchestrator-verification",
-      "presetsSeen": "overview (DOM); round 2: full harness evidence (2026-09-08); round 3 (critic sweep): boom 12, bust 12/9, close 16.5, night 22 (DOM); round 4: boom/overview/close/night re-staged + re-shot after the reconcile fix (simulation-*.png, 2026-09-08)",
-      "tests": {
-        "file": "src/modules/simulation/test.mjs",
-        "passed": 89,
-        "failed": 0,
-        "deterministic": true,
-        "note": "80 original + 9 new (reconcile adoption/write-off, staged-pop stability, boom claims); same seed reproduces identical histories; live-game harness byte-identical to the 2026-09-08 baseline"
-      },
+      "reviewedBy": "independent-critic-agent",
+      "presetsSeen": [
+        "overview (day60)",
+        "boom (day60)",
+        "bust (day60)",
+        "close (day30)",
+        "night (day60)",
+        "test.mjs run directly"
+      ],
       "issues": [
         {
-          "sev": "resolved",
-          "text": "FIXED and verified (2026-09-08): the staged-pop vanish blocker — reconcileFromWorld() now diff-and-counts per species (adopt surplus, count write-offs, placement follows the world census, no rng draws so the live path is byte-identical), and staging mirrors herds into world.animals. World==ledger at every preset (146/140/110/124/176), unmanaged 0. The unreproduced-claims cap is lifted: boom now shows 38 births, 282 arrivals/d, +$36.8k/60d; overview shows +$18k healthy cash (orchestrator read simulation-boom-12.png). Score restored to 9.0 pending the round-3 re-evaluation."
+          "sev": "minor",
+          "text": "bust preset staff panel shows some roles still over-staffed relative to \"needed\" despite bankruptcy -- plausible (no auto-firing, player must act) but reads oddly unexplained next to the BANKRUPT stamp."
         },
         {
-          "sev": "resolved",
-          "text": "FIXED and demonstrated (2026-09-08): births = 0 was multiplicative — an unreachable happiness drive gate (6 of 8 species below (h-0.5)/0.5 > 0 due to the vital-water gate) times too-low breed rates. Drive gate re-tuned, breed rates x1.5, park pumps fix water quality at source; harness now shows 10-15 births per 30 days at every price with ecology intact (0 migrations, 3/3 lions, happiness 0.58-0.73). Poaching, drought, disease and the village-prosperity chain are now demonstrated by named harness scenarios. spend(amount,reason)/getSpendLog added per docs/requests/tools.md with tests."
+          "sev": "minor",
+          "text": "Village modelled as a staff-morale/prosperity scalar, not a physical village layer -- disclosed simplification vs SimSafari 1998."
         },
         {
-          "sev": "resolved",
-          "text": "README.md written 2026-09-05 by the integrator (full API, report shape, balance constants, known gaps). The TEMP-empty optional list also restored to ['animals','zoning','buildings','traffic','roads'] as the code's own comment instructed; 58/58 tests still pass, lint clean."
+          "sev": "minor",
+          "text": "Visitors are aggregate counts/satisfaction, not individual agents -- disclosed, reasonable for a headless module."
         }
       ],
-      "good": "The most complete module in the project and the one that carries gameplay fidelity to SimSafari 1998. Delivers habitat quality per species, animal happiness driving births/deaths/migration, visitor arrivals driven by reputation and price, a full income/expense ledger (tickets, lodge, shop vs staff, buildings, roads, feed, vet, interest), staff morale feeding upkeep efficiency, village prosperity, seeded events (drought, disease, poachers, viral review, grant) and poaching risk tied to ranger staffing. 58/58 tests pass, determinism verified."
+      "good": "Only module with real automated regression tests -- 89/89 passing, run directly by the critic (not taken on faith), including a determinism check and staged-population-reconciliation tests pinning the exact class of bug (silently-zeroed herd) the project has been burned by elsewhere. bust preset is a genuinely well-executed bankruptcy failure state (real stamp, visitor flatline, red happiness bars). Habitat-quality matrix (close preset) is a clear, correctly-thresholded implementation of the core spec requirement. Zero console errors across every preset; module-owned draw calls are 2; update()/tick() minimal and allocation-clean. Every claim independently checked held up."
     },
     "audio": {
       "wave": 1,
@@ -969,6 +969,13 @@
       "module": "ui",
       "round": 4,
       "score": 6.5,
+      "by": "independent-critic-agent",
+      "date": "2026-09-21"
+    },
+    {
+      "module": "simulation",
+      "round": 5,
+      "score": 9,
       "by": "independent-critic-agent",
       "date": "2026-09-21"
     }
