@@ -113,6 +113,14 @@ SwiftShader software GL (fps is not representative; draws/tris/errors are real).
 * Rain is a camera-anchored volume of billboard streaks; no splash effects, no accumulation.
 * `setWeather` smoothing is exponential toward the target; a preset applied mid-frame with
   `{immediate:true}` still takes one frame for LUT/PMREM.
+* **Storm exposure damping (`stormDamp`, 2026-09-14) fixes the auto-exposure inverting the storm's
+  deliberate darkening (it no longer reads brighter than overcast) but isn't fully tuned — storm's
+  measured sky brightness (~147 avg RGB) is still a little above overcast's (~129), not clearly
+  darker as the "dark cloud deck" preset description implies. `stormDamp`'s 0.35 coefficient is a
+  first correction, same status as the night ceiling: not tuned against reference photography.
+* **`DISC_K = 4.5` sun-disc scale (2026-09-14) is a legibility cheat, not physically derived** — it
+  was sized by eye against the close/golden/dawn presets on this one seed/camera set; a different
+  FOV or a much closer/farther framing could make it read too large or too small again.
 
 ## History / root causes fixed here
 
@@ -151,3 +159,30 @@ Before/after: `tools/shots/blind-game-close-21_5.png` → `game-close-21_5-pause
   `game-close-21_5-tune2.png` (shipped); day control `game-close-14-afterfix.png`;
   waterhole regression `blind-sav-night.png` → `sav-night-afterfix.png` → `sav-night-tune2.png`;
   module night: `env-after-night.png` → `env-night-215-tune2.png` / `env-night-22-final.png`.
+* **2026-09-14 — `close` preset sun disc: the round-3 critic finding ("no sun disc, just blown
+  glow") was diagnosed by an earlier session as an exposure/compositing bug and partly re-coded
+  (dusk yaw, a post-tonemap glare-recovery ring) — that WIP landed without a verification
+  screenshot ever being read. It was re-verified from scratch this round by projecting `uSunDir`
+  through the live camera matrix to find the sun's exact screen pixel, then reading raw pixel
+  values there: the disc WAS compositing correctly (a literal white core inside a darkened ring,
+  as designed) — it just projected to a ~3 px core / ~7 px outer ring at the close preset's 45°
+  vertical FOV / 500 px frame, i.e. genuinely too small to read as "sun disc + corona", not
+  miscomposited. Fixed by a `DISC_K = 4.5` legibility scale on every angular constant in the disc/
+  ring/corona math (a common non-physical cheat — real engines routinely draw the sun larger than
+  its true 0.27° radius for exactly this reason); `moonR` and the physical atmosphere model are
+  untouched. Verified at close (900×500) and cross-checked golden/dawn (700×400) for regressions:
+  all three now show a clearly legible disc+halo, golden/dawn look natural rather than exaggerated.
+* **2026-09-14 — storm exposure fought its own darkening**: the critic's "storm deck stays bright
+  instead of darkening with rain" finding was real and had a root cause of the same family as the
+  2026-09-04/05 exposure bugs. `CLOUD_FRAG` already dims the deck via `mix(1.0, 0.42, uStorm)`, but
+  a darker scene lowers `L`, and `0.62/L^0.62` rises to compensate — auto-exposing the deliberate
+  darkening back out. Measured before the fix: storm's own `toneMappingExposure` (1.41) was
+  *higher* than plain overcast's (1.32), and the storm sky read brighter on screen (avg RGB ~168 vs
+  overcast's ~129) despite being the preset that's supposed to look darker and moodier. Fixed with
+  `stormDamp = 1 - 0.35 * W.rain` multiplied into `exposureTarget`, gated on rain only (0 outside
+  weather with rain, so clear/overcast/cloudy exposure is bit-for-bit unchanged; verified overcast's
+  own exposure/screenshot before and after — no change). After: storm exposure dropped to 1.03
+  (below overcast's 1.32, as intended) and storm's sky avg RGB dropped from ~168 to ~147 — the
+  brighter-than-overcast inversion is fixed. Not yet fully tuned: storm's ~147 is still a little
+  *above* overcast's ~129, so storm doesn't yet read as unambiguously darker than plain overcast,
+  only no longer inverted. See Known gaps.

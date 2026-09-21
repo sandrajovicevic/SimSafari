@@ -136,18 +136,30 @@ void main(){
     // sun: limb-darkened disc + tight corona (the wide Mie glow lives in the LUT). The disc itself
     // is composited AFTER tone mapping (see bottom): at exposure > ~1 the additive disc saturated
     // to the same white as the surrounding Mie glow and disappeared into it (close view, 16-17 h).
-    float disc = 1.0 - smoothstep(0.0044, 0.0050, sunAng);
-    float limb = sqrt(max(0.0, 1.0 - pow(sunAng / 0.0047, 2.0)));
+    //
+    // DISC_K enlarges every angular constant below past the sun's true radius (0.00465 rad/0.266
+    // deg — what moonR still uses). Verified the true-scale disc was compositing correctly (a
+    // literal white core inside a darkened ring, exactly as designed) but at the close preset's
+    // 45 deg vertical FOV / 500 px frame it projected to a ~3 px core and ~7 px outer ring — a
+    // handful of near-white/near-grey pixels that reads as "no sun disc, just blown glow" (the
+    // original critic finding) because it is genuinely too small to perceive, not miscomposited.
+    // Verified by projecting uSunDir through the camera matrix and reading raw pixel values at
+    // the exact projected coordinate: 3.2 px scale is the root cause, not the compositing math.
+    // 4.5x is a legibility cheat (games routinely draw the sun larger than true angular size for
+    // exactly this reason), tuned to read as a clear disc+corona without dominating the frame.
+    const float DISC_K = 4.5;
+    float disc = 1.0 - smoothstep(0.0044 * DISC_K, 0.0050 * DISC_K, sunAng);
+    float limb = sqrt(max(0.0, 1.0 - pow(sunAng / (0.0047 * DISC_K), 2.0)));
     float gate = uSunDiscOn * smoothstep(-0.03, 0.02, uSunDir.y + 0.02) * uDiscVis;
     // inner corona stays additive in HDR (uSunDisc already scales with cloud cover via discScale)
-    col += uSunDisc * (0.06 * exp(-sunAng * 90.0) + 0.012 * exp(-sunAng * 18.0)) * gate;
+    col += uSunDisc * (0.06 * exp(-sunAng * 90.0 / DISC_K) + 0.012 * exp(-sunAng * 18.0 / DISC_K)) * gate;
     discMask = disc * gate;
     discCol = uSunDisc * (0.6 + 0.4 * limb);
     // glare-recovery ring: just outside the disc the forward Mie glow is saturated white, and no
-    // additive brightness can draw a disc there. A thin (0.3-0.6 deg) dip in the post-tonemap glow
-    // restores the edge contrast so disc + corona read at close range. Post-exposure only — the
-    // light itself, exposure controller and PMREM are untouched.
-    ringMask = (smoothstep(0.0054, 0.0066, sunAng) - smoothstep(0.0088, 0.0106, sunAng)) * gate;
+    // additive brightness can draw a disc there. A thin (0.3-0.6 deg, scaled by DISC_K) dip in the
+    // post-tonemap glow restores the edge contrast so disc + corona read at close range.
+    // Post-exposure only — the light itself, exposure controller and PMREM are untouched.
+    ringMask = (smoothstep(0.0054 * DISC_K, 0.0066 * DISC_K, sunAng) - smoothstep(0.0088 * DISC_K, 0.0106 * DISC_K, sunAng)) * gate;
     // stars & milky way in celestial frame
     if (uNightAmount > 0.001) {
       vec3 cd = uCelestial * d;

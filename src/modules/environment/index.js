@@ -351,7 +351,15 @@ function computeLighting() {
   // the night regime instead: any time the sun is well down (st.night > 0.5) night rules apply,
   // with or without a moon. Day/golden-hour behaviour is unchanged (st.night = 0 there).
   const ceiling = (st.isMoonKey || st.night > 0.5) ? 12 : 4;
-  st.exposureTarget = clamp(0.62 / Math.pow(L, 0.62), 0.55, ceiling) * st.exposureBias;
+  // Rain darkens the scene (cloudAtten on direct light, the CLOUD_FRAG deck dim) precisely so a storm
+  // reads moody — but a darker scene means a lower L, and 0.62/L^0.62 rises exactly to compensate,
+  // auto-exposing the deliberate darkening back out. Measured: storm's own toneMappingExposure (1.41)
+  // came out HIGHER than plain overcast's (1.32) despite storm being the intentionally darker preset,
+  // and the storm sky read brighter on screen (avg RGB ~168 vs overcast's ~129) — the opposite of
+  // "dark cloud deck, heavy haze" (README claim, critic-flagged). stormDamp caps how far the
+  // compensation is allowed to fight the mood; it does not touch the day/night ceiling split above.
+  const stormDamp = 1 - 0.35 * W.rain;
+  st.exposureTarget = clamp(0.62 / Math.pow(L, 0.62), 0.55, ceiling) * st.exposureBias * stormDamp;
 
   // fog: horizon-tinted, denser with haze/cloud/rain and at golden hour (dust)
   const goldenHaze = smoothstep(28 * DEG, 4 * DEG, Math.abs(st.sunEl)) * 0.5;
