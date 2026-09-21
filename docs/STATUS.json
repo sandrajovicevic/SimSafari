@@ -109,39 +109,45 @@
     "animals": {
       "wave": 1,
       "domain": "nature",
-      "round": 4,
-      "score": 8,
-      "status": "near-pass",
+      "round": 5,
+      "score": 7,
+      "status": "fail",
       "errors": 0,
-      "drawCalls": 62,
-      "reviewedBy": "orchestrator-verification",
+      "drawCalls": 103,
+      "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
-        "waterhole",
-        "night; round 4: fresh elephant macroA-D (3.4-5 m, 2 tods, 2 sides), close 14, waterhole 8, night 21.5 (animals-el-after-*, 2026-09-08)"
+        "overview 16",
+        "herd 16.5",
+        "waterhole 8",
+        "predators 17.5",
+        "close 15",
+        "night 21.5",
+        "overview 9 (extra)",
+        "stats() readback (extra)"
       ],
       "issues": [
         {
-          "sev": "resolved",
-          "text": "FIXED and verified: real cast shadows confirmed working (terrain's receiveShadow flag was the root cause, fixed by the integrator); the module's own contact-shadow decal was correctly demoted from primary grounding cue to a small low-opacity AO term to avoid double-darkening now both exist."
+          "sev": "major",
+          "text": "update() exceeds its 3ms per-module budget by 40-65%, measured twice (4.179ms and 4.997ms at overview, 128 animals, two different times of day). Not tracked in the README's own performance table, which only reports draw calls/triangles."
         },
         {
-          "sev": "resolved",
-          "text": "FIXED and verified: a real bug where the staged waterhole's ground height sampled at the pool's outer rim could grab an unrelated rise and float the whole water plane over a metre above drinking animals — fixed by averaging samples inside the footprint instead (tools/shots/animals-waterhole-r6.png)."
+          "sev": "major",
+          "text": "The overview preset (230m) cannot verify its own species-diversity claim -- every animal collapses to an indistinguishable pale speck at that distance in both the module preset and an extra tod=9 angle; cannot confirm the claimed 11+ species roster is actually present/distinguishable."
         },
         {
-          "sev": "resolved",
-          "text": "FIXED (jointly with environment) and verified: night was essentially unlit black after the first exposure-ceiling fix; animals' own precise ground-level evidence (tools/shots/animals-night-r4.png) is what led to the isMoonKey-gated night ceiling fix. Re-verified after: night now reads as dim, legible moonlit savannah (tools/shots/animals-night-ceilingfix.png)."
+          "sev": "minor",
+          "text": "predators preset reads as pale tan-white shapes rather than tawny lions with legible manes -- confirms the README's own disclosed overexposure gap."
         },
         {
-          "sev": "resolved",
-          "text": "FIXED and verified (2026-09-08, animals-el-after-macroA-D-*.png / -close-14.png): skin bump field rebuilt as organic wrinkles() — direction-field rotation, anisotropic stretch, frequency jitter, non-harmonic second octave, region-varying amplitude; no lattice at macro or showcase distance; tone/normal strength unchanged; draw calls bit-identical (shader-only)."
+          "sev": "minor",
+          "text": "Night is close to unlit black (disclosed, core/environment issue); river in the same frame is anomalously bright, cross-confirming the terrain night-water bug found independently in that module's round-4 review."
         },
         {
-          "sev": "resolved",
-          "text": "RE-VERIFIED and passed as-is (2026-09-08, fresh macro close-ups): round-2 leg work confirmed — taper, subtle knee/hock swell, foot flare, calm normals; no fix needed."
+          "sev": "minor",
+          "text": "Herd reads as a tight static clump rather than a spread walking group; pale species mip-collapse to grey at distance (both disclosed in README)."
         }
       ],
-      "good": "The procedural elephant is unmistakably an elephant — trunk taper, tusks, ear shape and back line all read correctly from code-built geometry, still the hardest thing in the project. Real cast shadows, correct grey hide tone, and a fixed waterhole all independently verified across three rounds. The builder's own precise diagnostic work (reading back a baked texture to prove an exposure bug rather than a colour bug) is what led directly to two of the project's highest-leverage core fixes."
+      "good": "close elephant shot is the strongest single image in the module -- correct proportions, legible silhouette, organic wrinkle skin, convincing pose/lighting. waterhole composition (elephants drinking, giraffe approaching) reads as genuine staged wildlife, not a tech demo. 12 species confirmed present matching spec. Module-isolated stats() shows real geometry (358,930 tri, 37 draws, 128 animals) comfortably within budget -- the alarming frame-wide triangle totals are correctly attributable to terrain/props sharing the scene, not this module, verified independently. API matches README exactly, update() hot loop allocation-free, dispose() thorough."
     },
     "roads": {
       "wave": 1,
@@ -930,6 +936,13 @@
       "module": "environment",
       "round": 7,
       "score": 6,
+      "by": "independent-critic-agent",
+      "date": "2026-09-21"
+    },
+    {
+      "module": "animals",
+      "round": 5,
+      "score": 7,
       "by": "independent-critic-agent",
       "date": "2026-09-21"
     }
