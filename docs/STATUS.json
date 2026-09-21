@@ -257,39 +257,35 @@
     },
     "audio": {
       "wave": 1,
-      "domain": "audio",
-      "round": 2,
+      "domain": "sim",
+      "round": 3,
       "score": 8,
-      "status": "near-pass",
+      "status": "fail",
       "errors": 0,
       "drawCalls": 0,
-      "reviewedBy": "critic-sweep",
+      "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
-        "night (DOM + analyser, wave 1); round 2 (critic sweep): overview 15/8h, storm 17, close 16.5/19.5 — live meters, 8 species spatialised 34-347 m (2026-09-08)"
+        "overview 15 (via screenshot.mjs eval workaround)",
+        "night 22",
+        "storm 15",
+        "selfTest() direct call",
+        "shot.mjs run twice (failed both times)"
       ],
       "issues": [
         {
-          "sev": "minor",
-          "text": "Only the night preset reviewed; overview/storm/close not yet checked."
+          "sev": "major",
+          "text": "The module's own verification tool src/modules/audio/shot.mjs is broken: page.screenshot() hits the default 30s timeout on the first preset, reproduced twice. Root cause: same rAF-compositor-busy issue the core tools/screenshot.mjs was specifically hardened against (extended timeout/retry) -- shot.mjs never got that fix. Worked around via tools/screenshot.mjs --dom --gesture --eval instead, which confirmed the underlying audio engine is fine."
         },
         {
           "sev": "minor",
-          "text": "animals/vehicles/ui buses read -inf dB at capture because their sounds were still scheduled; a capture timed to a triggered call would prove the spatial chain end to end."
-        },
-        {
-          "sev": "resolved",
-          "text": "README.md written 2026-09-05 by the integrator (full API, sound table, buses, known gaps). Also fixed the live ui→audio key mismatch: ui called play('ui_click') but the sound table key is 'click' — the click silently played nothing before."
-        },
-        {
-          "sev": "resolved",
-          "text": "CLOSED (2026-09-08 critic sweep): the wave-1 'animals/vehicles/ui buses read -inf at capture' minor — the animals bus now reads -31.7 dB LIVE with 8 species spatialised 34-347 m and rings on terrain (audio-overview-auto-dom.png). Vehicles/ui remain documented gaps."
+          "text": "vehicles/animals buses read -inf dB in a still capture between scheduled sounds -- disclosed capture-timing artifact, consistent with what was observed (the event log shows real triggers even while the instantaneous meter reads -inf)."
         },
         {
           "sev": "minor",
-          "text": "Wind layer reads 1.10, exceeding the panel's stated 0-1 scale; README preset tod table drifts from showcase.js; close-preset all-species burst measures 53-269 m vs the claimed 15-40 m (burst placed from target, ear 72 m away — wording, not a defect)."
+          "text": "Synth calls are impressionistic, not species-accurate transcriptions -- disclosed, unavoidable without reference recordings."
         }
       ],
-      "good": "Fully synthesised and genuinely working: AudioContext running, master -20.2 dBFS with a populated 40 Hz-16 kHz spectrum, and a correct night layer mix (insects 1.00, frogs 1.00, birds 0.15, wind 0.41). Spatialised lion, hyena, nightjar and elephant rumble scheduled with real distances (35-265 m)."
+      "good": "Debug panel is genuinely informative: live bus meters, populated 40Hz-16kHz spectrum, per-layer ambience gains, event log with real positions/distances. selfTest() covers the full 30-sound catalogue with plausible differentiated levels, no silent entries. Distance falloff measured directly (lion@10m -23.3dB vs @400m -46.9dB). Night/storm layer mixes matched the README's specific historical numbers closely, independently reproduced. dispose() genuinely closes the AudioContext and tears down every voice/engine loop."
     },
     "effects": {
       "wave": 1,
@@ -976,6 +972,13 @@
       "module": "simulation",
       "round": 5,
       "score": 9,
+      "by": "independent-critic-agent",
+      "date": "2026-09-21"
+    },
+    {
+      "module": "audio",
+      "round": 3,
+      "score": 8,
       "by": "independent-critic-agent",
       "date": "2026-09-21"
     }
