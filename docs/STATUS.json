@@ -152,35 +152,37 @@
     "roads": {
       "wave": 1,
       "domain": "built",
-      "round": 2,
+      "round": 3,
       "score": 7.5,
-      "status": "near-pass",
+      "status": "fail",
       "errors": 0,
-      "drawCalls": 65,
-      "reviewedBy": "orchestrator-integration",
+      "drawCalls": 67,
+      "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
-        "overview",
-        "bridge"
+        "overview 15",
+        "close 16.5",
+        "paved 10",
+        "junction 17",
+        "bridge 9",
+        "night 21.5",
+        "paved-closer (extra)",
+        "stats() readback (extra)"
       ],
       "issues": [
         {
-          "sev": "resolved",
-          "text": "FIXED and verified (tools/shots/roads-check2.png): road surface is no longer near-white chalk. Paved reads as correct grey asphalt; dirt/gravel blend naturally with the surrounding ground."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED and verified (tools/shots/roads-final-bridge.png): the bridge preset was pointed at empty plains; showcase.js now walks the real road graph for the actual water crossing. A real timber bridge with railings now spans dark tannin water in frame, with a detailed cracked mud-flat foreground."
+          "sev": "minor",
+          "text": "Asphalt macro-texture reads as a swirled/brushed pattern (sand-blasted concrete or fabric weave) rather than fine aggregate speckle -- visible at paved, junction, and an extra close-in angle, not a distance artifact."
         },
         {
           "sev": "minor",
-          "text": "Ruts/shoulder-blend improvements reported by the builder (widened dust blend, darker rut channels) not independently close-verified this round."
+          "text": "sampleEdge(edgeId, s, out) allocates only when out is falsy and throws on a plain {x,z}-shaped object -- honestly documented but a real API sharp edge for traffic."
         },
         {
           "sev": "minor",
-          "text": "junction and close presets not independently reviewed this round (builder reports both fixed)."
+          "text": "Showcase network uses fixed control-point coordinates rather than deriving from terrain.getFeatures() -- works today via dynamic bridge retargeting but is seed-fragile in principle (disclosed)."
         }
       ],
-      "good": "Graph, terrain conforming, junctions and the bridge all work; road surface colour and the bridge framing are both independently confirmed fixed. Built domain benchmark is Cities: Skylines II — this is closer to that bar than it has been at any point in the project."
+      "good": "Timber bridge is the standout asset -- correct deck, railings, arch, clean water integration. Dirt two-track at close range is convincing (ruts, dust-blended shoulders, no visible mesh boundary). Night lighting is the best-executed night scene of any module reviewed so far (self-contained reflective paint + lamp glow). Junction blending shows no z-fighting. Own-module budget independently verified via stats() (9 drawables, 44,753 triangles for a 12-edge network) comfortably inside the <=40 draws / <=200k triangle spec. API matches README, dispose() thorough."
     },
     "ui": {
       "wave": 1,
@@ -943,6 +945,13 @@
       "module": "animals",
       "round": 5,
       "score": 7,
+      "by": "independent-critic-agent",
+      "date": "2026-09-21"
+    },
+    {
+      "module": "roads",
+      "round": 3,
+      "score": 7.5,
       "by": "independent-critic-agent",
       "date": "2026-09-21"
     }
