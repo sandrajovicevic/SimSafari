@@ -106,6 +106,16 @@ ${GLSL_NOISE}`)
   float up = clamp(R.y, 0.0, 1.0);
   vec3 sky = mix(uSkyHorizon, uSkyZenith, pow(up, 0.45)) * 0.40;
   outgoingLight += sky * fres * uSkyMix;
+  // Minimum in-column scatter floor: at near-top-down viewing angles fres collapses toward its
+  // 0.015 floor (physically correct — Fresnel reflectance is weakest at normal incidence), so a
+  // fully-shadowed patch (direct diffuse zeroed by the shadow map, indirect capped low via the
+  // deliberately-small envMapIntensity above) had nothing left to light it and crushed to near
+  // true black — verified via a raw pixel readback under a savannah waterhole's tree canopy:
+  // byte ~12 per channel, well below even uBody's own "near-black olive at depth" asymptote
+  // (linear 0.03 alone renders ~byte 48). Real water scatters some light within the column
+  // itself regardless of surface-normal geometry or shadowing; this restores a small, physically
+  // motivated floor of it — negligible on lit water, the only source of light in full shade.
+  outgoingLight += diffuseColor.rgb * 0.45;
   // Explicit sun glint. The material itself is left rough (0.8) so three's GGX lobe contributes almost
   // nothing — a roughness-0.15..0.45 water surface spread a blown-out highlight across half the channel.
   // Here the highlight is a single tight Blinn lobe: bright, but only a few metres wide.
@@ -125,7 +135,7 @@ ${GLSL_NOISE}`)
 }
 #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => 'terrain-water-v5';
+  m.customProgramCacheKey = () => 'terrain-water-v6';
   return m;
 }
 
