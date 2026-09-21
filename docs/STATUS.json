@@ -290,39 +290,33 @@
     "effects": {
       "wave": 1,
       "domain": "nature",
-      "round": 2,
-      "score": 8,
-      "status": "near-pass",
+      "round": 3,
+      "score": 8.5,
+      "status": "pass",
       "errors": 0,
-      "drawCalls": 204,
-      "reviewedBy": "integrator-verification",
+      "drawCalls": 213,
+      "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
-        "overview",
-        "off (A/B pair)"
+        "overview 17.5",
+        "close 17",
+        "heat 13",
+        "night 22",
+        "off 17.5",
+        "measure() (extra)",
+        "getHazeStrength()/stats() (extra)",
+        "getGrade() (extra)"
       ],
       "issues": [
         {
-          "sev": "resolved",
-          "text": "FIXED in code (post-dating the round-1 review) and now verified with evidence (effects-before-overview.png): the showcase is no longer blown out. The showcase takes ownership of toneMappingExposure exactly when environment is absent (ST.ownsExposure in showcase.js, driven per-frame from the sun elevation in updateStage) — precisely the round-1 recommendation. Golden-hour yard reads warm with correct value separation."
-        },
-        {
-          "sev": "resolved",
-          "text": "MEASURED (effects-measure2.json): the pipeline's own cost is exactly +12 draw calls (api.measure(): direct 192 → pipeline 204), matching the spec budget. The 204 at overview in round 1 was the showcase's own test geometry, not the pipeline."
-        },
-        {
-          "sev": "resolved",
-          "text": "A/B DONE: off preset (direct render, no particles) vs overview (full pipeline) shot at the same view/tod — the pipeline adds GTAO contact shadows, warm grade, bloom on lamp heads and vignette; the bypass is flatter with harder shadows. Bloom threshold raised 1.0 → 1.35 (knee 0.4) so mid-tone highlights no longer bloom into white smears at golden hour."
+          "sev": "minor",
+          "text": "overview establishing shot reads visually flat against the AAA reference bar -- the effect is deliberately subtle (confirmed by the numbers), best appreciated at close range or via the off A/B, not on its own."
         },
         {
           "sev": "minor",
-          "text": "close/heat/night presets not re-shot this round; night/heat were verified in the wave-1 round only."
-        },
-        {
-          "sev": "minor",
-          "text": "README.md exists (209 lines, contrary to the round-1 note); measured section cites wave-1 numbers."
+          "text": "Ambient dust/smoke particles are only faintly visible even at close range (one rim-lit wisp) -- confirmed active via stats() (117 spawned) but easy to miss visually without the API readout."
         }
       ],
-      "good": "Pipeline installs via app.setRenderFn, renders 0 errors, costs exactly its 12-draw budget, self-reports measure() numbers, degrades to direct rendering if construction fails. The composer's yard (spheres on plinths, crates, tanks, campfire, lamp ring, sheds, far skyline) is a legitimate test scene for the passes."
+      "good": "Every quantitative README claim reproduced exactly under independent verification: pipeline measure() returns exactly 12/12 extra draw calls (spec ceiling), matching triangle counts per preset, haze strength 0.875 (active, non-zero) at the heat preset, grade parameters (bloom 0.18, grain 0.02) within spec ceilings. GTAO contact shadows genuinely convincing at close range. Night bloom well-tuned (soft lamp halos, not blown out). Module's own draw-call attribution analysis (pipeline vs showcase-yard vs CSM cascade cost) is rigorous and correct. dispose() restores direct rendering and cleans up fully; update() allocation-free."
     },
     "zoning": {
       "wave": 2,
@@ -979,6 +973,13 @@
       "module": "audio",
       "round": 3,
       "score": 8,
+      "by": "independent-critic-agent",
+      "date": "2026-09-21"
+    },
+    {
+      "module": "effects",
+      "round": 3,
+      "score": 8.5,
       "by": "independent-critic-agent",
       "date": "2026-09-21"
     }
