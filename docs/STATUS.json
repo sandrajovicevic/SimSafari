@@ -349,34 +349,29 @@
     "buildings": {
       "wave": 2,
       "domain": "built",
-      "round": 2,
-      "score": 8,
-      "status": "near-pass",
+      "round": 3,
+      "score": 8.5,
+      "status": "pass",
       "errors": 0,
-      "drawCalls": 276,
-      "reviewedBy": "orchestrator-integration",
+      "drawCalls": 296,
+      "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
-        "lodge"
+        "overview 16",
+        "lodge 17.5",
+        "gate 10",
+        "close 16.5",
+        "hide 8",
+        "night 21.5",
+        "overview 8 (extra)",
+        "stats() readback (extra)"
       ],
       "issues": [
         {
-          "sev": "resolved",
-          "text": "FIXED and verified (tools/shots/buildings-final-lodge.png): the flat-black roof shadow is gone — this was the environment exposure clamp + terrain receiveShadow bugs, both since fixed, not a buildings issue. The ground in front of the lodge now reads as correctly lit dry grass with a real soft shadow, and the background buildings show proper thatch roofs and shaded plaster walls instead of flat white boxes. Closes the loop on a cross-cutting bug chain: animals found it, environment/terrain fixed it, buildings independently confirms the fix."
-        },
-        {
-          "sev": "resolved",
-          "text": "Root cause found and fixed by the builder: the showcase's 8 hand-picked site anchors landed on/near water/kopjes for every candidate on this seed (0/240 valid), so the whole complex fell back to a coordinate that was itself underwater — the actual cause of earlier 'floating on water' renders. Replaced with a full-grid scan with biome/water-table rejection and slope scoring."
-        },
-        {
-          "sev": "info",
-          "text": "Buildings-only cost measured directly via api.stats(): 34 draw calls / 131,730 triangles for 25 buildings across all 16 catalogue types — well inside the <=60/<=400k spec budget. The ~276-296 draw calls seen in full-frame screenshots is terrain+props, not buildings; earlier concern about the draw-call count was based on the wrong number."
-        },
-        {
           "sev": "minor",
-          "text": "Builder's own README, honest: occasional forced placement when local slope fails even on a good site (2/25 this seed, never on water); no LOD beyond 300m; several catalogue types (fence gate, feeder, toilets, parking) only shown at overview distance, not close-up."
+          "text": "Polish is uneven across the 16-type catalogue -- lodge and gate are clear hero assets, tower/hide-adjacent/staff-house structures read plainer at overview distance."
         }
       ],
-      "good": "A real thatched-roof lodge with striated makuti roofing, timber rafters, chimney, stone plinth, water tank, solar panel, correct acacia silhouettes around it, and — now that the shadow bug is fixed — a coherent, correctly lit golden-hour scene. Two real bugs found and fixed along the way (site placement, windpump rotor pivot). All 6 presets load, zero errors, lint clean, buildings' own draw-call cost is well within budget."
+      "good": "Thatch roof system (course lips, noise-displaced ragged eave, rolled ridge) genuinely convincing and matches the detailed README description exactly. Gate park-name sign legible and correct. Night lighting (lantern glow on thatch underside, warm deck pool) atmospheric, one of the better night results in the project. Own-module budget independently verified via stats() (34 draws, 131,730 triangles, 25 buildings/16 types) comfortably inside the <=60 draws / <=400k triangle spec. Zero console errors across every preset. API matches README; dispose() present and thorough."
     },
     "props": {
       "wave": 2,
@@ -981,6 +976,13 @@
       "module": "zoning",
       "round": 5,
       "score": 6,
+      "by": "independent-critic-agent",
+      "date": "2026-09-21"
+    },
+    {
+      "module": "buildings",
+      "round": 3,
+      "score": 8.5,
       "by": "independent-critic-agent",
       "date": "2026-09-21"
     }
