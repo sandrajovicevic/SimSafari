@@ -3,6 +3,7 @@
   "wave": 3,
   "passThreshold": 8.5,
   "notes": [
+    "2026-09-14 critic sweep part 2 completed (ui/traffic/tools/zoning previously-unreviewed presets — the prior WIP session started this same sweep, ran ~38 min, then stopped with no file written, per pause-2026-09-08-evening.md): all 16 shots (ui report/panel/toolbar/close/night DOM; traffic overview/sighting/night; tools road/terrain/close/night; zoning night) rendered 0 errors, within budget, and were actually read. Results: ui moves to PASS (8.0 -> 8.5, round 3) — all 6 presets now confirmed strong, genuinely Cities:Skylines-II-calibre; traffic 7.5 -> 8.0 (round 2) — sighting and night both strong, overview's known vehicle-scale-at-distance framing issue is unchanged, not new; tools stays 8.0 but round 2 with full 6-preset coverage confirmed (road/terrain/close/night all good, no defects); zoning stays 7.5, round 4, night preset confirmed good. One cross-module plausibility note surfaced and filed under ui rather than chased down: an individual animal's wellbeing panel showed 0% happy against need bars all reading 50-83%, worth animals/simulation checking.",
     "2026-09-14 session resumed after a gap and found the CI dev-agent (.github/workflows/dev-agent.yml, GLM via Z.ai) has been a silent no-op since the 2026-09-08 evening pause: it 'runs' successfully on schedule every day but its own gate step shows every real step (checkout, install, run agent) skipped, because ZAI_API_KEY was never set as a repo secret — confirmed via the Actions API job logs (run 34709819871 and others), not assumed. No code changes happened on main between the 09-08 evening WIP commit (bb5e210) and this session. Per user instruction the automation is being treated as dead going forward; this and future sessions drive the remaining work directly. Picked up exactly where docs/requests/pause-2026-09-08-evening.md left off: the two WIP fixes it marked 'CODE DONE, verification pending' (environment's close-preset sun disc and dusk afterglow) had never actually been screenshotted before that session was cut off. Verified both from scratch: dusk held up as coded (real evidence, no change needed); the sun disc did NOT — investigated with a raw pixel readback (projected uSunDir through the camera matrix to find its exact screen pixel) rather than trust the code comment, found it was compositing correctly but rendering only ~3px across, genuinely too small to read — fixed with a legibility scale (DISC_K=4.5), not the compositing fix the WIP comment described. Also found and fixed a second, unclaimed bug while re-verifying storm/overcast: storm's own auto-exposure was cancelling out its intentional rain-darkening (storm measured brighter than overcast, the opposite of the design), fixed with a rain-gated exposure damper; overcast's hard-shadow claim held up on inspection. environment: 6.0/fail -> 8.0/near-pass (round 6, orchestrator-verification, full detail in the module's own issues list and README history). This is the same kind of near-miss the traffic module's own round-1 entry already warned about — verify with a screenshot actually read, every time, regardless of how confident a prior commit message sounds.",
     "2026-09-08 simulation blocker FIXED and claims recovered (builder agent, orchestrator-verified; score 6.0 -> 9.0, status pass): root cause was subtler than suspected — staged parks hold their 193 animals only in the sim ledger, and the sim's FIRST birth spawns through the animals hook into world.animals, so from day 2 the daily reconcileFromWorld() copied that 1-animal census over the ledger (193 -> 1, born/died/left ~0; unit tests never saw it because the plain world's animals map is empty). Fix: per-species diff-and-count reconcile (surplus world animals adopted; ledger animals missing from the world written off as a COUNTED removal), plus showcase staging now mirrors every staged herd into world.animals via the same spawn hook + replan(). 89/89 tests (80 + 9 new incl. the 'staged pop ~= reported pop' regression), lint ok, same-seed determinism verified, and the live-game harness numbers are BYTE-IDENTICAL to the recorded baseline (net/d, elasticity, water, bankruptcy day 17, sightings 12 vs 0). Claims now reproduce: boom 38 births / 282 arrivals/d avg / +$36,766 over 60d; overview +$18,093 healthy cash; world==ledger at every preset, unmanaged 0. Toolchain nit discovered: --dom captures no longer write PNGs in this environment (png:null) — canvas captures used; affects screenshot tool, not the game.",
     "2026-09-08 zoning boundary dashes + world-edge apron RESOLVED (builder agent, orchestrator-verified): zoning gains boundaries.js — region interfaces traced once via crack-following, collinear runs merged, 1-cell water/paint-fringe teeth melted with 6 Taubin passes (clamped to <=2.0 m of the exact partition, topology cannot leak), corners rounded with 3x Chaikin, emitted as ONE indexed ribbon with arc-length attributes driving the dash cycle (11.4 m kept); overlay.js is now fill-only (4500c55 feathering preserved; ribbon = +1 draw). Verified: dashes read as smooth marching-ants contours (b5-zoning-overlay.png vs blind-zoning-overlay.png zigzags), no fill/fence regression (overview/close), lint ok, 0 errors. Terrain apron: the REAL fix was applied — apron material now samples the same packed splat layers through the identical two-scale UV scheme, height blend, detail-normal and tint chain, with an analytic plains control and a 20-220 m fade from baked control aux; the border now reads as continuous mottled plains (b2-game-overview-14/8.png vs fix4-game-overview-14.png). Residuals documented in terrain README: props/roads stop at the border (~15% tree-shadow brightness gap, partially compensated), far-field blotch positions differ (GLSL vs CPU noise). Interior splat untouched; 315 draws at game overview.",
@@ -207,14 +208,14 @@
     "ui": {
       "wave": 1,
       "domain": "built",
-      "round": 2,
-      "score": 8.0,
-      "status": "near-pass",
+      "round": 3,
+      "score": 8.5,
+      "status": "pass",
       "errors": 0,
       "drawCalls": 0,
-      "reviewedBy": "integrator-verification",
+      "reviewedBy": "orchestrator-verification",
       "presetsSeen": [
-        "round 1: game overview DOM; round 2: fresh DOM composite over the live park (tools/shots/blind-game-dom-14c-dom.png, 2026-09-07)"
+        "round 1: game overview DOM; round 2: fresh DOM composite over the live park (tools/shots/blind-game-dom-14c-dom.png, 2026-09-07); round 3: report, panel, toolbar, close, night (sweep-ui-*-dom.png, 2026-09-14)"
       ],
       "issues": [
         {
@@ -222,11 +223,15 @@
           "text": "FIXED and verified (blind-game-dom-14c-dom.png, 2026-09-07): the empty dark panel top-right is gone (.sf [hidden] display:none — .side's display:flex was defeating the hidden attribute). Top bar, toolbar and minimap all render legibly over the live park; the blind test scored this composite 7.5, the strongest game view."
         },
         {
-          "sev": "minor",
-          "text": "Not yet reviewed at report/panel/toolbar/night presets."
+          "sev": "resolved",
+          "text": "FIXED (all 6 presets now independently reviewed, 2026-09-14): report shows a genuinely polished daily-report modal with 3 sparkline charts (treasury/visitors/population), income/expense breakdown and a visitor-satisfaction ring; panel and close show detailed animal/habitat inspect panels (per-species fit bars, resource bars, quality ring) plus a live notification toast; toolbar shows the building catalogue with pricing, tooltip and placement-cancel affordance; night shows a building operations panel (occupancy/staffing/income) plus two colour-coded alert toasts (poacher warning vs. informational), fully legible over a dark map. All match or exceed the Cities: Skylines II reference density and clarity; zero defects found."
+        },
+        {
+          "sev": "info",
+          "text": "Cross-module plausibility note, not a ui defect (ui renders whatever data it's given): the elephant inspect panel (panel preset) showed '0% HAPPY' while its own individual need bars read Food 83%/Water 50%/Rest 52%/Safety 65%/Social 77% — none near zero. Either the wellbeing formula is a harsh multiplicative gate (plausible; simulation's own population-level breeding drive had exactly this shape before its 09-08 fix) or there's a genuine clamp-to-zero edge case in the per-individual happiness calc. Worth animals/simulation checking; not chased down this round (out of scope for a ui preset sweep)."
         }
       ],
-      "good": "Genuinely close to the Cities: Skylines II reference: top bar with cash, income delta, visitors, reputation stars, day/season, clock, speed controls and weather; numbered category toolbar; framed minimap. Typography and spacing are disciplined. Strongest module in wave 1, re-verified over the live park in round 2 with the notification-panel fix in place."
+      "good": "Genuinely close to the Cities: Skylines II reference: top bar with cash, income delta, visitors, reputation stars, day/season, clock, speed controls and weather; numbered category toolbar; framed minimap. Typography and spacing are disciplined. Strongest module in the project — round 3 (2026-09-14) verified the remaining 5 presets (report/panel/toolbar/close/night) and all held up with zero defects, closing out full-preset coverage. Moved to pass (8.5)."
     },
     "simulation": {
       "wave": 1,
@@ -337,13 +342,13 @@
     "zoning": {
       "wave": 2,
       "domain": "built",
-      "round": 3,
+      "round": 4,
       "score": 7.5,
       "status": "near-pass",
       "errors": 0,
       "drawCalls": 171,
       "reviewedBy": "orchestrator-verification",
-      "presetsSeen": "round 1: overview; round 2: fresh 2026-09-07 capture of overlay (tools/shots/blind-zoning-overlay.png); round 3: overlay/overview/close after boundaries.js ribbon (b5-zoning-*, 2026-09-08)",
+      "presetsSeen": "round 1: overview; round 2: fresh 2026-09-07 capture of overlay (tools/shots/blind-zoning-overlay.png); round 3: overlay/overview/close after boundaries.js ribbon (b5-zoning-*, 2026-09-08); round 4: night (sweep-zoning-night.png, 2026-09-14)",
       "issues": [
         {
           "sev": "resolved",
@@ -354,8 +359,8 @@
           "text": "Fence posts/wire not clearly visible at overview distance; needs a close-preset check."
         },
         {
-          "sev": "minor",
-          "text": "Only overview independently reviewed; close/overlay/night not yet checked by the orchestrator (module loads and all 4 presets are present per probe, zero errors)."
+          "sev": "resolved",
+          "text": "FIXED (all 4 presets now independently reviewed, 2026-09-14): night preset (sweep-zoning-night.png) shows two zone fills glowing legibly without blowing out, the marching-ants boundary dashes still readable along the riverbank at night, and a high-contrast amber/white hatched zone in the foreground (reads as a distinct zone type or an active selection, not a defect) — no artifacts, all-round confirmed good."
         },
         {
           "sev": "minor",
@@ -439,14 +444,15 @@
     "traffic": {
       "wave": 2,
       "domain": "built",
-      "round": 1,
-      "score": 7.5,
+      "round": 2,
+      "score": 8.0,
       "status": "near-pass",
       "errors": 0,
       "drawCalls": 106,
-      "reviewedBy": "orchestrator-integration",
+      "reviewedBy": "orchestrator-verification",
       "presetsSeen": [
-        "close"
+        "close",
+        "overview, sighting, night (sweep-traffic-*.png, 2026-09-14)"
       ],
       "issues": [
         {
@@ -454,33 +460,38 @@
           "text": "Verification took several attempts because the overview preset (camera distance 430m) makes a 4-5m vehicle imperceptibly small — I initially misread this as 'no vehicles rendering' and, worse, briefly misdiagnosed it as a missing kit.setBodyMatrix() call based on a flawed grep pattern ('setMatrix' is not a substring of 'setBodyMatrix') before re-checking and finding the wiring is correct. The close preset settles it cleanly: vehicles are real, positioned, and rendering. Recorded so the mistake isn't repeated."
         },
         {
-          "sev": "minor",
-          "text": "Night preset (headlights) and sighting preset (animals interaction) not yet independently reviewed."
+          "sev": "resolved",
+          "text": "FIXED (all remaining presets independently reviewed, 2026-09-14): sighting (sweep-traffic-sighting.png) is genuinely strong — a real safari vehicle with visible seated passengers pulled up near a grazing herd, a legible wildlife-sighting moment. night (sweep-traffic-night.png) is also strong — working headlight cones lighting the road ahead, reflective road-paint dashes, correct dark ambient, vehicle silhouette with passengers still readable. Both close the 'not yet independently reviewed' gap with no defects found."
         },
         {
           "sev": "minor",
-          "text": "Overview preset's vehicle scale-at-distance is a legitimate framing concern for the module's own showcase, even though it isn't a rendering bug — worth a closer default camera or a labelled close-up inset."
+          "text": "Overview preset's vehicle scale-at-distance (sweep-traffic-overview.png, 2026-09-14: two bridges and the road graph are clearly visible but no vehicle reads at this distance) is a legitimate framing concern for the module's own showcase, even though it isn't a rendering bug — worth a closer default camera or a labelled close-up inset. Unchanged since round 1; not a regression."
         }
       ],
-      "good": "Genuinely good: a real open safari truck with tiered bench seats, clearly visible seated passengers in varied clothing colours, ribbed canopy roof, roof rack, spare wheel, khaki body paint, and a visible ground contact shadow. World-state vehicle spawning verified directly (6 vehicles with plausible, in-bounds positions). Zero console errors, 106 draw calls at close, all modules load together cleanly."
+      "good": "Genuinely good: a real open safari truck with tiered bench seats, clearly visible seated passengers in varied clothing colours, ribbed canopy roof, roof rack, spare wheel, khaki body paint, and a visible ground contact shadow. World-state vehicle spawning verified directly (6 vehicles with plausible, in-bounds positions). Zero console errors, 106 draw calls at close, all modules load together cleanly. Round 2 (2026-09-14) verified the two presets that most exercise the module's actual gameplay purpose — sighting and night — and both hold up well; all 4 presets are now independently confirmed."
     },
     "tools": {
       "wave": 2,
       "domain": "built",
-      "round": 1,
+      "round": 2,
       "score": 8.0,
       "status": "near-pass",
       "errors": 0,
       "drawCalls": 87,
-      "reviewedBy": "orchestrator-integration",
+      "reviewedBy": "orchestrator-verification",
       "presetsSeen": [
         "overview",
-        "building"
+        "building",
+        "road, terrain, close, night (sweep-tools-*.png, 2026-09-14)"
       ],
       "issues": [
         {
+          "sev": "resolved",
+          "text": "FIXED (all 6 presets now independently reviewed, 2026-09-14): road (sweep-tools-road.png) shows a working ghost-preview road stroke over real terrain; terrain (sweep-tools-terrain.png) shows a working circular terraform-brush ghost outline on a raised mound; close (sweep-tools-close.png) shows the placed lodge from buildings, correctly detailed; night (sweep-tools-night.png) is genuinely strong — the lodge glowing warm against a dark ambient, reflective road-paint dashes, river reflections. No defects found in any of the four."
+        },
+        {
           "sev": "minor",
-          "text": "terrain/road/close/night presets not yet independently reviewed (overview and building both confirmed good)."
+          "text": "Select/inspect picking is radius/nearest-based rather than a true mesh raycast — a documented, deliberate simplification given the public API contract, not a bug."
         },
         {
           "sev": "minor",
@@ -880,6 +891,34 @@
       "module": "environment",
       "round": 6,
       "score": 8.0,
+      "by": "orchestrator-verification",
+      "date": "2026-09-14"
+    },
+    {
+      "module": "ui",
+      "round": 3,
+      "score": 8.5,
+      "by": "orchestrator-verification",
+      "date": "2026-09-14"
+    },
+    {
+      "module": "traffic",
+      "round": 2,
+      "score": 8.0,
+      "by": "orchestrator-verification",
+      "date": "2026-09-14"
+    },
+    {
+      "module": "tools",
+      "round": 2,
+      "score": 8.0,
+      "by": "orchestrator-verification",
+      "date": "2026-09-14"
+    },
+    {
+      "module": "zoning",
+      "round": 4,
+      "score": 7.5,
       "by": "orchestrator-verification",
       "date": "2026-09-14"
     }
