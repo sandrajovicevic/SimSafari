@@ -321,36 +321,30 @@
     "zoning": {
       "wave": 2,
       "domain": "built",
-      "round": 4,
-      "score": 7.5,
-      "status": "near-pass",
+      "round": 5,
+      "score": 6,
+      "status": "fail",
       "errors": 0,
-      "drawCalls": 171,
-      "reviewedBy": "orchestrator-verification",
-      "presetsSeen": "round 1: overview; round 2: fresh 2026-09-07 capture of overlay (tools/shots/blind-zoning-overlay.png); round 3: overlay/overview/close after boundaries.js ribbon (b5-zoning-*, 2026-09-08); round 4: night (sweep-zoning-night.png, 2026-09-14)",
+      "drawCalls": 158,
+      "reviewedBy": "independent-critic-agent",
+      "presetsSeen": [
+        "overview 15",
+        "close 16.5",
+        "overlay 13",
+        "night 21.5",
+        "overview 10 (extra)"
+      ],
       "issues": [
         {
-          "sev": "resolved",
-          "text": "PARTIALLY FIXED and verified (blind-zoning-overlay.png, 2026-09-07): the round-1 hard checkerboard fill is gone — fill feathers via a 5x5 same-region field (commit 4500c55) and the dash cycle is finer (~11 m); zone fill edges are visibly soft. Downgraded to a minor: the boundary dashes still trace the 4 m cell staircase in long zigzag chains."
+          "sev": "major",
+          "text": "Boundary-smoothing pipeline's headline claim (\"never as the 4m cell staircase\") is directly contradicted by the visitor-zone boardwalk path, which renders as an unmistakable right-angle staircase at the exact grid pitch in four separate screenshots across three times of day. Habitat-region boundaries elsewhere in the same frames do show genuine Chaikin/Taubin rounding, so this specifically affects narrow 1-2-cell-wide corridors, plausibly an edge case where the Taubin filter has no teeth left to melt without erasing the path."
         },
         {
           "sev": "minor",
-          "text": "Fence posts/wire not clearly visible at overview distance; needs a close-preset check."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED (all 4 presets now independently reviewed, 2026-09-14): night preset (sweep-zoning-night.png) shows two zone fills glowing legibly without blowing out, the marching-ants boundary dashes still readable along the riverbank at night, and a high-contrast amber/white hatched zone in the foreground (reads as a distinct zone type or an active selection, not a defect) — no artifacts, all-round confirmed good."
-        },
-        {
-          "sev": "minor",
-          "text": "Genuine mutual optional-dependency cycle with animals (each lists the other as optional). Architecturally handled by the registry's cycle detection, not a bug, but worth knowing about."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED and verified (2026-09-08, b5-zoning-overlay.png): boundary dashes are no longer grid-quantised — a new boundaries.js traces interfaces once, melts cell teeth (Taubin, clamped to the exact partition), Chaikin-rounds corners and emits one ribbon whose arc-length attribute drives a smooth 11.4 m dash cycle. Topology-safe by construction; fill feathering untouched."
+          "text": "updateMs (0.9-4.1ms) exceeds the general 1.5ms/module budget in 3 of 4 presets -- plausibly a SwiftShader wall-clock-cadence artifact (rebuildHabitats' 1.2s throttle firing every real frame), but rebuildHabitats is genuinely non-trivial work and deserves a frame-count-based throttle instead."
         }
       ],
-      "good": "A real, working habitat-painting overlay: correctly coloured zone regions integrated with terrain and props in one coherent scene; round 2 adds feathered fill and finer marching ants. Loads with zero errors, all 4 presets present, lint clean."
+      "good": "Habitat-region fill and boundary rendering (away from the boardwalk case) is genuinely good -- correct tinting, soft feathered edges, organic region shapes. Fence detail at close range is convincing and terrain-conforming. Own-module draw-call budget (4, vs <=20 spec ceiling) exact and confirmed. Zero console errors across every preset. API matches README; dispose() clean."
     },
     "buildings": {
       "wave": 2,
@@ -980,6 +974,13 @@
       "module": "effects",
       "round": 3,
       "score": 8.5,
+      "by": "independent-critic-agent",
+      "date": "2026-09-21"
+    },
+    {
+      "module": "zoning",
+      "round": 5,
+      "score": 6,
       "by": "independent-critic-agent",
       "date": "2026-09-21"
     }
