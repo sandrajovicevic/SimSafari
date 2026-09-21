@@ -376,38 +376,32 @@
     "props": {
       "wave": 2,
       "domain": "nature",
-      "round": 2,
-      "score": 8,
-      "status": "near-pass",
+      "round": 3,
+      "score": 7,
+      "status": "fail",
       "errors": 0,
-      "drawCalls": 139,
-      "reviewedBy": "orchestrator-integration",
+      "drawCalls": 155,
+      "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
-        "acacia"
+        "overview 16.5",
+        "grass 17",
+        "acacia 15",
+        "kopje 17.5",
+        "riverine 8",
+        "close 16",
+        "night 21.5"
       ],
       "issues": [
         {
-          "sev": "resolved",
-          "text": "FIXED and verified (tools/shots/props-final-acacia.png): bark and foliage read as true dark grey-brown / deep green, no longer washed out."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED and verified (same shot): the acacia crown is now correctly a dense, flat-topped umbrella silhouette on a bare high-forking trunk — no longer palm-like."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED and verified (same shot): grass is a continuous sward with real colour variation, and the dirt patch now blends into it with a soft gradient — no hard seam of any kind. A real cast shadow from the tree is also visible on the ground now that terrain receives shadows."
-        },
-        {
-          "sev": "info",
-          "text": "Correctly reassigned the horizon-line/seam defects to terrain via its own controlled hide-props test, which the orchestrator independently reproduced and confirmed. Credit where due."
+          "sev": "major",
+          "text": "update() cost is 90x-175x over the 1.5ms budget on every single preset measured (132.5-262.8ms), not an occasional worst case. README discloses a 792ms grass-rebuild worst case but frames it as rare (\"not every frame\") -- in fact every preset switch IS a 14m threshold crossing, so this expensive rebuild fires on every preset load, every time. In the live game this is a repeated stutter on every camera pan/jump that crosses a chunk boundary."
         },
         {
           "sev": "minor",
-          "text": "Known gaps from the builder's own README, not independently verified: grassRebuildMs measured at 792ms (perf issue, root-caused, not fixed); only 4 of 8 spec'd tree species built; night preset now reads very dark, consistent with the cross-cutting night-ambient issue noted under environment/terrain, not a props-specific regression."
+          "text": "kopje preset framed wide enough that the escarpment dominates the shot; could not clearly confirm \"thorn scrub in the cracks\" on the kopje itself at this framing."
         }
       ],
-      "good": "This is the clearest before/after in the project: round 1 was a legitimate 5.5 (washed out, wrong silhouette, visible seams). Round 2, independently verified, shows correct colour, correct silhouette, real shadows and no seams. Vegetation existing at all was the single biggest blocker in the project three rounds ago; it is now a strong module."
+      "good": "Draw-call and triangle numbers match the README's own measurements exactly for every preset -- the most precise README-to-reproduction correspondence of any module reviewed. overview and riverine are the strongest single images reviewed in the project (naturalistic density gradients, correct silhouettes, atmospheric lighting). acacia and close demonstrate individual species/prop silhouettes precisely matching descriptions. Instancing delivers: 125-155 draws for 150k+ grass instances, comfortably inside the <=400 spec ceiling. API matches README; dispose() releases every instanced mesh; lint clean."
     },
     "traffic": {
       "wave": 2,
@@ -983,6 +977,13 @@
       "module": "buildings",
       "round": 3,
       "score": 8.5,
+      "by": "independent-critic-agent",
+      "date": "2026-09-21"
+    },
+    {
+      "module": "props",
+      "round": 3,
+      "score": 7,
       "by": "independent-critic-agent",
       "date": "2026-09-21"
     }
