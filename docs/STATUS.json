@@ -187,30 +187,40 @@
     "ui": {
       "wave": 1,
       "domain": "built",
-      "round": 3,
-      "score": 8.5,
-      "status": "pass",
+      "round": 4,
+      "score": 6.5,
+      "status": "fail",
       "errors": 0,
       "drawCalls": 0,
-      "reviewedBy": "orchestrator-verification",
+      "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
-        "round 1: game overview DOM; round 2: fresh DOM composite over the live park (tools/shots/blind-game-dom-14c-dom.png, 2026-09-07); round 3: report, panel, toolbar, close, night (sweep-ui-*-dom.png, 2026-09-14)"
+        "overview 15",
+        "report 15",
+        "panel 16.5",
+        "toolbar 15",
+        "close 16.5",
+        "night 21.5",
+        "toolbar debug eval (extra)"
       ],
       "issues": [
         {
-          "sev": "resolved",
-          "text": "FIXED and verified (blind-game-dom-14c-dom.png, 2026-09-07): the empty dark panel top-right is gone (.sf [hidden] display:none — .side's display:flex was defeating the hidden attribute). Top bar, toolbar and minimap all render legibly over the live park; the blind test scored this composite 7.5, the strongest game view."
+          "sev": "major",
+          "text": "Toolbar active-tool pill renders a literal \"null\" as visible text (confirmed via innerHTML dump: \"<span>Building.Place</span>null<span class=\\\"muted\\\">.</span>...\"). Root cause: pill.append(...) uses the native Element.append(), which stringifies a null child, instead of the project's own append() helper in dom.js which skips null/undefined. Fires in the module's own toolbar showcase preset."
         },
         {
-          "sev": "resolved",
-          "text": "FIXED (all 6 presets now independently reviewed, 2026-09-14): report shows a genuinely polished daily-report modal with 3 sparkline charts (treasury/visitors/population), income/expense breakdown and a visitor-satisfaction ring; panel and close show detailed animal/habitat inspect panels (per-species fit bars, resource bars, quality ring) plus a live notification toast; toolbar shows the building catalogue with pricing, tooltip and placement-cancel affordance; night shows a building operations panel (occupancy/staffing/income) plus two colour-coded alert toasts (poacher warning vs. informational), fully legible over a dark map. All match or exceed the Cities: Skylines II reference density and clarity; zero defects found."
+          "sev": "major",
+          "text": "Side panel can show \"0% HAPPY / Miserable\" contradicted by healthy need bars (83/50/52/65/77%) and \"Doing fine\" advice text. Root cause: animals.getHappiness(id) returns a hard 0 fallback for any id unknown to the real animals module registry -- exactly what happens for mock/showcase-injected animals (ui/mock.js writes directly into world.animals, bypassing animals.spawn()). The selected animal is also entirely absent from the 3D view for the same reason. Fires in the module's own panel showcase preset."
         },
         {
-          "sev": "info",
-          "text": "Cross-module plausibility note, not a ui defect (ui renders whatever data it's given): the elephant inspect panel (panel preset) showed '0% HAPPY' while its own individual need bars read Food 83%/Water 50%/Rest 52%/Safety 65%/Social 77% — none near zero. Either the wellbeing formula is a harsh multiplicative gate (plausible; simulation's own population-level breeding drive had exactly this shape before its 09-08 fix) or there's a genuine clamp-to-zero edge case in the per-individual happiness calc. Worth animals/simulation checking; not chased down this round (out of scope for a ui preset sweep)."
+          "sev": "minor",
+          "text": "update()'s 0.5s refresh accumulator is wall-clock based, not frame-count based -- plausibly fires every frame under SwiftShader's slow frame time instead of twice a second, inflating measured updateMs (7.4-9.7ms EMA vs the 1.5ms/module budget); likely a measurement artifact of software GL rather than a confirmed real-hardware violation, but worth a frame-time-independent cap."
+        },
+        {
+          "sev": "minor",
+          "text": "Empty notification panel container can appear; population/cash graph panel is a stub vs spec -- both already disclosed in the README."
         }
       ],
-      "good": "Genuinely close to the Cities: Skylines II reference: top bar with cash, income delta, visitors, reputation stars, day/season, clock, speed controls and weather; numbered category toolbar; framed minimap. Typography and spacing are disciplined. Strongest module in the project — round 3 (2026-09-14) verified the remaining 5 presets (report/panel/toolbar/close/night) and all held up with zero defects, closing out full-preset coverage. Moved to pass (8.5)."
+      "good": "Visual/layout quality genuinely close to the Cities: Skylines II reference across overview/report/close/night. Daily report modal (canvas sparklines, income/expense breakdown, satisfaction rings, species table) is a complete, well-composed implementation. close preset shows the same panel system working correctly, proving the panel bug is a specific data-path defect not a systemic failure. Night HUD legibility excellent. Zero console errors anywhere; API matches README; dispose() thorough."
     },
     "simulation": {
       "wave": 1,
@@ -952,6 +962,13 @@
       "module": "roads",
       "round": 3,
       "score": 7.5,
+      "by": "independent-critic-agent",
+      "date": "2026-09-21"
+    },
+    {
+      "module": "ui",
+      "round": 4,
+      "score": 6.5,
       "by": "independent-critic-agent",
       "date": "2026-09-21"
     }
