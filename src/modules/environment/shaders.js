@@ -214,7 +214,18 @@ float cloudShape(vec2 p, float cov) {
   vec4 n1 = texture2D(uNoise, p);
   vec4 n2 = texture2D(uNoise, p * 3.1 + vec2(0.37, 0.11) + (n1.ga - 0.5) * 0.06);
   float shape = n1.r * 0.62 + n1.b * 0.38;
-  float base = clamp((shape - (1.0 - cov)) / max(0.08, cov * 0.55), 0.0, 1.0);
+  // shape (fbm blended with a worley billow field) realistically peaks well under 1.0 — the old
+  // linear threshold (1.0 - cov) needed shape > 0.82 to show ANYTHING at the "fair weather"
+  // coverage the daytime presets actually use (cov 0.18-0.3), which the noise field essentially
+  // never reaches: independently confirmed by the critic pass (2026-09-22) as literally zero
+  // clouds at overview/dawn/golden, despite their own descriptions promising "fair-weather
+  // cumulus"/"lit cumulus". overcast (cov ~0.92) already looked correct — a full, textured deck —
+  // because its much lower linear threshold (~0.08) was easy for the noise field to clear.
+  // covEff softens the low end of that curve (pow < 1 lifts small cov toward 1 faster than linear)
+  // so scattered puffs become reachable at fair-weather coverage while leaving the already-correct
+  // overcast regime close to unchanged (pow(0.92, 0.42) = 0.966 vs 0.92 linear — a small nudge).
+  float covEff = pow(clamp(cov, 0.0, 1.0), 0.42);
+  float base = clamp((shape - (1.0 - covEff)) / max(0.08, covEff * 0.55), 0.0, 1.0);
   float detail = n2.g * 0.6 + n2.a * 0.4;
   float dens = clamp(base - (1.0 - base) * detail * 0.45, 0.0, 1.0);
   return dens;

@@ -57,7 +57,14 @@ try {
     const base = `audio-${preset}-${String(tod).replace('.', '_')}-dom`;
     fs.mkdirSync(OUT_DIR, { recursive: true });
     const png = path.join(OUT_DIR, base + '.png');
-    await page.screenshot({ path: png });
+    // The game's rAF loop keeps the compositor busy, so Playwright's default 30s screenshot
+    // timeout can give up mid-capture — core tools/screenshot.mjs was hardened against exactly
+    // this (see its own comment) but this module's own tool never got the same fix, so running it
+    // verbatim as documented failed on the very first preset (confirmed by the independent critic
+    // pass, 2026-09-22, reproduced twice). Same fix: a long timeout, and a loud failure instead of
+    // a silent one if it still times out.
+    try { await page.screenshot({ path: png, timeout: 180000 }); }
+    catch (e) { console.log(`   ! page.screenshot failed: ${String(e?.message || e).slice(0, 200)}`); }
     const errors = [...new Set([...info.simErrors, ...pageErrors, ...consoleErrors])];
     const report = { module: 'audio', preset, tod, url, elapsedMs: Date.now() - t0, state: info.state, running: info.running, errors, selfTest: info.selfTest, selfTestDetail: info.detail, levels: Object.fromEntries(info.buses.map((b, i) => [b, info.levels[i]])), layers: Object.fromEntries(info.layerNames.map((l, i) => [l, info.layers[i]])), log: info.log, modules: info.modules, drawCalls: info.drawCalls, triangles: info.triangles, png: path.relative(process.cwd(), png) };
     fs.writeFileSync(path.join(OUT_DIR, base + '.json'), JSON.stringify(report, null, 2));
