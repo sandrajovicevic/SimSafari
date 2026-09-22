@@ -307,7 +307,29 @@ export async function stage(ctx, presetName) {
   // 6. Camera anchors — real feature positions, rule-of-thirds framing per preset.
   aim(presets.overview, gx - 60, gz - 40);
   presets.overview.camera.yaw = degOf(gx - kopje.x, gz - kopje.z) + 20;
-  aim(presets.close, gx, gz);
+  // close: same grassland anchor family as hero/herd, but offset laterally away from the herd's
+  // spawn/walk corridor (and the impala/ostrich grazing spots nearby) — otherwise this "quiet
+  // grass and acacia trunk" close-up shares the exact (gx,gz) anchor point the herd is spawned
+  // and walking through, so the herd ends up crossing the frame instead (critic finding: close
+  // and herd were nearly indistinguishable in subject). Walk a few candidate offsets perpendicular
+  // to the herd's travel line until one lands on real, flat, dry grassland.
+  {
+    const herdYaw = presets.herd.camera.yaw;
+    const hdir = herdYaw * DEG + Math.PI / 2 - 0.15;
+    const perpX = -Math.cos(hdir), perpZ = Math.sin(hdir);
+    let cx = gx, cz = gz, found = false;
+    for (const d of [90, 110, 70, 130]) {
+      for (const sgn of [1, -1]) {
+        const tx = gx + perpX * d * sgn, tz = gz + perpZ * d * sgn;
+        const wl = terrain?.getWaterLevelAt ? terrain.getWaterLevelAt(tx, tz) : ctx.world.terrain.waterLevel;
+        const b = ctx.world.biomeAt(tx, tz);
+        if (ctx.world.getHeight(tx, tz) > wl + 2 && ctx.world.getSlope(tx, tz) < 0.12 && (b === 0 || b === 1)) { cx = tx; cz = tz; found = true; break; }
+      }
+      if (found) break;
+    }
+    aim(presets.close, cx, cz);
+    presets.close.camera.yaw = degOf(cx - kopje.x, cz - kopje.z) + 15;
+  }
   // hero: close enough that the walking herd reads as animals (at 220 m a zebra is ~10 px) —
   // frame the herd's own spawn line with the kopje silhouette beyond it.
   presets.hero.camera.distance = 130;

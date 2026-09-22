@@ -216,10 +216,23 @@ export async function buildPark(ctx, opts = {}) {
     // plains/browsers vertices subject to a pairwise disc-separation constraint (12 m gap).
     const PL_R = 100, BR_R = 105;
     const sepFrom = (i, a, ar, own) => !a || dist(loop.verts[i].x, loop.verts[i].z, a.x, a.z) > own + (a.r ?? 85) + 12;
-    plainsIdx = order.find((i) => sepFrom(i, predatorsAnchor, predatorsAnchor.r, PL_R)) ?? order[0];
+    // Prefer a vertex that also clears the water by a real margin — `openness` already factors in
+    // distToWater, but as min(distToKopjes, distToWater) a vertex can rank "open" purely on kopje
+    // distance while still sitting right against the river; the later offRoad() inward nudge (toward
+    // loopCenter) has only ~30 m of local jitter room to rescue that, which isn't always enough if the
+    // whole neighbourhood is riverside (confirmed on seed 1: the plains disc ended up 3 m from the
+    // river). Try a vertex with 55 m+ water clearance first; fall back to the old kopje-only rule if
+    // none exists so a valid loop never fails outright.
+    const clearWater = (i) => distToWater(loop.verts[i].x, loop.verts[i].z, features) > 55;
+    plainsIdx = order.find((i) => sepFrom(i, predatorsAnchor, predatorsAnchor.r, PL_R) && clearWater(i))
+      ?? order.find((i) => sepFrom(i, predatorsAnchor, predatorsAnchor.r, PL_R)) ?? order[0];
     browsersIdx = order.find((i) => i !== plainsIdx
       && sepFrom(i, predatorsAnchor, predatorsAnchor.r, BR_R)
-      && sepFrom(i, loop.verts[plainsIdx], PL_R, BR_R)) ?? order.find((i) => i !== plainsIdx) ?? order[1];
+      && sepFrom(i, loop.verts[plainsIdx], PL_R, BR_R)
+      && clearWater(i))
+      ?? order.find((i) => i !== plainsIdx
+        && sepFrom(i, predatorsAnchor, predatorsAnchor.r, BR_R)
+        && sepFrom(i, loop.verts[plainsIdx], PL_R, BR_R)) ?? order.find((i) => i !== plainsIdx) ?? order[1];
   }
 
   const riverSpot = pointBesideRiver(world, features, 0.5) || pointBesideRiver(world, features, 0.35) || pointBesideRiver(world, features, 0.65);
@@ -235,14 +248,22 @@ export async function buildPark(ctx, opts = {}) {
   // radius of the herd. Radii are sized so every species' capacity (area / tables.space) clears its
   // population: the wetland disc reaches over the channel (water cells are excluded from the region),
   // so it is the largest and is pulled back from the bank.
-  const offRoad = (v, r) => {
+  // `avoidWater`: the plains/browsers vertex is chosen (above) to be the "most open" one, away from
+  // kopjes/water — but this inward nudge toward loopCenter can walk that safe choice right back up
+  // against the river (confirmed on seed 1: the plains anchor ended up 3.2 m from the river's edge,
+  // in wetland biome, with the habitat's own showcase camera consequently framing a river instead of
+  // the fenced grazers — critic-reported, and reproducible: not a camera bug but a siting one). Reuse
+  // the same distToWater() the vertex selection above already trusts to reject a nudged candidate
+  // that lands too close to water; findSpot's own multi-try search finds another candidate nearby.
+  const offRoad = (v, r, avoidWater) => {
     if (!v) return null;
     const dx = loopCenter.x - v.x, dz = loopCenter.z - v.z, d = Math.hypot(dx, dz) || 1;
-    const at = findSpot(world, v.x + (dx / d) * (r * 0.7), v.z + (dz / d) * (r * 0.7), rng, { spread: 30, maxSlopeDeg: 10 });
+    const extra = avoidWater ? (x, z) => distToWater(x, z, features) > r * 0.35 : undefined;
+    const at = findSpot(world, v.x + (dx / d) * (r * 0.7), v.z + (dz / d) * (r * 0.7), rng, { spread: avoidWater ? 60 : 30, maxSlopeDeg: 10, extra });
     return { x: at.x, z: at.z, r };
   };
-  const plainsAnchor = offRoad(loop.verts[plainsIdx], 100) || findSpot(world, half * 0.3, -half * 0.15, rng, { spread: 140, maxSlopeDeg: 8 });
-  const browsersAnchor = offRoad(loop.verts[browsersIdx], 105) || findSpot(world, -half * 0.32, -half * 0.05, rng, { spread: 140, maxSlopeDeg: 8 });
+  const plainsAnchor = offRoad(loop.verts[plainsIdx], 100, true) || findSpot(world, half * 0.3, -half * 0.15, rng, { spread: 140, maxSlopeDeg: 8 });
+  const browsersAnchor = offRoad(loop.verts[browsersIdx], 105, true) || findSpot(world, -half * 0.32, -half * 0.05, rng, { spread: 140, maxSlopeDeg: 8 });
   if (riverSpot) {
     const dx = loopCenter.x - wetlandAnchor.x, dz = loopCenter.z - wetlandAnchor.z, d = Math.hypot(dx, dz) || 1;
     wetlandAnchor = { x: wetlandAnchor.x + (dx / d) * 30, z: wetlandAnchor.z + (dz / d) * 30, r: 110 };
@@ -343,7 +364,7 @@ export async function buildPark(ctx, opts = {}) {
     // every side, so `facing` only orients the stair-access gap away from the habitat)
     placed.tower = placeBuilding(ctx, buildings, 'tower', predatorsAnchor.x + predatorsAnchor.r * 0.85, predatorsAnchor.z, rng, { spread: 35, facing: { x: predatorsAnchor.x, z: predatorsAnchor.z } });
 
-    for (const [k, v] of Object.entries(placed)) report.buildings[k] = v ? { id: v.id, x: v.x, z: v.z, forced: v.forced } : null;
+    for (const [k, v] of Object.entries(placed)) report.buildings[k] = v ? { id: v.id, x: v.x, z: v.z, rot: v.rot, forced: v.forced } : null;
   } else report.warnings.push('buildings module absent: no structures placed');
 
   // ---- 7. props: biome scatter (auto in the real game via terrain:ready; explicit in showcase) ---

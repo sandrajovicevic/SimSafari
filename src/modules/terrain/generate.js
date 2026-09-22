@@ -231,9 +231,18 @@ export function generateSavannah(world, noise, rng, opts = {}) {
         const profile = smooth(-75, 0, de) * 0.22 + smooth(0, 32, de) * 0.62 + smooth(32, 120, de) * 0.16;
         let he = escarp.height * profile;
         const cm = smooth(-6, 8, de) * (1 - smooth(30, 52, de));
-        const flute = noise.ridged2D(x / 26 + 5, z / 26 + 9, 3);
-        const flute2 = noise.ridged2D(x / 8.5 + 21, z / 8.5 + 3, 2);
-        he += cm * (7.5 * flute - 3.4) + cm * 3.4 * fb(x, z, 60, 2) + cm * 1.8 * (flute2 - 0.5);
+        // Domain-warp the sample position feeding each ridged field with an independent, much
+        // lower-frequency field before evaluating it (the same technique noise.warped2D uses for
+        // fbm) — a fixed x/26, x/8.5 frequency with no warp reads as a uniform "fluted column" comb
+        // at every distance tested (critic: "every groove is near-identical width/spacing... a
+        // repeating procedural column motif rather than natural stratified rock"). Warping breaks
+        // groove spacing/width irregularly along the ridge; depthMod varies groove depth the same way.
+        const warpX = 18 * fb(x, z, 170, 2), warpZ = 13 * fb(x + 61, z - 47, 130, 2);
+        const warpX2 = 6 * fb(x - 33, z + 19, 55, 2), warpZ2 = 5 * fb(x + 22, z - 8, 62, 2);
+        const depthMod = 0.6 + 0.4 * fb(x, 0, 210, 2);
+        const flute = noise.ridged2D((x + warpX) / 26 + 5, (z + warpZ) / 26 + 9, 3);
+        const flute2 = noise.ridged2D((x + warpX2) / 8.5 + 21, (z + warpZ2) / 8.5 + 3, 2);
+        he += cm * (7.5 * flute - 3.4) * depthMod + cm * 3.4 * fb(x, z, 60, 2) + cm * 1.8 * (flute2 - 0.5) * depthMod;
         // scree / talus cone at the foot: real escarpments are not a dam wall down to the plain
         const tal = smooth(-62, -6, de) * (1 - smooth(-6, 14, de));
         he += tal * (4.5 + 3.2 * noise.ridged2D(x / 15 + 21, z / 15 + 7, 2) + 1.2 * fb(x, z, 30, 2));
