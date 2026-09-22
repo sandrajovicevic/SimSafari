@@ -91,7 +91,18 @@ vec3 albedo(vec2 uv, float h){
     key: 'roads2:asphalt', size, seed: 37, normalStrength: 0.03,
     height: HELPERS + /* glsl */ `
 float height(vec2 uv){
-  float agg = tfbm(uv, 110.0, 2, uSeed) * 0.5 + 0.5;
+  // agg was 2 octaves — soft enough that the spec-100+-scale noise mostly disappeared under the
+  // dominant low-frequency 'macro' term in albedo() below, leaving the broad swirl as the only
+  // thing that read at any distance. 4 octaves gives real fine-grain texture for aggregate to
+  // stand on (independent critic pass, 2026-09-22: "swirled/brushed pattern... more like
+  // sand-blasted concrete... than fine, uniform pebble-speckle").
+  float agg = tfbm(uv, 110.0, 4, uSeed) * 0.5 + 0.5;
+  // coarse's freq=24 (~17cm features at this material's 4m tile, ROAD_REPEAT.paved) was the
+  // NORMAL MAP's dominant gradient source — our eyes read specular/normal swirls far more readily
+  // than a same-scale albedo variation, which is why the road kept reading as swirled/brushed
+  // even after the albedo-side fixes below. Cut its height contribution to a quarter (0.15 -> 0.04)
+  // so agg's much finer, higher-frequency gradient (freq=110, ~3.6cm) dominates the normal map
+  // instead — that reads as microfacet-scale roughness, not a macro-scale swirl.
   float coarse = tfbm(uv, 24.0, 3, uSeed + 1.0) * 0.5 + 0.5;
   vec3 w = tworleyId(uv, 4.0, uSeed + 5.0);
   float crackLine = 1.0 - smoothstep(0.0, 0.03 + 0.02 * agg, w.y - w.x);
@@ -99,30 +110,50 @@ float height(vec2 uv){
   float wobble = tfbm(uv, 40.0, 2, uSeed + 8.0);
   float crack = crackLine * hasCrack * smoothstep(-0.2, 0.3, wobble);
   float pt = smoothstep(0.56, 0.64, tfbm(uv, 7.0, 3, uSeed + 12.0) * 0.5 + 0.5);
-  float h = 0.55 + agg * 0.25 + coarse * 0.15;
-  h = mix(h, 0.62 + agg * 0.08, pt);
+  float h = 0.55 + agg * 0.32 + coarse * 0.04;
+  h = mix(h, 0.62 + agg * 0.1, pt);
   h -= crack * 0.45;
   return clamp(h, 0.0, 1.0);
 }`,
     albedo: HELPERS + /* glsl */ `
 vec3 albedo(vec2 uv, float h){
-  float agg = tfbm(uv, 110.0, 2, uSeed) * 0.5 + 0.5;
-  float pt = smoothstep(0.56, 0.64, tfbm(uv, 7.0, 3, uSeed + 12.0) * 0.5 + 0.5);
-  float macro = tfbm(uv, 2.0, 3, uSeed + 40.0) * 0.5 + 0.5;
-  vec3 base = mix(vec3(0.072, 0.072, 0.068), vec3(0.115, 0.112, 0.104), macro);
-  base = mix(base, vec3(0.165, 0.160, 0.148), pow(agg, 3.0) * 0.6);
-  vec3 patchCol = vec3(0.052, 0.052, 0.050) * (0.9 + 0.2 * agg);
-  vec3 c = mix(base, patchCol, pt);
-  float crack = 1.0 - smoothstep(0.15, 0.45, h);
-  c = mix(c, vec3(0.026, 0.026, 0.022), crack);
-  return c;
+  // Full rewrite (independent critic pass, 2026-09-22 — see the roughness fix above for the
+  // bisection method). The previous version's swirl turned out NOT to be isolated to one term:
+  // both this function's own pt-driven full-strength patch mix (freq 7, ~57cm) and its h-based
+  // crack re-threshold (smoothstep(0.15,0.45,h) — re-deriving "crackiness" from the COMPOSITE
+  // baked height rather than the actual localised worley crack signal, so it darkened broad
+  // low-height REGIONS, not just crack lines) independently reproduced the same swirl even after
+  // roughness/AO were fixed — proven by flattening albedo alone (swirl persisted, driven by
+  // rough/ao) vs flattening rough+ao alone (swirl persisted, driven by this function). Only
+  // flattening all three together actually removed it. Rewritten so every term here is either
+  // high-frequency-only (agg, fine speckle) or a gentle, low-AMPLITUDE tint — nothing here mixes
+  // two colours at full or near-full strength across a broad, low-frequency mask.
+  float agg = tfbm(uv, 110.0, 4, uSeed) * 0.5 + 0.5;
+  float fine = tfbm(uv, 90.0, 3, uSeed + 90.0) * 0.5 + 0.5;
+  vec3 base = mix(vec3(0.082, 0.081, 0.076), vec3(0.108, 0.105, 0.098), agg);
+  base = mix(base, base * 0.8, fine * 0.4);
+  return base;
 }`,
+    // Root cause of the "swirled/brushed" look (independent critic pass, 2026-09-22), found by
+    // bisection: NOT albedo, NOT the normal map — verified by forcing each to a flat constant in
+    // turn and finding the swirl persisted unchanged through both. It only vanished once ROUGHNESS
+    // and AO were both flattened. Two narrowing attempts on the OLD rough(uv,h) — which derived its
+    // variation from the same low-frequency h (agg/coarse/crack/pt) as albedo — still reproduced
+    // the full swirl at unreduced contrast (measured: crop stddev ~21-22 before AND after both
+    // attempts, vs ~21 for the genuinely flat control): GGX specular response to roughness is
+    // highly non-linear, so *shape* dominates over amplitude — any variation sharing the same
+    // macro-scale spatial structure as h reads as a coherent sweep, not fine texture, regardless
+    // of how small the numeric range is. Fix: decouple roughness entirely from h and drive it from
+    // its own dedicated high-frequency-only term (freq 130, no low-frequency component at all) at
+    // a small amplitude — the GGX nonlinearity then amplifies FINE noise into fine specular
+    // sparkle (real aggregate glint), not a macro sweep, because there is no macro-scale shape left
+    // for it to amplify. AO dropped to a flat constant — a physically-thin asphalt layer has no
+    // AO-scale cavities to speak of, and it was contributing to the same coherent-shape problem.
     roughness: /* glsl */ `float rough(vec2 uv, float h){
-  float pt = smoothstep(0.56, 0.64, tfbm(uv, 7.0, 3, uSeed + 12.0) * 0.5 + 0.5);
-  float r = 0.78 + (1.0 - h) * 0.15;
-  return clamp(mix(r, 0.62, pt), 0.5, 1.0);
+  float fine = tfbm(uv, 130.0, 3, uSeed + 90.0) * 0.5 + 0.5;
+  return clamp(0.83 + fine * 0.05, 0.8, 0.9);
 }`,
-    ao: /* glsl */ `float ao(vec2 uv, float h){ return mix(0.55, 1.0, smoothstep(0.1, 0.6, h)); }`,
+    ao: /* glsl */ `float ao(vec2 uv, float h){ return 0.95; }`,
   });
 
   // ---- weathered timber planks (bridge decks, signs) : planks run along V ----
