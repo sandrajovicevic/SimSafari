@@ -356,7 +356,12 @@ const api = {
   count(species) { if (!species) return S.animals.length; let n = 0; for (const a of S.animals) if (a.species === species) n++; return n; },
   speciesInfo,
   allSpecies: () => SPECIES_IDS.slice(),
-  getHappiness: (id) => S.byId.get(id)?.happiness ?? 0,
+  // Returns null (not 0) for an id this module has never spawned, so callers with their own
+  // fallback data (e.g. ui's showcase mock, which writes straight into world.animals to avoid
+  // spawning through this module) can tell "unknown to me" apart from "genuinely 0% happy" —
+  // the independent critic pass (2026-09-22) found the old `?? 0` here silently overrode a
+  // correct mock happiness value with a false 0%/Miserable reading in the animal inspect panel.
+  getHappiness: (id) => { const a = S.byId.get(id); return a ? (a.happiness ?? 0) : null; },
   setHabitatQualityFn(fn) { S.qualityFn = typeof fn === 'function' ? fn : null; },
   nearest(x, z, r) {
     const out = [], r2 = r * r;

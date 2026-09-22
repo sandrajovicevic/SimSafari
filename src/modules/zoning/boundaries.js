@@ -146,7 +146,20 @@ export function buildBoundaryGeometry(world) {
   // while barely shrinking the overall shape. Every point is then clamped to MAX_PULL metres of its
   // exact-crack position, so the smoothed line can never wander more than half a cell off the true
   // partition — it cannot leak into a neighbouring region, only cut across single-cell corners.
-  const MAX_PULL = 2.0;    // max displacement from the exact crack polyline (m) — < half a cell
+  //
+  // MAX_PULL was 2.0 (exactly half a cell). The independent critic pass (2026-09-22) found this too
+  // tight specifically for the thinnest corridor a player can actually paint: ZoneTool.js's own
+  // minimum brush radius is 4 m (clamped, see its `[` key handler), which paints a ~2-cell-wide
+  // strip — exactly what zoning/showcase.js's boardwalk demo uses (paintPath's default width is
+  // also 4). At that width, a 2.0 m clamp on each of two opposing edges still left the underlying
+  // 1-cell zigzag under-smoothed (confirmed visually: a repeating right-angle staircase at the raw
+  // grid pitch, in a 4-screenshot reproduction). Two edges of a 2-cell (8 m) corridor are still 4 m
+  // apart even if EACH pulls the full new amount toward the other — comfortably clear of touching —
+  // so this is raised to 3.2 m rather than the old half-cell rule. Regions much wider than one
+  // player-brush stroke are unaffected in practice: 3.2 m is a small fraction of any real habitat
+  // boundary's scale, so the "cannot leak into a neighbouring region" guarantee still holds where it
+  // actually matters (thin corridors were always the tight case, not big regions).
+  const MAX_PULL = 3.2;
   const smoothChain = (xs, zs, isClosed) => {
     const n = xs.length;
     // collinear merge: drop the middle point of two consecutive unit steps in the same direction

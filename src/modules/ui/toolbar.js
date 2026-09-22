@@ -1,5 +1,5 @@
 // Bottom toolbar: category bar + item cards. Choosing an item emits tool:request {tool, options}; `tools` answers with tool:selected.
-import { el, clear, fmtMoney, titleCase } from './dom.js';
+import { el, clear, append, fmtMoney, titleCase } from './dom.js';
 import { icon, hasIcon, animalIconName } from './icons.js';
 import { SPECIES_ORDER, BUILDINGS, OVERLAYS, speciesFacts } from './species.js';
 
@@ -138,8 +138,13 @@ export function createToolbar(root, s) {
       clear(pill);
       const item = t.item || findItem(t.tool, t.options);
       const cost = item ? (typeof item.cost === 'number' ? fmtMoney(item.cost) : item.cost) : '';
-      pill.append(icon(item?.icon || 'select'), el('span', { text: item?.name || titleCase(t.tool) }),
-        cost ? el('span.muted', { text: cost }) : null, el('span.muted', { text: '·' }), el('span.muted', null, 'Cancel', el('span.key', { text: 'Esc' })));
+      // pill is a raw DOM element — native Element.append() stringifies a null/undefined argument
+      // into a literal "null"/"undefined" text node instead of skipping it (confirmed by the
+      // independent critic pass, 2026-09-22: DOM readback showed `...<span>Building.Place</span>
+      // null<span class="muted">·</span>...` whenever `cost` is falsy). This project's own
+      // append() helper (dom.js) exists exactly to skip null/undefined/false children — use it.
+      append(pill, [icon(item?.icon || 'select'), el('span', { text: item?.name || titleCase(t.tool) }),
+        cost ? el('span.muted', { text: cost }) : null, el('span.muted', { text: '·' }), el('span.muted', null, 'Cancel', el('span.key', { text: 'Esc' }))]);
       pill.hidden = false;
     } else pill.hidden = true;
     renderItems();
