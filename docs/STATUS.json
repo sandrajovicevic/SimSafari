@@ -464,46 +464,39 @@
     "savannah": {
       "wave": 3,
       "domain": "nature",
-      "round": 4,
-      "score": 8,
-      "status": "near-pass",
+      "round": 5,
+      "score": 6,
+      "status": "fail",
       "errors": 0,
-      "drawCalls": 185,
-      "reviewedBy": "orchestrator-verification",
+      "drawCalls": 228,
+      "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
-        "round 1: all 10; round 2: fresh 2026-09-07 blind captures of overview, waterhole, kopje, night (tools/shots/blind-sav-*.png); round 3: kopje re-staged + waterhole regression check (sav-kopje-fix-d/-e.png, sav-waterhole-fixd.png, 2026-09-07); round 4: fresh 1920x1080 round-4 blind set (blind4-sav-*.png, 2026-09-21), see docs/critic/game-round4-blind.md"
+        "overview 16.5",
+        "close 16",
+        "hero 17.4",
+        "waterhole 8",
+        "kopje 17.8",
+        "herd 16",
+        "river 9.5",
+        "storm 15",
+        "night 22",
+        "dawn 6.3"
       ],
       "issues": [
         {
-          "sev": "resolved",
-          "text": "FIXED and verified (tools/shots/sav-kopje-fix-d.png / -e.png, 2026-09-07; RE-CONFIRMED 2026-09-21 with a fresh 1080p capture, blind4-sav-kopje.png): the male lion is unmistakable at 8 m — dark mane, tan flank, legs grounded, a lioness standing right third and another lying left, kopje backdrop, sun behind the lens. Root cause was three stacked occluders invisible to the terrain-only LOS check: the spot sat on the kopje's steep skirt (legs swallowed by a rock lip), a tall dead shrub ~3 m off the cleared lane leaned across the subject, and a giant boulder rooted beside the lens filled half the frame; dead-centre front light also flattened the male toward the old 'pale box'. showcase.js now requires dry AND slope < 0.14 at the spot, seeds the bearing 20° off the sun for three-quarter light, marches the camera (8→30 m) requiring camera-spot slope < 0.18, and widens props.clear to a ±3.5 m corridor, a 9 m podium at the male, a 5 m patch per lioness and a 20 m fore-court at the lens; hold pins behaviour so the settle cannot wander the pride off. Both captures use an identical camera (d=8, pitch 10, yaw −87.1°) — the lottery is gone. Draw calls 185 (was 190); waterhole unchanged at 200. Remaining nit: the male's flank reads pale-bright at full front-rake — a lighting tune, not an occlusion defect."
+          "sev": "major",
+          "text": "close preset shows the wrong scene -- a zebra/wildebeest herd crossing, near-identical in subject to the herd preset next to it -- instead of the described quiet foreground-grass-and-acacia-trunk-with-hazy-kopje composition. Confirmed via capture JSON that the correct preset and its own authored camera were used; no kopje visible at all in this shot."
         },
         {
-          "sev": "resolved",
-          "text": "PARTIALLY RESOLVED (2026-09-08): the texture-pattern half of this minor is fixed via terrain's grass rework — the synthetic squiggle stamp at midday (overview through close) is now a soft tufted grain (fix4-game-close-14.png). STILL OPEN: the uniform golden glow across the whole sward at low sun (pure diffuse now that grass roughness is 1.0) — a lighting/shading tell, strongest at park-lodge; needs an environment/materials pass, not textures."
+          "sev": "major",
+          "text": "hero flagship shot does not deliver its promised composition: roughly half the frame blown out by sun glare, no legible kopje silhouette on the right third (escarpment instead), no grazing herd visible in the middle distance."
         },
         {
-          "sev": "resolved",
-          "text": "FIXED and verified (2026-09-21, blind4-sav-overview.png at 1920x1080): the waterline sparkle blotches at the waterhole rim and upper river are gone — same fix as the terrain module's own 2026-09-08 real-GPU roughness/detail-normal work, now confirmed from the savannah composer's own overview camera. Bank and pan-rim read clean."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED and verified (2026-09-21, same day it was filed): the pan-centre black patch under the acacia canopy. Root cause in terrain/water.js's custom lighting: the water's analytic sky-reflection term collapses toward its 0.015 Fresnel floor at near-top-down viewing angles (physically correct), and with the real-time shadow zeroing direct diffuse and envMapIntensity deliberately kept low (0.10, to stop the river reading as a sheet of white sky — see the module's own history), a fully-shadowed patch had no light left to render with. Pixel readback confirmed it: byte ~12/channel, well below even the water's own 'near-black olive at depth' body-colour asymptote (linear 0.03 alone renders ~byte 48). Fixed with a small unconditional in-column-scatter floor (`outgoingLight += diffuseColor.rgb * 0.45`) — negligible on lit water (roads-bridge-waterfix-check.png shows the river's dark tannin colour and depth absorption unchanged), the only light source in full shade. After: the patch reads as plausible dappled shade (~55/43/25 vs ~80/65/40 in full sun, a believable falloff) instead of a hard black hole (sav-waterhole-blackfix2.png)."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED and verified (savannah-waterhole-auto.png): the dirt track no longer bridges the waterhole pan — the leg to the waterhole is dropped when the straight line samples water. The waterhole is wild again."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED and verified (savannah-river-auto.png): river preset camera now sits ON the water looking down the channel; the old bank-side aim framed a wall of riverine foliage with no river in it."
-        },
-        {
-          "sev": "resolved",
-          "text": "FIXED and verified (savannah-hero-auto.png): hero camera at 130 m so the walking herd reads as animals (was 220 m — zebras were ~10 px)."
+          "sev": "minor",
+          "text": "Night waterhole glows uniformly bright (single brightest object in frame) -- same terrain/environment water-at-night bug independently confirmed in terrain, animals, traffic reviews this round; fourth cross-module data point."
         }
       ],
-      "good": "A real, seed-general composer: every stage re-derives anchors from actual terrain features, art-directs weather per preset through environment's API, and stages a 60+ animal cast with states. All 10 presets load with 0 console errors, inside budget (max 228 draws / 5.15M tris at dawn vs the 1500/6M budget). Cross-module defect fixes it drove: terrain water glint, props grass shimmer, effects bloom threshold, the world-edge apron palette. Round-2 blind reads: waterhole 8.0 (unmistakably African — the best image in the blind set), night waterhole 7.0 (legible moonlit scene), overview 6.5 (sparkle blotches), kopje 6.5 (subject illegible — major above)."
+      "good": "overview, waterhole, kopje, herd, river, storm, and dawn all deliver exactly what their descriptions promise -- genuinely strong, well-composed, atmospheric photography-adjacent framing. kopje subject (lion pride) holds up under fresh independent inspection. river and dawn are among the best single images reviewed in this whole critic pass. Module adds no scene content of its own (verified via draw-call attribution); dispose()/API/lint clean."
     },
     "park": {
       "wave": 3,
@@ -993,6 +986,13 @@
       "module": "tools",
       "round": 3,
       "score": 8,
+      "by": "independent-critic-agent",
+      "date": "2026-09-22"
+    },
+    {
+      "module": "savannah",
+      "round": 5,
+      "score": 6,
       "by": "independent-critic-agent",
       "date": "2026-09-22"
     }
