@@ -500,39 +500,41 @@
     },
     "park": {
       "wave": 3,
-      "domain": "built",
-      "round": 3,
-      "score": 8,
-      "status": "near-pass",
+      "domain": "nature",
+      "round": 4,
+      "score": 6,
+      "status": "fail",
       "errors": 0,
-      "drawCalls": 258,
-      "reviewedBy": "orchestrator-verification",
+      "drawCalls": 364,
+      "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
-        "round 1: all 7; round 2: fidelity-harness 30-day runs + blind game views (2026-09-07); round 3: expanded demo (11 species, pumps, tents) verified by harness + park-overview-14.png (258 draws / 4.33M tris, 0 errors)"
+        "overview 15 (retest after a one-off 320x180 flake)",
+        "gate 9",
+        "lodge 17.5",
+        "habitat 16",
+        "tour 16.5",
+        "close 16.5",
+        "night 21.5"
       ],
       "issues": [
         {
-          "sev": "resolved",
-          "text": "FIXED (commit 4500c55) and verified by the fidelity harness (2026-09-07): month one now has 0 migrations (was 29), lions survive (were all gone by day 12), day-30 cash $209,298 from $250,000, and the live game is deterministic — same seed reproduces an identical 30-day history. Habitat discs offset off the loop road, regions re-resolved after late terrain edits, species spawn as herds inside their named region (0 strays on seeds 1+2)."
+          "sev": "major",
+          "text": "habitat preset shows an entirely different scene than its description -- a river/gallery view instead of the plains-grazer habitat with fence/hide/zebra/wildebeest/impala. The dedicated demonstration of the \"4 fenced habitats\" headline feature does not show one. Same per-seed camera-anchor idiom as savannah, where an analogous (less severe) mismatch was found independently this round -- likely a systemic weakness, not two unrelated one-offs."
         },
         {
-          "sev": "resolved",
-          "text": "FIXED (2026-09-08): the demo park breaks even at $15 — net +383 $/day 30-day mean (+1,630 day-30), first viable price of 7 measured. Arrivals grow via content: 11 species, habitat water pumps (vital-gate fix), 48 tent beds (was 32-capped), replan() after build. Elasticity stays plausible (272 arrivals at $10 down to 49 at $60). Profitability at higher prices remains future content work, but a player following the demo's lead can now reach break-even in month one."
-        },
-        {
-          "sev": "minor",
-          "text": "The tour preset's showcase-only vehicle spawns on the kopje plateau top (nearest road point to the framed habitat) — reads as a truck parked on a mesa. Existing documented gap; unchanged."
+          "sev": "major",
+          "text": "close preset shows a wide establishing view, not the promised lodge-veranda close-up with visible pool -- the lodge assets exist (confirmed in lodge/night presets) but this preset's camera does not frame them as described."
         },
         {
           "sev": "minor",
-          "text": "Predator-road sighting loop under SwiftShader: still not demonstrable with real-time vehicles (~1 fps), but the fidelity harness now proves the chain end-to-end with synthetic dt — 20 sightings over 1800 vehicle-seconds with demo tours vs 0 without vehicles. Needs real hardware for the live-path confirmation."
+          "text": "tour preset's safari truck not visually confirmed -- kopje subject correct but no vehicle located in frame."
         },
         {
-          "sev": "resolved",
-          "text": "FIXED and verified: the demo clock no longer races showcase captures — setSpeed(1) now applies only in the live game and only when the clock is not explicitly paused. Previously every ?module=park screenshot landed at a random night hour (~35 game-hours burned during the 40-frame settle at ~1 fps); the first park-overview shot was black."
+          "sev": "minor",
+          "text": "Waterhole/pan surfaces read anomalously bright at night -- same bug independently confirmed in five other modules this round (terrain, animals, traffic, savannah); not park's own code."
         }
       ],
-      "good": "The playable game exists and starts itself: park builds the whole demo on core:ready — gate, lodge complex, loop road with spurs, 4 fenced habitats, hides + tower, 60+ animals across 11 species, 4 tours, sim at speed 1 — verified 0 errors. Round-2 rebalancing made month one ecologically healthy and deterministic; round 3 (2026-09-08) made it economically viable: $15 breaks even (+383 $/day mean), births 10-15/30d, poaching/drought/disease/prosperity all harness-demonstrated, spend() API added. UI verified visible over the live park. Remaining minors: tour-preset truck on the kopje plateau (documented gap); predator-road sighting live-path needs real hardware."
+      "good": "gate, lodge, and night all deliver exactly what their descriptions promise with real detailed construction and atmospheric lighting. Whole-park overview (once correctly captured) shows a coherent real composite built through the other modules' own APIs. Zero console errors anywhere; draw calls comfortably within budget. README documents an unusually rigorous numbers-based gameplay-fidelity verification (price elasticity, births, drought/disease/poaching/prosperity) via tools/fidelity.mjs -- not re-run this round, flagged for next pass to verify directly."
     }
   },
   "game": {
@@ -992,6 +994,13 @@
     {
       "module": "savannah",
       "round": 5,
+      "score": 6,
+      "by": "independent-critic-agent",
+      "date": "2026-09-22"
+    },
+    {
+      "module": "park",
+      "round": 4,
       "score": 6,
       "by": "independent-critic-agent",
       "date": "2026-09-22"
