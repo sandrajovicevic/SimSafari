@@ -538,9 +538,9 @@
     }
   },
   "game": {
-    "round": 4,
+    "round": 5,
     "score": null,
-    "blindVisual": 7.8,
+    "blindVisual": 6.8,
     "gameplayFidelity": 8,
     "integration": {
       "loads": true,
@@ -551,36 +551,24 @@
     },
     "issues": [
       {
-        "sev": "resolved",
-        "text": "DONE (2026-09-21): round-4 blind visual test re-ran the exact round-3 protocol at 1920x1080 (game.blindVisual 6.9 -> 7.8; savannah subset 7.0 -> 7.9). Confirmed resolved: waterline sparkle (the most-cited round-3 defect, gone from both game and savannah overview shots), kopje pride legibility, grass mottle stamp, tiled crack motif. New/carried-over finding filed under savannah: a hard black patch in the waterhole's pan centre. Full per-image scores and a discrepancy note (game-close-21.5 did not read as legible as environment's own 09-08 history note claims — see below) in docs/critic/game-round4-blind.md."
+        "sev": "major",
+        "text": "Night-water-overbright bug is real, severe, and project-wide -- NOT resolved, contrary to round 4's characterization. Independently found and measured (raw pixel readback in terrain's review: water ~2.5-3x brighter than surrounding ground/sky) in six separate contexts this round: terrain, animals, traffic, savannah, park, and now the game's own default overview-21.5 shot and the savannah-subject night shot in this blind pass. Round 4 scored these shots 7.5 describing \"dark-water highlights\" and \"bright moon-glint\" -- a fresh independent look finds the water uniformly and severely overexposed, the dominant visual feature of the frame, not a highlight or glint. Single most damaging, most-corroborated defect found in this entire critic pass; affects the game's own default night view."
+      },
+      {
+        "sev": "major",
+        "text": "Camera-anchor mis-targeting in wave-3 composite modules (savannah, park): savannah's close preset shows a herd crossing instead of its promised foreground-grass-and-acacia-trunk-with-hazy-kopje composition (near-duplicate of the herd preset); park's habitat preset shows a river/gallery scene instead of the promised plains-grazer habitat with fence/hide/species, and park's close preset shows a wide establishing view instead of a lodge-veranda close-up. Very likely the same underlying class of defect (not three unrelated one-offs): both modules use the same shared idiom of recomputing camera anchors from real per-seed feature positions at stage() time. Recommend the integrator fix this once as a shared-idiom issue (e.g. a common anchor-validation helper rejecting anchors too close to another preset's subject or habitat) rather than patching each module independently."
       },
       {
         "sev": "minor",
-        "text": "Discrepancy found 2026-09-21, then explained (not code-fixed): environment's STATUS history claims the live game's `close` camera preset at 21.5h (game-close-21_5-tune2.png, 09-08) reads '~7, terrain mottle and lodge roof all read'. A fresh capture of the same core camera preset (CameraRig.js: target [0,0], distance 140, pitch 28, yaw 55) at the same hour this round reads close to the original 5.5 instead. Traced it with an in-page ray march (camera.matrixWorld's forward axis, sampled against props' own coverAt(x,z) API every 10 m) rather than guessing: the camera's own position sits at (101, 69, 71) with 73% ground-projected tree cover directly under/around it. At pitch 28° / distance 140, this preset sits ~66 m up — despite being labelled 'ground detail' in CameraRig.js, it's a moderately elevated 3/4 angle, not an eye-level shot — so nearby tree crowns seen from above/beside at that elevation legitimately dominate the near-field. At night, self-shadowed canopy tops read dark even with the moon-key lift and hemisphere floor active (both correctly lift the open ground/midground, visible past the canopy in this same shot) — this is the same 'foreground self-shadowed canopies stay near-black by design' limitation environment's own README already documents, just unusually prominent here because this fixed camera happens to sit inside a dense tree cluster. Most likely explanation for the 09-08 claim: that verification shot was taken before a later terrain/props density change added more canopy near world origin, or from a state where this exact spot had less cover. Not a regression in the night-ambient fix itself and not worth chasing further as a shader fix (would require rethinking canopy self-shadowing generally, disproportionate to a fixed-camera corner case); a camera restage of this one preset was considered and rejected because it's shared with the well-regarded close-14 daytime shot."
+        "text": "Daytime overview/close game shots (8h, 14h) are genuinely strong and stable -- both this round and round 4 agree closely; earlier terrain/props/environment fixes (waterline sparkle, grass mottle, tiled cracks) continue to hold up under a fresh independent look."
       },
       {
-        "sev": "resolved",
-        "text": "FIXED (2026-09-05, environment/atmosphere.js): the round-1 SYSTEMIC 'everything washes out toward white' blocker was never a tone-mapping or albedo-authoring problem — it was a CPU sky-sampler aliasing bug that made every sky-derived colour ~10^4x too dim, driving the exposure controller to its ceiling and fog/horizon colours to near-black. Full root cause under environment's entry. The earlier 'author darker to compensate' guidance was a workaround over a defect and is wrong."
+        "sev": "minor",
+        "text": "Newly-observed minor triangle-budget overage on the close presets (~6.08-6.11M vs the <=6M target); not present at overview (4.7-4.8M). Not previously flagged."
       },
       {
-        "sev": "resolved",
-        "text": "FIXED (2026-09-05, park module verified): the full game now starts into a complete playable park — park auto-builds on core:ready (gate, lodge complex, loop + spurs, 4 habitats, 60+ animals, 4 tours, sim at speed 1). Verified with a 9-shot --game sweep (overview/close/low x 8/14/21.5, clock paused via &speed=0): 0 errors, 276-325 draws, 4.6-5.8M tris."
-      },
-      {
-        "sev": "resolved",
-        "text": "DONE (2026-09-07): blind visual test scored 11 fresh captures (game.blindVisual = 6.9; savannah subset 7.0) and the gameplay-fidelity harness passed 6/6 (game.gameplayFidelity = 8.0). Protocol, per-image scores and systemic findings in docs/critic/game-round3-blind.md."
-      },
-      {
-        "sev": "resolved",
-        "text": "FIXED (environment, 2026-09-08) and orchestrator-verified: a night-only moon-key lift (NIGHT_LIFT 9, moon-elevation-compensated) plus a starlight/airglow hemisphere floor (NIGHT_HEMI 0.035), both gated on st.night and zero by day. The wild close view at 21.5h that scored 5.5 as a near-black frame is now legible (~7): terrain mottle, tree/animal silhouettes, lodge roof, kopje and red dirt all read while staying clearly night (game-close-21_5-tune2.png; hour verified paused, 0 errors, 326 draws unchanged). The moonlit waterhole improved rather than washed out (sav-night-tune2.png); the day control (game-close-14-afterfix.png) is character-identical to the blind baseline."
-      },
-      {
-        "sev": "resolved",
-        "text": "FIXED (2026-09-08) and real-GPU-verified: white sparkle blotches along waterlines, pan rims and 'fence rings' at overview were genuine specular aliasing (persists on AMD RX 5700 XT D3D11 — not a SwiftShader artifact). Terrain wet-band roughness 0.34→0.50 with a +0.35 roughness floor over 200–800 m, detail normals flattening to 15% past 700 m, and water glint ×0.1 by 800 m. Day speckle gone in game and savannah overviews on real GPU; game-overview draws/tris bit-identical. Night clarification: the dotted rings at 21.5h are pale-sand ALBEDO (byte-identical before/after), pre-existing and unchanged — not part of this bug; residual night road-line sparkle is roads' reflective paint."
-      },
-      {
-        "sev": "resolved",
-        "text": "FIXED (2026-09-08) with documented residuals: the apron now samples the same packed splat layers/UV scheme/tint chain as the interior, with an analytic plains control fading 20-220 m from the baked aux — the border reads as continuous mottled plains rather than a detail-density step (b2-game-overview-14/8.png). Residuals: props/roads still stop at the border (~15% tree-shadow brightness gap, partially compensated) and far-field blotch positions differ (GLSL vs CPU noise)."
+        "sev": "minor",
+        "text": "game.gameplayFidelity (8.0) was not re-verified this round -- tools/fidelity.mjs not re-run due to session time budget spent on the full 15-module pass. Flagged for the next round to re-run directly."
       }
     ]
   },
@@ -1002,6 +990,13 @@
       "module": "park",
       "round": 4,
       "score": 6,
+      "by": "independent-critic-agent",
+      "date": "2026-09-22"
+    },
+    {
+      "module": "game",
+      "round": 5,
+      "score": 6.8,
       "by": "independent-critic-agent",
       "date": "2026-09-22"
     }
