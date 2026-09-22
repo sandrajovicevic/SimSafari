@@ -434,36 +434,32 @@
     "tools": {
       "wave": 2,
       "domain": "built",
-      "round": 2,
+      "round": 3,
       "score": 8,
-      "status": "near-pass",
+      "status": "fail",
       "errors": 0,
-      "drawCalls": 87,
-      "reviewedBy": "orchestrator-verification",
+      "drawCalls": 106,
+      "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
-        "overview",
-        "building",
-        "road, terrain, close, night (sweep-tools-*.png, 2026-09-14)"
+        "overview 15",
+        "road 16",
+        "terrain 16.5",
+        "building 17",
+        "close 16.5",
+        "night 21.5",
+        "close selection eval check (extra)"
       ],
       "issues": [
         {
-          "sev": "resolved",
-          "text": "FIXED (all 6 presets now independently reviewed, 2026-09-14): road (sweep-tools-road.png) shows a working ghost-preview road stroke over real terrain; terrain (sweep-tools-terrain.png) shows a working circular terraform-brush ghost outline on a raised mound; close (sweep-tools-close.png) shows the placed lodge from buildings, correctly detailed; night (sweep-tools-night.png) is genuinely strong — the lodge glowing warm against a dark ambient, reflective road-paint dashes, river reflections. No defects found in any of the four."
+          "sev": "minor",
+          "text": "terrain preset measured 143.7ms for tools' own update() -- wildly out of line with every other preset (0.04-0.94ms). TerrainTool.js's update() has nothing that should cost this much (only a ring-cursor decal position update); tools has no dependency on props (which has a separate, confirmed severe grass-rebuild stall), so this could not be attributed with confidence. Flagged for a second look, not scored as confirmed."
         },
         {
           "sev": "minor",
-          "text": "Select/inspect picking is radius/nearest-based rather than a true mesh raycast — a documented, deliberate simplification given the public API contract, not a bug."
-        },
-        {
-          "sev": "minor",
-          "text": "Select/inspect picking is radius/nearest-based rather than a true mesh raycast — a documented, deliberate simplification given the public API contract, not a bug."
-        },
-        {
-          "sev": "minor",
-          "text": "Undo/redo of road/building/animal add-remove changes the entity's id (roads.addRoad/buildings.place/animals.spawn all mint fresh ids) — documented, low-impact."
+          "text": "close preset selection marker not visually legible in the captured screenshot despite genuinely existing (world.selection correctly set to {kind:building,id:b_1}, visible marker child confirmed via direct scene-graph eval check) -- a presentation/contrast issue at this camera angle/time, not a functional defect."
         }
       ],
-      "good": "This is the module that makes the game playable rather than watchable, and it delivers: a real tool framework (activate/deactivate/undo/redo >=50 steps), and I independently verified two presets. `overview` shows the full scripted session actually working end-to-end — a curving gravel road crossing the river with a real bridge, a large painted habitat overlay, structures placed — all through the module's own public API, no shortcuts. `building` shows a working ghost preview: the real placed lodge with a semi-transparent red overlay correctly signalling an invalid (occupied) placement. Also found and fixed a genuine bug during its own testing: an unbounded terrain-raise stroke that, under this session's heavy concurrent load, once grew tall enough to embed the camera inside solid terrain — now capped, which fixes real gameplay too. README is thorough: full API, undo/redo mechanics explained per-tool, cost model, and an honest known-gaps list."
+      "good": "Building ghost preview red/green validity colouring is unambiguous and precise. Terrain ring cursor cleanly conforms to terrain exactly where the scripted stroke says. Road preview ribbon correctly snaps onto the existing committed road (real graph-aware snapping). Night atmosphere (lodge glow, river moonlight reflection, reflective road paint) genuinely strong. dispose() releases ring/ribbon/marker/group; API matches README's documented tool framework."
     },
     "savannah": {
       "wave": 3,
@@ -992,6 +988,13 @@
       "score": 8,
       "by": "independent-critic-agent",
       "date": "2026-09-21"
+    },
+    {
+      "module": "tools",
+      "round": 3,
+      "score": 8,
+      "by": "independent-critic-agent",
+      "date": "2026-09-22"
     }
   ]
 }
