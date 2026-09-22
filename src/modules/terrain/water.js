@@ -48,7 +48,7 @@ export function createWaterMaterial(ctx, heightTex, normalTex) {
     uSkyMix: { value: 1.0 }, uWaveStr: { value: 1.0 },
     // Beer–Lambert absorption for a silt/tannin-stained savannah river: blue is killed fastest,
     // so the residual colour walks from a warm ochre shallow to a near-black olive at depth.
-    uGlint: { value: 0.6 }, uGlintPow: { value: 3200.0 }, uSheen: { value: 0.0 },
+    uGlint: { value: 0.6 }, uGlintPow: { value: 3200.0 }, uSheen: { value: 0.0 }, uExposure: { value: 1.0 },
     uBed: { value: new THREE.Color(0.155, 0.098, 0.042) },   // wet sand/mud seen through 0 m of water
     uBody: { value: new THREE.Color(0.030, 0.038, 0.024) },  // suspended-sediment body colour (deep asymptote)
     uExt: { value: new THREE.Vector3(1.35, 1.75, 3.10) },    // per-metre extinction, r/g/b
@@ -65,7 +65,7 @@ uniform sampler2D tHeight; uniform sampler2D tWaterN; uniform float uTime;
 uniform float uHalf; uniform float uInvCell; uniform float uInvRes;
 uniform vec3 uSkyZenith; uniform vec3 uSkyHorizon; uniform float uSkyMix; uniform float uWaveStr;
 uniform vec3 uBed; uniform vec3 uBody; uniform vec3 uExt;
-uniform float uGlint; uniform float uGlintPow; uniform float uSheen;
+uniform float uGlint; uniform float uGlintPow; uniform float uSheen; uniform float uExposure;
 varying vec3 vWPos;
 vec3 gWaterN; float gFoam; float gDepth;
 ${GLSL_NOISE}`)
@@ -115,7 +115,19 @@ ${GLSL_NOISE}`)
   // (linear 0.03 alone renders ~byte 48). Real water scatters some light within the column
   // itself regardless of surface-normal geometry or shadowing; this restores a small, physically
   // motivated floor of it — negligible on lit water, the only source of light in full shade.
-  outgoingLight += diffuseColor.rgb * 0.45;
+  //
+  // REGRESSION FOUND AND FIXED same day by the independent critic pass: this floor is a flat
+  // linear-HDR addition, computed BEFORE renderer.toneMappingExposure is applied — so it scales
+  // with whatever exposure the scene is currently using. At night the exposure ceiling is 12
+  // (vs 4 by day, see environment/index.js computeLighting), and at night the water's other own
+  // light terms are already small, so this floor became the DOMINANT term and blew every water
+  // body to a uniform near-white glow — confirmed independently in six contexts (terrain,
+  // animals, traffic, savannah, park module reviews, and the game's own night overview) and
+  // visually unmistakable: the entire river/pans brighter than the lodge's own lamps. Divide by
+  // the live exposure so the floor's DISPLAY brightness stays roughly constant across day/night
+  // instead of tracking the night ceiling — restores the original day-only rescue without
+  // reintroducing the night blowout.
+  outgoingLight += diffuseColor.rgb * 0.45 / max(uExposure, 0.3);
   // Explicit sun glint. The material itself is left rough (0.8) so three's GGX lobe contributes almost
   // nothing — a roughness-0.15..0.45 water surface spread a blown-out highlight across half the channel.
   // Here the highlight is a single tight Blinn lobe: bright, but only a few metres wide.
@@ -135,19 +147,23 @@ ${GLSL_NOISE}`)
 }
 #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => 'terrain-water-v6';
+  m.customProgramCacheKey = () => 'terrain-water-v7';
   return m;
 }
 
 const _c = new THREE.Color();
 
 /** Per-frame: analytic sky colours from the hour (matches the core fallback sky roughly). */
-export function updateWaterSky(material, world) {
+export function updateWaterSky(material, world, renderer) {
   const u = material.userData.uniforms;
   // environment.setEnvMap() rewrites envMapIntensity on every tracked material whenever the PMREM is
   // regenerated, so the water's low value has to be re-asserted here every frame — a full-strength sky
   // probe on a roughness-0.45 surface is what turned the river into a sheet of white.
   material.envMapIntensity = 0.10;
+  // Live exposure, so the in-column-scatter floor (opaque_fragment) can counter-scale against it —
+  // see the fix note at its call site. Falls back to 1.0 if a renderer wasn't passed (keeps this
+  // function safe to call from anywhere that doesn't have one handy).
+  u.uExposure.value = renderer ? renderer.toneMappingExposure : 1.0;
   const el = hourToSunElevation(world.time.hour);
   const up = Math.max(0, Math.sin(el));
   const dusk = Math.max(0, 1 - Math.abs(up - 0.12) / 0.18); // warm band around sunrise/sunset

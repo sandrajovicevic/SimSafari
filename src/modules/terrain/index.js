@@ -258,7 +258,7 @@ export default {
   },
 
   update(dt, t) {
-    if (S.waterMat) updateWaterSky(S.waterMat, S.ctx.world);
+    if (S.waterMat) updateWaterSky(S.waterMat, S.ctx.world, S.ctx.renderer);
   },
 
   tick() {},
