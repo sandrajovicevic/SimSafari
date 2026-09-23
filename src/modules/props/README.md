@@ -183,18 +183,29 @@ particularly on first load or after a large camera jump (e.g. a showcase preset 
   capping instance counts harder at `quality=high` would bring this in line; not done because the
   visual density it buys was explicitly requested in review and the draw-call budget (≤ 400) has
   large headroom (127–155 measured).
-* **Grass rebuild is far over the `update()` budget.** Measured `getStats().grassRebuildMs` on
-  `overview`: **792 ms** for a full near+far chunk rebuild (generating/hashing ~1,300–1,600
-  candidate points per chunk × 221 chunks in cache, then packing ~180k surviving instances into
-  three `InstancedMesh` buffers). This only runs when the camera crosses the 14 m re-pack threshold
-  — not every frame — but 792 ms is long enough to read as a stall if it lands on a frame the
-  player is watching (first load, or a large camera jump such as a showcase preset switch or a
-  fast pan). `packMs` (re-packing tree/prop `InstancedMesh`es) is fine at 3.9 ms. The fix is more
-  chunk-generation work than this round had time for: either amortise chunk generation across
-  several frames (a work queue instead of one synchronous `rebuild()`), or precompute/cache chunk
-  candidate positions once per world instead of re-deriving them from a hash on every cache miss.
-  Not attempted here because it touches the field's core loop and needed more testing time than
-  was left; flagged rather than shipped half-fixed.
+* **Grass rebuild used to be far over the `update()` budget — now amortised (FIXED).** A camera jump
+  past the 14 m re-pack threshold used to synchronously generate every not-yet-cached chunk in range
+  in one `rebuild()` call: critic round 3 measured 132–263 ms on every preset (90–175× the
+  ARCHITECTURE ≤ 1.5 ms/frame target), and — because a showcase preset switch IS such a threshold
+  crossing — this fired on literally every preset load, not as a rare edge case. `grass.js`'s
+  `update()` now queues only the chunks actually missing for the new view (`_queueMissing`, closest
+  first) and generates a time/count-bounded slice per call (`_drainQueue`, ~3 ms / ≤24 chunks);
+  `_repack()` packs whatever is currently cached each call, silently skipping chunks still queued, so
+  the field visibly grows in over a couple of seconds on a big jump instead of freezing for one.
+  Measured with a 424 m `lookAt` jump in the live game (`--game` mode, not the showcase): the queued
+  205 chunks drained at 6–17 ms per frame instead of one 450+ ms frame — still above the strict
+  1.5 ms target on a still-streaming frame, but no longer a single catastrophic stall, and normal
+  small pans (a handful of ring-edge chunks) complete in one frame well under budget. Two cases
+  intentionally still drain the WHOLE queue synchronously, matching the old behaviour on purpose: the
+  very first population after a fresh load (a one-time "loading" cost, not the repeated-jump stutter
+  this amortises) and every update in the showcase (`ctx.isShowcase`), which is a one-shot static
+  render for screenshots/critics, not live gameplay — there is no frame to protect, and the tooling
+  expects a fully-populated field on capture. `packMs` (re-packing tree/prop `InstancedMesh`es) is a
+  separate, unrelated stat and is fine at ~4 ms. Not fixed in this pass: the packing step itself
+  (`_repack`) still scans every cached candidate in view on every qualifying call, uncapped, and its
+  cost visibly grows as more chunks stream in (measured up to ~10 ms once several hundred chunks were
+  cached) — amortizing that too would be the natural next step if per-frame cost during a big jump
+  still needs tightening further.
 * **Grazing regrowth has no spatial variation.** `tick()` regrows every grazed grid cell at the
   same flat rate; a real savannah regrows faster near water. `docs/specs/props.md` does not
   require this, but it would be a natural follow-up once `animals` is actually calling `graze()`.
