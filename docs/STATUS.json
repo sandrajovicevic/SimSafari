@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-22",
+  "updated": "2026-09-23",
   "wave": 3,
   "passThreshold": 8.5,
   "notes": [
@@ -39,9 +39,9 @@
     "terrain": {
       "wave": 1,
       "domain": "nature",
-      "round": 4,
-      "score": 6,
-      "status": "fail",
+      "round": 5,
+      "score": 8.5,
+      "status": "pass",
       "errors": 0,
       "drawCalls": 44,
       "reviewedBy": "independent-critic-agent",
@@ -53,28 +53,24 @@
         "escarpment 7",
         "close 16",
         "night 21.5",
-        "close 6.5 (extra)",
-        "overview 12 (extra)"
+        "overview 12 (extra)",
+        "escarpment 12 (extra)"
       ],
       "issues": [
         {
-          "sev": "major",
-          "text": "Night water renders brighter than the sky and ground (measured pixel readback: water RGB~83,85,67 vs ground ~33,25,11 vs sky ~22,18,14) — contradicts the README claim that forcing envMapIntensity=0.10 fixed water blowing out to white; the same failure mode reproduces at night."
-        },
-        {
-          "sev": "major",
-          "text": "Escarpment cliff face is a repeating uniform-width vertical-fluted column motif, visible at overview and escarpment showcase distances (not just extreme close range as the README frames it) — reads as procedural repetition rather than natural stratified rock."
+          "sev": "minor",
+          "text": "Water has no visible ripple/flow structure at river or close presets — reads as a flat murky slab; disclosed in README, unchanged."
         },
         {
           "sev": "minor",
-          "text": "Water has no visible ripple/flow structure at river or close presets — reads as a flat murky slab; disclosed in README but confirmed in these shots."
+          "text": "Night ground is close to unlit black; disclosed as a shared cross-module ambient issue, not terrain-specific."
         },
         {
           "sev": "minor",
-          "text": "Night ground is close to unlit black (confirmed by pixel readback, ~RGB 33,25,11); disclosed as a shared cross-module issue, not terrain-specific."
+          "text": "Escarpment is still a single fbm/ridged-noise pattern, not a true stratified rock-layer model — reads well at every showcase distance tested this round (the round-4 defect is fixed), but a slow close flythrough would eventually reveal the underlying noise family (honestly disclosed in README)."
         }
       ],
-      "good": "Kopjes are genuinely angular stacked-block forms with correct shadowing (round-3 claim verified). Plains/close grass and laterite patchwork read convincingly as dry-season savannah with no obvious tiling. Draw calls and triangles comfortably within budget across every preset; zero console errors."
+      "good": "Both round-4 capping defects independently re-verified fixed this round: escarpment groove spacing/width/depth now genuinely vary along the ridge (confirmed at 4 separate views: escarpment 7h/12h, overview 15h/12h) instead of reading as a uniform repeating comb; night water is now measurably DARKER than the sky (pixel readback water~11,8,5 vs sky~33,26,20 vs ground~8,7,6), a complete reversal of round 4's water-brighter-than-sky finding. Kopjes remain genuinely angular stacked-block forms with correct shadowing. Plains/close grass and laterite patchwork read convincingly as dry-season savannah with no obvious tiling. Draw calls and triangles comfortably within budget across every preset; zero console errors."
     },
     "environment": {
       "wave": 1,
@@ -384,32 +380,27 @@
     "props": {
       "wave": 2,
       "domain": "nature",
-      "round": 3,
-      "score": 7,
+      "round": 4,
+      "score": 8.3,
       "status": "fail",
       "errors": 0,
       "drawCalls": 155,
       "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
-        "overview 16.5",
-        "grass 17",
-        "acacia 15",
-        "kopje 17.5",
-        "riverine 8",
-        "close 16",
-        "night 21.5"
+        "overview 16.5 (round-4 re-capture + getStats() eval)",
+        "--game mode: lookAt() 424m jump, before/afterJump getStats() eval"
       ],
       "issues": [
         {
-          "sev": "major",
-          "text": "update() cost is 90x-175x over the 1.5ms budget on every single preset measured (132.5-262.8ms), not an occasional worst case. README discloses a 792ms grass-rebuild worst case but frames it as rare (\"not every frame\") -- in fact every preset switch IS a 14m threshold crossing, so this expensive rebuild fires on every preset load, every time. In the live game this is a repeated stutter on every camera pan/jump that crosses a chunk boundary."
+          "sev": "minor",
+          "text": "Streamed per-frame cost during an active camera jump is still over the strict ARCHITECTURE <=1.5ms/frame budget: independently measured afterJump.grassRebuildMs=8.2ms (module's own README reports 6-17ms range) -- honestly disclosed, and a genuine ~5-10x (not 90-175x) overage, but not yet fully budget-compliant."
         },
         {
           "sev": "minor",
-          "text": "kopje preset framed wide enough that the escarpment dominates the shot; could not clearly confirm \"thorn scrub in the cracks\" on the kopje itself at this framing."
+          "text": "_repack() packing cost itself is not amortised and grows with chunks cached: measured grassPackMs 1.3ms (few chunks) vs 53.9ms (221 chunks, full showcase field) -- correctly flagged as the next bottleneck in the module's own README."
         }
       ],
-      "good": "Draw-call and triangle numbers match the README's own measurements exactly for every preset -- the most precise README-to-reproduction correspondence of any module reviewed. overview and riverine are the strongest single images reviewed in the project (naturalistic density gradients, correct silhouettes, atmospheric lighting). acacia and close demonstrate individual species/prop silhouettes precisely matching descriptions. Instancing delivers: 125-155 draws for 150k+ grass instances, comfortably inside the <=400 spec ceiling. API matches README; dispose() releases every instanced mesh; lint clean."
+      "good": "Core round-3 defect (90-175x per-frame budget overage on every single preset switch) independently reproduced as GENUINELY FIXED: --game mode eval of a 424m lookAt() jump gave afterJump.grassRebuildMs=8.2ms (was 132-263ms) and afterJump.grassPendingChunks=205 (>0, confirming real streaming not instant completion) -- both of the task's specific pass criteria met. Showcase mode confirmed still fully synchronous (grassPendingChunks:0) with an EXACT match (to the last digit: grassInstances 179808, grassCounts [15302,92000,72506], grassChunks 221) against round-3's own recorded baseline for the same preset, proving zero visual regression. overview re-capture visually unregressed, still one of the strongest images in the project. Lint clean; draw/triangle budgets unaffected and comfortably met."
     },
     "traffic": {
       "wave": 2,
@@ -472,11 +463,11 @@
     "savannah": {
       "wave": 3,
       "domain": "nature",
-      "round": 5,
-      "score": 6,
+      "round": 6,
+      "score": 7,
       "status": "fail",
       "errors": 0,
-      "drawCalls": 228,
+      "drawCalls": 227,
       "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
         "overview 16.5",
@@ -493,30 +484,30 @@
       "issues": [
         {
           "sev": "major",
-          "text": "close preset shows the wrong scene -- a zebra/wildebeest herd crossing, near-identical in subject to the herd preset next to it -- instead of the described quiet foreground-grass-and-acacia-trunk-with-hazy-kopje composition. Confirmed via capture JSON that the correct preset and its own authored camera were used; no kopje visible at all in this shot."
+          "text": "close: the herd-crossing bug is FIXED (verified -- no herd anywhere in frame), but the preset still does not fully deliver its promised composition -- no kopje visible (the background reads as the escarpment's own signature cliff wall, not a rounded kopje), and the foreground 'acacia trunk' is an over-close, ambiguous dark canopy mass rather than a clean trunk silhouette."
         },
         {
           "sev": "major",
-          "text": "hero flagship shot does not deliver its promised composition: roughly half the frame blown out by sun glare, no legible kopje silhouette on the right third (escarpment instead), no grazing herd visible in the middle distance."
+          "text": "hero flagship shot UNCHANGED (not touched this round, as expected): still blown out by sun glare across the upper-left, still shows escarpment instead of a kopje silhouette on the right third, herd barely legible as a faint pale smudge."
         },
         {
           "sev": "minor",
-          "text": "Night waterhole glows uniformly bright (single brightest object in frame) -- same terrain/environment water-at-night bug independently confirmed in terrain, animals, traffic reviews this round; fourth cross-module data point."
+          "text": "Night waterhole: genuinely improved -- now shows real depth-based shore/deep-water brightness variation (dappled foam ring, darker smooth centre) instead of a uniform flat-bright fill, though the shore ring remains markedly the brightest feature in frame (pixel readback ~90,72,50 vs sky ~18,24,28), defensible as the described 'moon glitter path' now that it varies with depth."
         }
       ],
-      "good": "overview, waterhole, kopje, herd, river, storm, and dawn all deliver exactly what their descriptions promise -- genuinely strong, well-composed, atmospheric photography-adjacent framing. kopje subject (lion pride) holds up under fresh independent inspection. river and dawn are among the best single images reviewed in this whole critic pass. Module adds no scene content of its own (verified via draw-call attribution); dispose()/API/lint clean."
+      "good": "The specific round-5 defect in close (a walking herd crossing the frame, indistinguishable from the herd preset) is genuinely and completely fixed -- independently confirmed, no herd anywhere in this capture. overview, waterhole, kopje, herd, river, storm, and dawn all continue to deliver exactly what their descriptions promise, unregressed by this round's changes. river and dawn remain among the best single images reviewed in this whole critic pass. Module adds no scene content of its own; dispose()/API/lint clean."
     },
     "park": {
       "wave": 3,
       "domain": "nature",
-      "round": 4,
-      "score": 6,
+      "round": 5,
+      "score": 7.8,
       "status": "fail",
       "errors": 0,
-      "drawCalls": 364,
+      "drawCalls": 340,
       "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
-        "overview 15 (retest after a one-off 320x180 flake)",
+        "overview 15",
         "gate 9",
         "lodge 17.5",
         "habitat 16",
@@ -526,29 +517,25 @@
       ],
       "issues": [
         {
-          "sev": "major",
-          "text": "habitat preset shows an entirely different scene than its description -- a river/gallery view instead of the plains-grazer habitat with fence/hide/zebra/wildebeest/impala. The dedicated demonstration of the \"4 fenced habitats\" headline feature does not show one. Same per-seed camera-anchor idiom as savannah, where an analogous (less severe) mismatch was found independently this round -- likely a systemic weakness, not two unrelated one-offs."
-        },
-        {
-          "sev": "major",
-          "text": "close preset shows a wide establishing view, not the promised lodge-veranda close-up with visible pool -- the lodge assets exist (confirmed in lodge/night presets) but this preset's camera does not frame them as described."
+          "sev": "minor",
+          "text": "habitat: the wrong-biome bug is FIXED (verified -- genuine dry plains with a water pump, acacias, kopje, no river anywhere in frame), downgraded from major. But the headline subject (fenced zebra/wildebeest/impala, a viewing hide) is not confirmable at this exact framing -- fence reads only as a faint line, no hide identifiable, no grazing animals confirmed."
         },
         {
           "sev": "minor",
-          "text": "tour preset's safari truck not visually confirmed -- kopje subject correct but no vehicle located in frame."
+          "text": "close: the wrong-scene bug is FIXED (verified via a direct eval read of report.buildings.lodge's real x/z/rot -- now a genuine eye-level veranda/thatch/timber/stone-plinth close-up), downgraded from major. But the promised pool does not clearly read as water -- a grey/reflective tiled patch is visible but no legible blue tint or wet highlight."
         },
         {
           "sev": "minor",
-          "text": "Waterhole/pan surfaces read anomalously bright at night -- same bug independently confirmed in five other modules this round (terrain, animals, traffic, savannah); not park's own code."
+          "text": "tour preset's safari truck still not visually confirmed -- kopje/tower subject correct but no vehicle located in frame, unchanged from last round."
         }
       ],
-      "good": "gate, lodge, and night all deliver exactly what their descriptions promise with real detailed construction and atmospheric lighting. Whole-park overview (once correctly captured) shows a coherent real composite built through the other modules' own APIs. Zero console errors anywhere; draw calls comfortably within budget. README documents an unusually rigorous numbers-based gameplay-fidelity verification (price elasticity, births, drought/disease/poaching/prosperity) via tools/fidelity.mjs -- not re-run this round, flagged for next pass to verify directly."
+      "good": "Both round-4 major defects independently re-verified fixed, confirmed against underlying build/placement data not just the render: habitat's wrong-biome bug was root-caused to a build.js vertex-selection siting bug and fixed at the source (a real 55m+ water-clearance check), and close now uses the lodge building's actual placed x/z/rot (verified via eval) instead of a stale site anchor. Cross-module night-water-overbright bug also resolved here (pans/river read dark with warm rims, lamps brightest). gate, lodge, and night continue to deliver exactly what their descriptions promise. Whole-park overview shows a coherent real composite. Zero console errors anywhere; draw calls comfortably within budget."
     }
   },
   "game": {
-    "round": 5,
+    "round": 6,
     "score": null,
-    "blindVisual": 6.8,
+    "blindVisual": 7.8,
     "gameplayFidelity": 8,
     "integration": {
       "loads": true,
@@ -559,24 +546,28 @@
     },
     "issues": [
       {
-        "sev": "major",
-        "text": "Night-water-overbright bug is real, severe, and project-wide -- NOT resolved, contrary to round 4's characterization. Independently found and measured (raw pixel readback in terrain's review: water ~2.5-3x brighter than surrounding ground/sky) in six separate contexts this round: terrain, animals, traffic, savannah, park, and now the game's own default overview-21.5 shot and the savannah-subject night shot in this blind pass. Round 4 scored these shots 7.5 describing \"dark-water highlights\" and \"bright moon-glint\" -- a fresh independent look finds the water uniformly and severely overexposed, the dominant visual feature of the frame, not a highlight or glint. Single most damaging, most-corroborated defect found in this entire critic pass; affects the game's own default night view."
-      },
-      {
-        "sev": "major",
-        "text": "Camera-anchor mis-targeting in wave-3 composite modules (savannah, park): savannah's close preset shows a herd crossing instead of its promised foreground-grass-and-acacia-trunk-with-hazy-kopje composition (near-duplicate of the herd preset); park's habitat preset shows a river/gallery scene instead of the promised plains-grazer habitat with fence/hide/species, and park's close preset shows a wide establishing view instead of a lodge-veranda close-up. Very likely the same underlying class of defect (not three unrelated one-offs): both modules use the same shared idiom of recomputing camera anchors from real per-seed feature positions at stage() time. Recommend the integrator fix this once as a shared-idiom issue (e.g. a common anchor-validation helper rejecting anchors too close to another preset's subject or habitat) rather than patching each module independently."
+        "sev": "minor",
+        "text": "Night-water-overbright bug (round 5's single most damaging finding) is FIXED and independently re-verified through three separate lines of evidence this round: a direct pixel readback in terrain's own review (water now measurably darker than sky, a complete reversal), the game's own default overview-21.5 shot (reproduced twice, once after catching and correcting a clock-drift capture-tooling bug), and the savannah-subject night shot (flat blowout replaced by genuine depth-based shore/deep-water variation). Downgraded from major to a closed/minor note."
       },
       {
         "sev": "minor",
-        "text": "Daytime overview/close game shots (8h, 14h) are genuinely strong and stable -- both this round and round 4 agree closely; earlier terrain/props/environment fixes (waterline sparkle, grass mottle, tiled cracks) continue to hold up under a fresh independent look."
+        "text": "Camera-anchor mis-targeting in wave-3 composite modules (savannah, park), flagged major last round, is now substantially fixed: savannah close's herd-crossing bug is completely gone (though the preset still doesn't show its promised kopje -- see savannah's own round-6 issues); park's habitat wrong-biome bug and close's wrong-framing bug are both genuinely fixed, verified against the underlying build/placement data (see park's own round-5 issues)."
       },
       {
         "sev": "minor",
-        "text": "Newly-observed minor triangle-budget overage on the close presets (~6.08-6.11M vs the <=6M target); not present at overview (4.7-4.8M). Not previously flagged."
+        "text": "Daytime overview/close game shots (8h, 14h) remain genuinely strong and stable across rounds 4-6; earlier terrain/props/environment fixes continue to hold."
       },
       {
         "sev": "minor",
-        "text": "game.gameplayFidelity (8.0) was not re-verified this round -- tools/fidelity.mjs not re-run due to session time budget spent on the full 15-module pass. Flagged for the next round to re-run directly."
+        "text": "close-14/close-21.5 triangle counts now measure UNDER the <=6M budget (5.70M/5.66M) -- round 5's minor overage (6.08-6.11M) not present this round; not attributable to any change in this round's scope, noted rather than claimed as a fix."
+      },
+      {
+        "sev": "minor",
+        "text": "Capture-tooling gotcha rediscovered this round: --game mode does not auto-pause world.time (speed defaults to 0.05 game-hr/s, paused:false), so a long wall-clock 1080p capture under load can drift to a random hour unless &speed=0 is passed explicitly -- cost real time this round (two shots had to be re-taken after being caught via frameMs/url inspection, not assumed). Worth the tooling defaulting this rather than relying on every caller remembering it."
+      },
+      {
+        "sev": "minor",
+        "text": "game.gameplayFidelity (8.0) was not re-verified this round -- out of scope for this round's assignment (savannah/park/terrain/props/game-blind-visual). Flagged again for a future round to re-run tools/fidelity.mjs directly."
       }
     ]
   },
@@ -1007,6 +998,41 @@
       "score": 6.8,
       "by": "independent-critic-agent",
       "date": "2026-09-22"
+    },
+    {
+      "module": "terrain",
+      "round": 5,
+      "score": 8.5,
+      "by": "independent-critic-agent",
+      "date": "2026-09-23"
+    },
+    {
+      "module": "savannah",
+      "round": 6,
+      "score": 7,
+      "by": "independent-critic-agent",
+      "date": "2026-09-23"
+    },
+    {
+      "module": "park",
+      "round": 5,
+      "score": 7.8,
+      "by": "independent-critic-agent",
+      "date": "2026-09-23"
+    },
+    {
+      "module": "props",
+      "round": 4,
+      "score": 8.3,
+      "by": "independent-critic-agent",
+      "date": "2026-09-23"
+    },
+    {
+      "module": "game",
+      "round": 6,
+      "score": 7.8,
+      "by": "independent-critic-agent",
+      "date": "2026-09-23"
     }
   ]
 }
