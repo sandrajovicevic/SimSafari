@@ -857,7 +857,9 @@ const api = {
       grassCounts: S.grass ? S.grass.counts.slice() : [0, 0, 0],
       grassChunks: S.grass ? S.grass.near.size + S.grass.far.size : 0,
       instancedMeshesDrawn: S.stats.drawGroups,
-      packMs: +S._packMs.toFixed(2), grassRebuildMs: +(S.grass?.lastRebuildMs || 0).toFixed(2),
+      packMs: +S._packMs.toFixed(2), grassRebuildMs: +(S.grass?.lastUpdateMs || 0).toFixed(2),
+      grassPackMs: +(S.grass?.lastPackMs || 0).toFixed(2),
+      grassPendingChunks: S.grass ? S.grass._genQueue.length : 0,
     };
   },
 
@@ -933,7 +935,7 @@ export default {
     const gx = tgt ? cam.position.x * 0.45 + tgt.x * 0.55 : cam.position.x;
     const gz = tgt ? cam.position.z * 0.45 + tgt.z * 0.55 : cam.position.z;
     const g0 = performance.now();
-    S.grass?.update(gx, gz, 14);
+    S.grass?.update(gx, gz, 14, S.ctx.isShowcase);
     S._grassMs = performance.now() - g0;
 
     const dx = cam.position.x - S.camX, dz = cam.position.z - S.camZ;
