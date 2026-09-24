@@ -26,7 +26,7 @@ export const presets = {
   },
   hero: {
     camera: { target: [0, 0], distance: 220, pitch: 12, yaw: 205 }, tod: 17.4,
-    description: 'Golden hour, the flagship shot: an acacia in the left third, grazing herd across the middle distance, kopje silhouette on the horizon at the right third, warm haze layering the depth.',
+    description: 'Golden hour, the flagship shot: the zebra/wildebeest herd crossing the middle distance in low raking side light (sun out of frame), the acacia line and the escarpment layered in warm haze behind.',
   },
   waterhole: {
     camera: { target: [0, 0], distance: 40, pitch: 13, yaw: 100 }, tod: 8,

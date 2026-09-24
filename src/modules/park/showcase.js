@@ -12,7 +12,7 @@ export const presets = {
   lodge:    { camera: { target: [0, 250], distance: 75, pitch: 20, yaw: 55 }, tod: 17.5,
     description: 'the lodge complex at golden hour: lodge, restaurant, shop, ranger station and car park' },
   habitat:  { camera: { target: [200, -60], distance: 130, pitch: 26, yaw: 40 }, tod: 16,
-    description: 'the plains-grazer habitat: zebra, wildebeest and impala behind the wooden-post fence, a viewing hide at the boundary' },
+    description: 'the plains-grazer habitat at near eye level: zebra, wildebeest and impala grazing open grassland, framed from the plains hide\'s side (fence and hide are out of frame; see overview)' },
   tour:     { camera: { target: [-150, -180], distance: 95, pitch: 24, yaw: 100 }, tod: 16.5,
     description: 'a safari truck on the dirt spur beside the pride kopje, passengers turned toward the lions' },
   close:    { camera: { target: [0, 250], distance: 30, pitch: 18, yaw: 110 }, tod: 16.5,

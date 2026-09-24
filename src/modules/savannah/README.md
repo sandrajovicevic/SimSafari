@@ -70,7 +70,7 @@ degrades the scene, never fails the stage.
 |---|---|---|
 | `overview` | 16.5 | the whole composed world from height: river + gallery, grassland + acacias, kopje, waterhole, herd on the move, dirt track |
 | `close` | 16 | foreground grass and an acacia trunk at eye level, kopje softening into haze |
-| `hero` | 17.4 | the flagship golden-hour shot: acacia left third, grazing herd middle distance, kopje silhouette right third, warm haze layering |
+| `hero` | 17.4 | the flagship golden-hour shot: the herd crossing the middle distance in raking side light, sun out of frame, acacia line and escarpment in warm haze behind |
 | `waterhole` | 8 | elephants and giraffes drinking in low morning light, zebra at the shore |
 | `kopje` | 17.8 | the pride at the kopje's foot in golden hour — the male three-quarter front-lit at ~8 m against the boulder backdrop, lionesses resting around him (see CG list for the residual model tell) |
 | `herd` | 16 | zebra and wildebeest crossing open grassland at eye level |
@@ -128,6 +128,15 @@ its own); the whole scene sits far inside the ≤1500 draw / ≤6 M tri budget a
 
 ## Known gaps (honest)
 
+* **`close` and `hero` were re-staged 2026-09-24** after critic round 5 found `close` duplicating
+  `herd` (both aimed at the herd's spawn point) and `hero` shot into the 17.4 h sun. `close` now
+  searches a lens ring 170-300 m from the kopje whose view wedge holds no other preset's subject;
+  `hero` searches kopje × bearing for a view >= 75° off the sun. Verified on seed 1 (960×540):
+  `close` shows grass, a planted acacia and the kopje; `hero` shows the side-lit herd with no glare.
+  **Not delivered:** no kopje satisfies `hero`'s sun + framing + line-of-sight test on seed 1, so the
+  shot has no kopje (the old description promised a kopje silhouette and a left-third acacia; it was
+  rewritten to what the shot shows, not the other way round). `close`'s kopje reads sharp, not
+  "softening into haze", at haze 0.26.
 * **The composition is seed-general, not seed-perfect**: anchors and cameras are recomputed from
   real features every stage, but framing quality varies with the seed (validated on seed 1 only).
 * The `night` preset adds hippos to the waterhole but the shot list otherwise shares one cast across

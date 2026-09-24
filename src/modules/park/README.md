@@ -116,7 +116,7 @@ re-anchors its camera onto whatever actually got placed for the active seed, fol
 | `overview` | 15 | the whole park: entrance + lodge complex south, gravel loop with two dirt spurs, four fenced habitats |
 | `gate` | 9 | the entrance gate at morning opening, safari trucks on the paved approach |
 | `lodge` | 17.5 | the lodge complex at golden hour: lodge, restaurant, shop, ranger station, car park |
-| `habitat` | 16 | the plains-grazer habitat: zebra/wildebeest/impala behind the fence, a hide at the boundary |
+| `habitat` | 16 | the plains-grazer habitat: zebra/wildebeest/impala grazing, shot from the hide's side (hide and fence out of frame) |
 | `tour` | 16.5 | a safari truck beside the pride kopje habitat (see Known gaps re: the one extra showcase-only vehicle) |
 | `close` | 16.5 | the lodge veranda close: thatch, timber, stone plinth, pool |
 | `night` | 21.5 | the lodge lit at night |
@@ -177,6 +177,15 @@ clock is not explicitly paused (`&speed=0` keeps capture pages deterministic).
 
 ## Known gaps (honest)
 
+* **2026-09-24 wrong-scene fixes (critic park-round4 #1/#2).** `habitat` framed a river because the
+  plains habitat itself was sited ON the channel, 60 m from the wetland anchor (seed 1: plains
+  (-3,99)); build.js now requires the plains anchor to be >= 45 m from water and clear of the
+  wetland disc (no extra rng draws). This moves the plains herd, so `tools/fidelity.mjs` economy
+  numbers recorded below predate it and need a re-run. `close` aimed at the lodge SITE anchor, but the
+  lodge can land up to 60 m away; it now aims at the placed lodge's terrace. The pool was never
+  visible from any angle: buildings/lodge.js buried the water inside a solid terrace slab (fixed
+  there). Verified on seed 1 (960×540). Still true: two tents intrude on `close`'s foreground
+  corners, and `habitat` trades the hide/fence for legible animals (at 80-100 m they were specks).
 * **`newGame(seed)` only reseeds terrain and this module's own placement rng, not every module's
   internal randomness.** Every other module forks its own `ctx.rng` once, at `ModuleRegistry._makeCtx`
   time, from whatever `world.seed` the `World` was constructed with — before `park.init()` (last in
