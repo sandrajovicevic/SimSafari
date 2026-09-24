@@ -67,8 +67,10 @@ export async function stage(ctx, presetName) {
     const hide = report.buildings?.hidePlains;
     if (hide) {
       const vx = hide.x - herd.x, vz = hide.z - herd.z, d = Math.hypot(vx, vz) || 1;
-      const mx = (hide.x + herd.x) / 2, mz = (hide.z + herd.z) / 2;
-      setTarget(presets.habitat, mx, mz, { distance: d / 2 + 40, pitch: 17, yaw: Math.atan2(vx, vz) * 180 / Math.PI });
+      // target 60 % of the way to the herd, lens just behind the hide: at d/2+40 m and 17° the
+      // grazers were specks (verified park-habitat-16, first re-anchor pass)
+      const mx = hide.x + (herd.x - hide.x) * 0.6, mz = hide.z + (herd.z - hide.z) * 0.6;
+      setTarget(presets.habitat, mx, mz, { distance: d * 0.6 + 22, pitch: 11, yaw: Math.atan2(vx, vz) * 180 / Math.PI });
     } else setTarget(presets.habitat, herd.x, herd.z, { distance: Math.max(110, plains.radius * 1.4) });
   }
   const overviewCx = ((gate?.x ?? 0) + (lodge?.x ?? 0)) / 2;

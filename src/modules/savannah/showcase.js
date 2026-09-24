@@ -212,9 +212,15 @@ function stageClose(ctx, terrain, props, kopje, water, gx, gz) {
  */
 function stageHero(ctx, terrain, props, f, bigKopje, gx, gz) {
   const P = presets.hero, w = ctx.world;
-  const dist = 110, pitch = 7;
-  const herdDir = presets.herd.camera.yaw * DEG + Math.PI / 2 - 0.15;
-  const hx = gx - 6 + Math.sin(herdDir) * 20, hz = gz + 6 + Math.cos(herdDir) * 20; // herd mid-walk
+  const dist = 80, pitch = 6;
+  // aim at the LIVE herd, not a formula for where it should be: the first pass aimed at a computed
+  // mid-walk point and the capture showed open grass, herd out of frame (savannah-hero-17_4 re-anchor)
+  let hx = 0, hz = 0, n = 0;
+  for (const a of w.animals.values()) {
+    if ((a.species !== 'zebra' && a.species !== 'wildebeest') || Math.hypot(a.x - gx, a.z - gz) > 70) continue;
+    hx += a.x; hz += a.z; n++;
+  }
+  if (n) { hx /= n; hz /= n; } else { hx = gx; hz = gz; }
   // sun azimuth at the preset hour — same geometry as the kopje preset (environment celestialDirection)
   const Hs = (P.tod - 12) * 15 * DEG, dcl = 17 * DEG, lat = -2.3 * DEG;
   const sunAz = Math.atan2(-Math.cos(dcl) * Math.sin(Hs), -(Math.cos(lat) * Math.sin(dcl) - Math.sin(lat) * Math.cos(dcl) * Math.cos(Hs)));
