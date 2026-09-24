@@ -10,7 +10,7 @@
 //   ctx.assets.stats()   // { files, bytes, failed: [path…] }
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
 const BASE = (import.meta.env?.BASE_URL || '/') + 'assets/';
@@ -26,7 +26,7 @@ export class Assets {
     this.gltfLoader = new GLTFLoader(this.manager);
     this.gltfLoader.setMeshoptDecoder(MeshoptDecoder);
     this.texLoader = new THREE.TextureLoader(this.manager);
-    this.rgbeLoader = new RGBELoader(this.manager);
+    this.rgbeLoader = new HDRLoader(this.manager);
     this.fileLoader = new THREE.FileLoader(this.manager);
     this.fileLoader.setResponseType('arraybuffer');
   }

@@ -314,3 +314,65 @@ vec4 shade(vec2 uv){
   return vec4(nn * 0.5 + 0.5, 1.0);
 }`, { key: 'terrain:waterNormal', size, seed: 3, mipmaps: true, anisotropy });
 }
+
+// ---- authored photo layers (ARCHITECTURE §8, 2026-09-24) ---------------------------------------
+// Scanned CC0 ground sets replace procedural layers when present. Each set is a colour map plus a
+// "surface" map packing tangent normal X/Y (OpenGL) in r/g and roughness in b. The photo's mean colour
+// is RE-TINTED to the procedural layer's mean (per channel, in linear) so the scan contributes real
+// structure — pebbles, cracks, withered blades — without shifting the art-directed palette or the
+// biome colour balance. Height (alpha, drives height-blending) is the scan's luminance, contrast-
+// stretched; AO is a gentle cavity term from it. Missing files leave the procedural layer in place.
+export const PHOTO_LAYERS = [
+  { layer: LAYER.DRY_GRASS, color: 'textures/polyhaven-via-habitta/grass-color.jpg', surface: 'textures/polyhaven-via-habitta/grass-surface.jpg' },
+  { layer: LAYER.DIRT, color: 'textures/polyhaven-via-habitta/earth-color.jpg', surface: 'textures/polyhaven-via-habitta/earth-surface.jpg' },
+  { layer: LAYER.ROCK, color: 'textures/polyhaven-via-habitta/rock-color.jpg', surface: 'textures/polyhaven-via-habitta/rock-surface.jpg' },
+];
+
+const s2l = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+const l2s = (c) => { c = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055; return Math.max(0, Math.min(255, Math.round(c * 255))); };
+
+/** Pixels of an image scaled to size², rows bottom-up (the render-target readback order). */
+function imagePixels(img, size) {
+  const cv = new OffscreenCanvas(size, size);
+  const g = cv.getContext('2d', { willReadFrequently: true });
+  g.translate(0, size); g.scale(1, -1); // flip: match readRenderTargetPixels' bottom-up rows (keeps normal Y sign)
+  g.drawImage(img, 0, 0, size, size);
+  return g.getImageData(0, 0, size, size).data;
+}
+
+/** Overwrite procedural layers in S.layers with photo sets. Resolves the list of layers replaced. */
+export async function applyPhotoLayers(ctx, layers, sets = PHOTO_LAYERS) {
+  const { size, tAlb, tNrm } = layers;
+  const A = tAlb.image.data, N = tNrm.image.data;
+  const px = size * size;
+  const done = [];
+  await Promise.all(sets.map(async (set) => {
+    const [col, surf] = await Promise.all([ctx.assets.texture(set.color, { srgb: true }), ctx.assets.texture(set.surface)]);
+    if (!col?.image || !surf?.image) return;
+    const c = imagePixels(col.image, size), s = imagePixels(surf.image, size);
+    const base = set.layer * px * 4;
+    // procedural and photo means (linear)
+    const pm = [0, 0, 0], fm = [0, 0, 0];
+    let lmin = 1, lmax = 0;
+    for (let i = 0; i < px; i += 7) {
+      for (let k = 0; k < 3; k++) { pm[k] += s2l(A[base + i * 4 + k]); fm[k] += s2l(c[i * 4 + k]); }
+    }
+    const k3 = [0, 1, 2].map((k) => (pm[k] / Math.max(1e-4, fm[k])));
+    const lum = new Float32Array(px);
+    for (let i = 0; i < px; i++) {
+      const l = 0.2126 * s2l(c[i * 4]) + 0.7152 * s2l(c[i * 4 + 1]) + 0.0722 * s2l(c[i * 4 + 2]);
+      lum[i] = l; if (l < lmin) lmin = l; if (l > lmax) lmax = l;
+    }
+    const lr = 1 / Math.max(1e-4, lmax - lmin);
+    for (let i = 0; i < px; i++) {
+      const o = base + i * 4, h = (lum[i] - lmin) * lr;
+      A[o] = l2s(s2l(c[i * 4]) * k3[0]); A[o + 1] = l2s(s2l(c[i * 4 + 1]) * k3[1]); A[o + 2] = l2s(s2l(c[i * 4 + 2]) * k3[2]);
+      A[o + 3] = Math.round(h * 255);
+      N[o] = s[i * 4]; N[o + 1] = s[i * 4 + 1]; N[o + 2] = s[i * 4 + 2];
+      N[o + 3] = Math.round((0.55 + 0.45 * Math.min(1, h * 1.6)) * 255);
+    }
+    done.push(LAYER_NAMES[set.layer]);
+  }));
+  if (done.length) { tAlb.needsUpdate = true; tNrm.needsUpdate = true; }
+  return done;
+}

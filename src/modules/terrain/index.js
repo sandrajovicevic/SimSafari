@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { BIOME } from '../../core/World.js';
 import { presets, stage } from './showcase.js';
-import { buildLayerArrays, buildWaterNormal } from './textures.js';
+import { buildLayerArrays, buildWaterNormal, applyPhotoLayers } from './textures.js';
 import { generateSavannah, classifyRange, classifyAll, packControl, sampleMoisture, BIOME_NAMES, normalAt } from './generate.js';
 import { buildChunks, refreshChunk, chunkAt } from './mesh.js';
 import { createTerrainMaterial, createControlTextures, createHeightTexture, updateHeightTexture } from './material.js';
@@ -253,6 +253,13 @@ export default {
       log(`[terrain] ${S.layers.layers} layer sets @ ${S.textureSize}² aniso ${S.anisotropy} (${S.soft ? 'software' : 'hardware'} GL) in ${(performance.now() - t0).toFixed(0)} ms`);
     } catch (err) {
       ctx.log.error('[terrain] texture generation failed', err);
+    }
+    // scanned ground sets over the procedural layers (awaited so the first frame is final)
+    if (S.layers && ctx.assets) {
+      try {
+        const photo = await applyPhotoLayers(ctx, S.layers);
+        if (photo.length) log(`[terrain] photo layers: ${photo.join(', ')}`);
+      } catch (err) { ctx.log.warn('[terrain] photo layers failed; procedural layers kept', err); }
     }
     try { generate(); } catch (err) { ctx.log.error('[terrain] generation failed', err); }
   },
