@@ -112,11 +112,16 @@ export function buildLodge(bc) {
 
   // ---- terrace and plunge pool -----------------------------------------------------------------
   const TY = 0.12;
-  st.box(-12.5, -0.35, DZ1, 12.5, TY, 15.9, TILE.stone, '-y');
-  stair(bc, 0, DZ1, DZ1 + 2.0, PT + 0.03, TY, 3.2, 5);
-
   const px0 = 3.8, px1 = 11.2, pz0 = 12.9, pz1 = 15.4;
   const cw = 0.42;
+  // the slab is cut around the basin: one solid box used to cover it, so the water plate (TY - 0.14)
+  // sat INSIDE the stone and the pool never rendered (verified park-close-16_5, looking straight down)
+  st.box(-12.5, -0.35, DZ1, 12.5, TY, pz0 - cw, TILE.stone, '-y');
+  st.box(-12.5, -0.35, pz1 + cw, 12.5, TY, 15.9, TILE.stone, '-y');
+  st.box(-12.5, -0.35, pz0 - cw, px0 - cw, TY, pz1 + cw, TILE.stone, '-y');
+  st.box(px1 + cw, -0.35, pz0 - cw, 12.5, TY, pz1 + cw, TILE.stone, '-y');
+  stair(bc, 0, DZ1, DZ1 + 2.0, PT + 0.03, TY, 3.2, 5);
+
   st.box(px0 - cw, TY, pz0 - cw, px1 + cw, TY + 0.16, pz0, TILE.stone, '-y');
   st.box(px0 - cw, TY, pz1, px1 + cw, TY + 0.16, pz1 + cw, TILE.stone, '-y');
   st.box(px0 - cw, TY, pz0, px0, TY + 0.16, pz1, TILE.stone, '-y');
@@ -133,7 +138,7 @@ export function buildLodge(bc) {
   // dark teal-blue so the pool reads as water even at glancing reflection angles, while still relying
   // on the low roughness / envMapIntensity for the specular highlight that sells it as water.
   wa.tint(0.05, 0.16, 0.19);
-  wa.plate(px0, pz0, px1, pz1, TY - 0.14, 1.0, true);
+  wa.plate(px0, pz0, px1, pz1, TY - 0.05, 1.0, true); // above the flattened ground (y 0), under the coping
   wa.tint(1, 1, 1);
 
   // ---- lighting ---------------------------------------------------------------------------------

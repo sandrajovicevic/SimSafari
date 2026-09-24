@@ -260,6 +260,15 @@ function stageHero(ctx, terrain, props, f, bigKopje, gx, gz) {
   P.camera.distance = dist;
   P.camera.pitch = pitch;
   P.camera.yaw = degOf(-Math.sin(best.view), -Math.cos(best.view));
+  // lane from the lens to the herd: a scattered acacia stood mid-frame across the herd (verified
+  // savannah-hero-17_4, second pass)
+  if (props?.clear) {
+    const lx = hx - best.cx, lz = hz - best.cz, L = Math.hypot(lx, lz) || 1;
+    for (let s = 0; s <= L - 10; s += 6) {
+      const x = best.cx + (lx / L) * s, z = best.cz + (lz / L) * s, half = 4 + s * 0.12;
+      props.clear({ x0: x - half, z0: z - half, x1: x + half, z1: z + half });
+    }
+  }
   // foreground acacia on the side opposite the kopje, ~24° off-centre, 45 m out
   const ta = best.view - Math.sign(best.off || 1) * 24 * DEG;
   const tx = best.cx + Math.sin(ta) * 45, tz = best.cz + Math.cos(ta) * 45;
