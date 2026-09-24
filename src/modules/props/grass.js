@@ -305,9 +305,13 @@ export class GrassField {
           const d = Math.sqrt(dx * dx + dz * dz);
           if (d > r2 || d < rin) continue;
           const fin = Math.min(1, (d - rin) / 30);
-          const fout = 1 - Math.min(1, Math.max(0, (d - (r2 - 55)) / 55));
+          // outer edge: a band ~40 % of the ring radius that THINS the field (per-tuft random key vs
+          // the fade) as well as shrinking it. The old 55 m shrink-only band left a hard-edged disc of
+          // grass visible from the overview (verified game-overview-17, 2026-09-24).
+          const band = Math.max(55, r2 * 0.4);
+          const fout = 1 - Math.min(1, Math.max(0, (d - (r2 - band)) / band));
           const f = Math.min(fin, fout);
-          if (f <= 0.02) continue;
+          if (f <= 0.02 || p[i + 8] > fout * 1.05) continue;
           if (nC < capC) { write(C, CC, nC, p, i, 2.4, 0.85 * (0.25 + 0.75 * f)); nC++; }
         }
       }

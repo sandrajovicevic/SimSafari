@@ -345,7 +345,7 @@ function buildImposters() {
       try { baked = bakeImposter(S.ctx, meshes, { size: S.ctx.quality === 'low' ? 128 : 256 }); }
       catch (err) { S.ctx.log.warn(`[props] imposter bake failed for ${kind} v${vi}: ${err?.message || err}`); }
       if (!baked) continue;
-      v.imposter = { ...baked, mat: imposterMaterial(S.ctx, baked.texture, kind + vi), geo: S.imposterGeo, refHeight: v.height };
+      v.imposter = { ...baked, mat: imposterMaterial(S.ctx, baked.texture, kind + vi, baked.top, baked.topExtent, baked.crownY, baked.width), geo: S.imposterGeo, refHeight: v.height };
     }
     sp.hasImposter = sp.variants.some((v) => !!v.imposter);
   }
@@ -987,6 +987,7 @@ export default {
         v.imposterGroup?.dispose();
         if (!v.imposter) continue;
         v.imposter.texture?.userData?.renderTarget?.dispose();
+        v.imposter.top?.userData?.renderTarget?.dispose();
         S.ctx.materials.untrack(v.imposter.mat); v.imposter.mat.dispose();
       }
     }
