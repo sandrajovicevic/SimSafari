@@ -30,7 +30,9 @@ Consequences you must respect:
 ## Hard rules
 - Metres, +Y up, world centred at origin, `world.size` = 1024 m.
 - No `Math.random()`; use `ctx.rng` (seeded) / `ctx.noise`. `node tools/lint.mjs` enforces this.
-- No network: no `fetch`, no CDN imports. Everything procedural (`ctx.textures`, code-built meshes, WebAudio synthesis).
+- Authored assets are allowed (ARCHITECTURE §8, changed 2026-09-24): commit them under `public/assets/`, load them only via
+  `ctx.assets`, log every file in `docs/ASSETS.md` (source, author, licence). Keep a procedural fallback so the module still
+  works if an asset is missing. No runtime access to third-party hosts: no CDN imports, no `fetch()` of remote URLs.
 - No cross-module imports. Talk through `ctx.modules.get(id)` and `ctx.events`.
 - `init()` must not throw. Wrap risky work, log via `ctx.log.error`.
 - Zero per-frame allocations in `update()`. Instancing for > 20 copies. LOD beyond 300 m.

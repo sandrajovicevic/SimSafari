@@ -125,7 +125,10 @@ Rules:
   throws is a failed module and scores 0.
 * All geometry in **metres, +Y up**, world centred at origin (§3). One Three.js unit = 1 m.
 * **No `Math.random()`**. Use `ctx.rng` / `ctx.noise`. The repo has a lint check for this.
-* **No network fetches**. Everything is procedural (§8). `fetch()` of textures is forbidden.
+* **No runtime network access to third-party hosts.** Authored assets (models, textures, HDRIs,
+  audio) are allowed but must be committed under `public/assets/` and loaded through `ctx.assets`
+  (§8). No CDN imports, no `fetch()` of remote URLs, no direct `fetch()` of local files either —
+  `ctx.assets` owns loading, caching and failure handling.
 * Add all scene objects under one `THREE.Group` named after the module so the integrator and
   the screenshot tool can toggle or count them.
 * `dispose()` must release geometries, materials, textures, render targets, DOM nodes and audio nodes.
@@ -293,14 +296,32 @@ metric; draw calls, triangles and console errors are.
 
 ## 8. Asset policy
 
-CC0 only. In this environment the egress proxy blocks Poly Haven, ambientCG and every CDN
-(verified with `curl`: 403 CONNECT), so **every asset is procedural**: textures are generated
-with `core/Textures.js` (noise-driven albedo, height→normal, roughness), meshes are built from
-Three.js geometries and code, animals are procedurally modelled and animated (bone-less
-skinning via vertex shaders or hierarchical groups), audio is WebAudio synthesis.
-No binary files are committed except what the screenshot tool writes to `tools/shots/` (gitignored).
-If the proxy is later opened, downloaded CC0 assets go under `public/assets/<source>/` with a
-`LICENSE.txt` naming the source; the module reads them via `ctx.assets` (integrator adds it).
+**Changed 2026-09-24: authored assets are now allowed and preferred for anything that must read
+as a real object** (animals first, then rocks, bark, ground materials, sky HDRIs). Procedural-only
+content hit a ceiling: after 3-7 critic rounds most nature modules still scored 6-7, and the
+animals — tube bodies on code-built bone chains — read as programmer art. Target look for animals:
+clearly recognisable species with correct silhouettes and markings (stylised low-poly is fine;
+hyper-realism is not required).
+
+Rules:
+* **Where files live.** `public/assets/<kind>/<source>/<name>.<ext>` (kind: `models`, `textures`,
+  `hdri`, `audio`). Served by Vite at `/assets/...`. Binary files over 1 MB are tracked with Git LFS
+  (`.gitattributes`).
+* **Formats.** Models: glTF 2.0 binary (`.glb`), skinned + animation clips where the object moves.
+  Textures: `.jpg`/`.png`/`.webp` (KTX2 later if needed). HDRI: `.hdr`/`.exr` at ≤ 2k.
+* **Licences.** CC0 or CC-BY, or a paid licence that explicitly permits use in a web game and
+  redistribution of the files in this repository. Every file gets a row in `docs/ASSETS.md`: path,
+  source URL, author, licence, date, and any modification. CC-BY attributions are shown in-game
+  (credits panel). No row → the file is not allowed in the repo.
+* **Loading.** Only through `ctx.assets` (core): `await ctx.assets.gltf(path)`,
+  `ctx.assets.texture(path, { srgb })`, `ctx.assets.hdri(path)`. It caches, counts bytes, and
+  resolves `null` (never throws) when a file is missing or fails to parse.
+* **Procedural fallback is mandatory.** A module must still load, render and pass its presets
+  (at lower quality) if an asset resolves `null`; the existing procedural paths become that fallback.
+* **Budgets.** Per-species model ≤ 15 k triangles LOD0 (≤ 3 k LOD1), textures ≤ 2048², whole
+  `public/assets/` ≤ 150 MB. Instancing / skinned instancing rules in §7 still apply.
+* Procedural generation remains the right tool for terrain shape, scattering, weather, sky
+  simulation and audio synthesis.
 
 ---
 
