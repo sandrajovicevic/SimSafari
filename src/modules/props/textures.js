@@ -306,3 +306,53 @@ vec4 shade(vec2 uv){
   return vec4(A(c), a);
 }`, { key, size, srgb: true, seed, wrap: THREE.ClampToEdgeWrapping, uniforms: { uTint: new THREE.Vector3(tint[0], tint[1], tint[2]) } });
 }
+
+// ---- authored photo materials (ARCHITECTURE §8, 2026-09-24) ------------------------------------
+// A scanned CC0 set = colour map + "surface" map packing tangent normal X/Y (OpenGL) in r/g and
+// roughness in b. MeshStandardMaterial wants a full normal map and roughness in G, so both are
+// rebuilt on a canvas at load. The colour is re-tinted per channel (linear) to `tint` — the mean the
+// procedural material was art-directed to — so the scan adds structure, not a palette shift.
+const _s2l = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+const _l2s = (c) => { c = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055; return Math.max(0, Math.min(255, Math.round(c * 255))); };
+
+function _pixels(img) {
+  const cv = new OffscreenCanvas(img.width, img.height);
+  const g = cv.getContext('2d', { willReadFrequently: true });
+  g.drawImage(img, 0, 0);
+  return { cv, g, data: g.getImageData(0, 0, img.width, img.height) };
+}
+
+function _canvasTex(cv, srgb) {
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 4;
+  t.needsUpdate = true;
+  return t;
+}
+
+/** Resolves { map, normalMap, roughnessMap } or null when the files are unavailable. */
+export async function photoSet(ctx, colorPath, surfacePath, tint) {
+  const [col, surf] = await Promise.all([ctx.assets.texture(colorPath, { srgb: true }), ctx.assets.texture(surfacePath)]);
+  if (!col?.image || !surf?.image) return null;
+  const C = _pixels(col.image), Sf = _pixels(surf.image);
+  const c = C.data.data, s = Sf.data.data, n = c.length / 4;
+  const mean = [0, 0, 0];
+  for (let i = 0; i < n; i += 5) for (let k = 0; k < 3; k++) mean[k] += _s2l(c[i * 4 + k]);
+  const cnt = Math.ceil(n / 5);
+  const k3 = tint ? [0, 1, 2].map((k) => tint[k] / Math.max(1e-4, mean[k] / cnt)) : [1, 1, 1];
+  for (let i = 0; i < n; i++) for (let k = 0; k < 3; k++) c[i * 4 + k] = _l2s(_s2l(c[i * 4 + k]) * k3[k]);
+  C.g.putImageData(C.data, 0, 0);
+  const R = _pixels(surf.image);
+  const r = R.data.data;
+  for (let i = 0; i < n; i++) {
+    const x = s[i * 4] / 127.5 - 1, y = s[i * 4 + 1] / 127.5 - 1;
+    const z = Math.sqrt(Math.max(0, 1 - x * x - y * y));
+    const ro = s[i * 4 + 2];
+    s[i * 4 + 2] = Math.round((z * 0.5 + 0.5) * 255); s[i * 4 + 3] = 255;
+    r[i * 4] = 255; r[i * 4 + 1] = ro; r[i * 4 + 2] = 0; r[i * 4 + 3] = 255;
+  }
+  Sf.g.putImageData(Sf.data, 0, 0);
+  R.g.putImageData(R.data, 0, 0);
+  return { map: _canvasTex(C.cv, true), normalMap: _canvasTex(Sf.cv, false), roughnessMap: _canvasTex(R.cv, false) };
+}

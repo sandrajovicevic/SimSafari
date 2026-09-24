@@ -598,7 +598,11 @@ const RULES = {
       const rock = s.biome === BIOME.ROCK ? 1 : 0;
       const steep = smoothstep(0.16, 0.42, s.slope);
       if (!rock && steep < 0.25) return 0;
-      return 0.55 * Math.max(rock * 0.9, steep) * (0.35 + 0.9 * s.macro2);
+      // slope is in RADIANS: loose rock cannot rest past its angle of repose (~35°), so boulders fade
+      // out from 36° to 49° — before this cap the weight kept rising up vertical cliff faces and stuck
+      // "popcorn" boulders all over the escarpment and kopje walls (verified props-kopje, 2026-09-24).
+      const repose = 1 - smoothstep(0.62, 0.85, s.slope);
+      return 0.55 * Math.max(rock * 0.9, steep) * repose * (0.35 + 0.9 * s.macro2);
     },
   },
   termite: {
@@ -896,6 +900,14 @@ export default {
       S.graze = new Float32Array(gres * gres).fill(1);
       buildMacro();
       buildMaterials();
+      // scanned granite over the procedural one (awaited: boulders must not pop on frame 1)
+      try {
+        const rock = await TEX.photoSet(ctx, 'textures/polyhaven-via-habitta/rock-color.jpg', 'textures/polyhaven-via-habitta/rock-surface.jpg', [0.165, 0.148, 0.130]);
+        if (rock) {
+          Object.assign(M.rock, { map: rock.map, normalMap: rock.normalMap, roughnessMap: rock.roughnessMap, aoMap: null, metalnessMap: null, roughness: 1 });
+          M.rock.needsUpdate = true;
+        }
+      } catch (err) { ctx.log.warn('[props] photo rock unavailable; procedural granite kept', err); }
       buildSpecies();
       buildImposters();
       S.grass = new GrassField(ctx, S.group, grassSample);
