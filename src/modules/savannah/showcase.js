@@ -122,6 +122,84 @@ function shorePoints(ctx, terrain, spot, n = 10) {
   return pts;
 }
 
+/**
+ * close: its own quiet subject, never another preset's. It used to aim at (gx,gz) — the herd's
+ * spawn point, i.e. the exact target `herd` uses — so the 15 m lens landed inside the crossing and
+ * showed a near-duplicate of `herd` with no kopje in frame (critic savannah-round5 #1).
+ * Now: walk a ring of lens spots 170-300 m out from the kopje, keep the first dry, flat one whose
+ * view wedge toward the kopje contains none of the other presets' subjects (herd path, impala,
+ * ostrich, waterhole) and whose heightfield sightline reaches the kopje top; plant one acacia at
+ * ~12 m off-axis as the foreground trunk and carve a props-free lane so nothing blocks the kopje.
+ */
+function stageClose(ctx, terrain, props, kopje, water, gx, gz) {
+  const P = presets.close, w = ctx.world;
+  const pitch = 6, dist = 15;
+  const herdDir = presets.herd.camera.yaw * DEG + Math.PI / 2 - 0.15;
+  const hdx = Math.sin(herdDir), hdz = Math.cos(herdDir);
+  // every other subject on the plain: herd path samples (spawn → walk target), impala, ostrich, pan
+  const avoid = [];
+  for (let t = -0.1; t <= 1.0001; t += 0.1) avoid.push([gx + hdx * 120 * t, gz + hdz * 120 * t, 30]);
+  avoid.push([gx - 30, gz - 40, 25], [gx + 40, gz + 30, 20], [water.x, water.z, water.r + 30]);
+  const dry = (x, z) => {
+    if (!w.inBounds?.(x, z) || Math.abs(x) > w.half - 40 || Math.abs(z) > w.half - 40) return false;
+    const wl = terrain?.getWaterLevelAt ? terrain.getWaterLevelAt(x, z) : w.terrain.waterLevel;
+    return !terrain?.isWaterAt?.(x, z) && w.getHeight(x, z) > wl + 2 && w.getSlope(x, z) < 0.1;
+  };
+  const kTop = w.getHeight(kopje.x, kopje.z);
+  const phi = 0.17, treeAng = 0.36; // kopje sits φ to one side of centre, the trunk ~21° to the other
+  let best = null, bestScore = -Infinity;
+  for (const ring of [210, 250, 180, 290]) {
+    for (let k = 0; k < 32; k++) {
+      const b = (k / 32) * Math.PI * 2;
+      const cx = kopje.x + Math.sin(b) * (kopje.r + ring), cz = kopje.z + Math.cos(b) * (kopje.r + ring);
+      if (!dry(cx, cz)) continue;
+      const kdx = kopje.x - cx, kdz = kopje.z - cz, kd = Math.hypot(kdx, kdz);
+      const a0 = Math.atan2(kdx, kdz); // heading from lens to kopje (x = sin, z = cos)
+      const view = a0 + phi, tree = a0 + phi + treeAng;
+      const tx = cx + Math.sin(tree) * 12, tz = cz + Math.cos(tree) * 12;
+      if (!dry(tx, tz) || (w.biomeAt(tx, tz) !== 0 && w.biomeAt(tx, tz) !== 1)) continue;
+      // nothing else in a ±50° wedge out to 450 m (wider than the frame, so edges stay clean too)
+      let blocked = false;
+      for (const [ax, az, ar] of avoid) {
+        const d = Math.hypot(ax - cx, az - cz);
+        if (d < ar + 20) { blocked = true; break; }
+        if (d > 450) continue;
+        let da = Math.atan2(ax - cx, az - cz) - view;
+        da = Math.atan2(Math.sin(da), Math.cos(da));
+        if (Math.abs(da) < 0.87 + Math.atan2(ar, d)) { blocked = true; break; }
+      }
+      if (blocked) continue;
+      // the kopje top must clear the heightfield from eye height
+      const eye = w.getHeight(cx, cz) + 2.2;
+      let los = true;
+      for (let i = 1; i < 24 && los; i++) {
+        const t = i / 24;
+        const x = cx + kdx * t, z = cz + kdz * t;
+        if (Math.hypot(x - kopje.x, z - kopje.z) < kopje.r) break; // reached the rock itself
+        if (w.getHeight(x, z) + 0.5 > eye + (kTop - eye) * t) los = false;
+      }
+      if (!los) continue;
+      const score = -Math.abs(kd - 240) * 0.02 - w.getSlope(cx, cz) * 40;
+      if (score > bestScore) { bestScore = score; best = { cx, cz, view, tx, tz }; }
+    }
+    if (best) break;
+  }
+  if (!best) { aim(P, gx - 120 * hdx, gz - 120 * hdz); return; } // far behind the herd's start, facing away
+  const { cx, cz, view, tx, tz } = best;
+  const vx = Math.sin(view), vz = Math.cos(view);
+  const hd = dist * Math.cos(pitch * DEG);
+  aim(P, cx + vx * hd, cz + vz * hd);
+  P.camera.distance = dist;
+  P.camera.pitch = pitch;
+  P.camera.yaw = degOf(-vx, -vz);
+  if (props?.clear) {
+    // lane from 4 m behind the lens 70 m toward the kopje, the trunk's own patch, then the trunk
+    for (let s = -4; s <= 70; s += 4) props.clear({ x0: cx + vx * s - 5, z0: cz + vz * s - 5, x1: cx + vx * s + 5, z1: cz + vz * s + 5 });
+    props.clear({ x0: tx - 5, z0: tz - 5, x1: tx + 5, z1: tz + 5 });
+    props.place?.('acacia', tx, tz, { scale: 1.05, rotY: view });
+  }
+}
+
 function towards(x, z, tx, tz) { return Math.atan2(tx - x, tz - z); }
 function aim(P, x, z) { if (P?.camera?.target) { P.camera.target[0] = x; P.camera.target[1] = z; } }
 
@@ -307,7 +385,7 @@ export async function stage(ctx, presetName) {
   // 6. Camera anchors — real feature positions, rule-of-thirds framing per preset.
   aim(presets.overview, gx - 60, gz - 40);
   presets.overview.camera.yaw = degOf(gx - kopje.x, gz - kopje.z) + 20;
-  aim(presets.close, gx, gz);
+  stageClose(ctx, terrain, props, kopje, water, gx, gz);
   // hero: close enough that the walking herd reads as animals (at 220 m a zebra is ~10 px) —
   // frame the herd's own spawn line with the kopje silhouette beyond it.
   presets.hero.camera.distance = 130;

@@ -37,7 +37,38 @@ export async function stage(ctx, presetName) {
 
   if (gate) setTarget(presets.gate, gate.x, gate.z);
   if (lodge) { setTarget(presets.lodge, lodge.x, lodge.z); setTarget(presets.close, lodge.x, lodge.z); setTarget(presets.night, lodge.x, lodge.z); }
-  if (plains) setTarget(presets.habitat, plains.x, plains.z, { distance: Math.max(110, plains.radius * 1.4) });
+
+  // close: frame the lodge BUILDING, not the lodge site. placeBuilding() spirals up to 60 m away from
+  // the site anchor, so a 30 m lens on the anchor showed tents and roads, never the veranda (critic
+  // park-round4 #2). Aim at the terrace between the great room and the plunge pool (lodge.js local
+  // (3, 11); pool at x 3.8..11.2, z 12.9..15.4) from the pool side, three-quarter on, so thatch,
+  // poles, plinth and water share the frame. Rotation maps local +z to world (sin rot, cos rot).
+  const lb = report.buildings?.lodge;
+  if (lb && Number.isFinite(lb.rot)) {
+    const c = Math.cos(lb.rot), s = Math.sin(lb.rot);
+    const toWorld = (lx, lz) => [lb.x + lx * c + lz * s, lb.z - lx * s + lz * c];
+    const [tx, tz] = toWorld(3, 11);
+    const [dx, dz] = toWorld(0.5, 1); // camera direction from the target: out the front, pool side
+    setTarget(presets.close, tx, tz, { distance: 30, pitch: 16, yaw: Math.atan2(dx - lb.x, dz - lb.z) * 180 / Math.PI });
+  }
+
+  // habitat: the old fixed yaw at the disc centre looked across whatever lay beyond it (a river
+  // gallery on seed 1, critic park-round4 #1). Stand behind the plains hide instead and look over it,
+  // across the fence, at where the herd actually is: hide in the foreground, grazers mid-frame.
+  if (plains) {
+    let hx = 0, hz = 0, n = 0;
+    for (const a of ctx.world.animals.values()) {
+      if (Math.hypot(a.x - plains.x, a.z - plains.z) > plains.radius) continue;
+      hx += a.x; hz += a.z; n++;
+    }
+    const herd = n ? { x: hx / n, z: hz / n } : { x: plains.x, z: plains.z };
+    const hide = report.buildings?.hidePlains;
+    if (hide) {
+      const vx = hide.x - herd.x, vz = hide.z - herd.z, d = Math.hypot(vx, vz) || 1;
+      const mx = (hide.x + herd.x) / 2, mz = (hide.z + herd.z) / 2;
+      setTarget(presets.habitat, mx, mz, { distance: d / 2 + 40, pitch: 17, yaw: Math.atan2(vx, vz) * 180 / Math.PI });
+    } else setTarget(presets.habitat, herd.x, herd.z, { distance: Math.max(110, plains.radius * 1.4) });
+  }
   const overviewCx = ((gate?.x ?? 0) + (lodge?.x ?? 0)) / 2;
   const overviewCz = ((gate?.z ?? 200) + (lodge?.z ?? 100)) / 2 - 80;
   setTarget(presets.overview, overviewCx, overviewCz, { distance: Math.max(650, ctx.world.half * 1.5) });

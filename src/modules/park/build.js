@@ -343,7 +343,7 @@ export async function buildPark(ctx, opts = {}) {
     // every side, so `facing` only orients the stair-access gap away from the habitat)
     placed.tower = placeBuilding(ctx, buildings, 'tower', predatorsAnchor.x + predatorsAnchor.r * 0.85, predatorsAnchor.z, rng, { spread: 35, facing: { x: predatorsAnchor.x, z: predatorsAnchor.z } });
 
-    for (const [k, v] of Object.entries(placed)) report.buildings[k] = v ? { id: v.id, x: v.x, z: v.z, forced: v.forced } : null;
+    for (const [k, v] of Object.entries(placed)) report.buildings[k] = v ? { id: v.id, x: v.x, z: v.z, rot: v.rot, forced: v.forced } : null;
   } else report.warnings.push('buildings module absent: no structures placed');
 
   // ---- 7. props: biome scatter (auto in the real game via terrain:ready; explicit in showcase) ---
