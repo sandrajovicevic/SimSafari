@@ -470,8 +470,8 @@
     "savannah": {
       "wave": 3,
       "domain": "nature",
-      "round": 5,
-      "score": 6,
+      "round": 6,
+      "score": 6.0,
       "status": "fail",
       "errors": 0,
       "drawCalls": 228,
@@ -479,30 +479,49 @@
       "presetsSeen": [
         "overview 16.5",
         "close 16",
+        "close 6.5 (extra)",
         "hero 17.4",
+        "hero 12 (extra)",
         "waterhole 8",
         "kopje 17.8",
         "herd 16",
         "river 9.5",
         "storm 15",
         "night 22",
+        "night 3 (extra)",
         "dawn 6.3"
       ],
       "issues": [
         {
           "sev": "major",
-          "text": "close preset shows the wrong scene -- a zebra/wildebeest herd crossing, near-identical in subject to the herd preset next to it -- instead of the described quiet foreground-grass-and-acacia-trunk-with-hazy-kopje composition. Confirmed via capture JSON that the correct preset and its own authored camera were used; no kopje visible at all in this shot."
+          "text": "Two preset descriptions not reproduced (caps at 6): storm promises a dark sky but the pitch-22 aerial frames only a thin pale haze strip; night promises moonlit hippos at the waterhole with the herd asleep beyond, but the only hippo is a frame-edge blob in foreground grass, no herd is identifiable and there is no moon glitter path."
         },
         {
           "sev": "major",
-          "text": "hero flagship shot does not deliver its promised composition: roughly half the frame blown out by sun glare, no legible kopje silhouette on the right third (escarpment instead), no grazing herd visible in the middle distance."
+          "text": "Night waterhole still glows. The terrain 09-22 fix removed the uniform fill, but a thick blotchy cream shoreline glint ring remains at 22 h and 3 h (mean luma 64, max 168, vs grass 7): the brightest thing below the horizon. Needs a terrain request."
+        },
+        {
+          "sev": "major",
+          "text": "Preset subjects read as CG or programmer art. kopje male lion at ~8 m is a box-and-cylinder body with a polygon-paper mane (a lioness reads as a dog). The hero flagship shows the herd as ~15 grey blobs with the bottom 55% of frame empty uniform grass. Needs a closer, lower hero lens with a foreground element, a kopje camera pulled back, and an animals request."
+        },
+        {
+          "sev": "major",
+          "text": "Water is a flat opaque plane in daylight: river spends half its frame on featureless dark-olive water with cast shadows and no reflections; the waterhole is a brown mud disc with no sky reflection at 8 h."
         },
         {
           "sev": "minor",
-          "text": "Night waterhole glows uniformly bright (single brightest object in frame) -- same terrain/environment water-at-night bug independently confirmed in terrain, animals, traffic reviews this round; fourth cross-module data point."
+          "text": "overview: a hard-edged polygonal near-field grass/LOD footprint reads as a fenced field from 780 m."
+        },
+        {
+          "sev": "minor",
+          "text": "dawn: lens just above the canopy, so 60% of the frame is jagged alpha leaf cards; no river and no real mist, contrary to the description."
+        },
+        {
+          "sev": "minor",
+          "text": "README Measured table is stale for close/hero after the 09-24 re-stage (close 183 vs 211 draws)."
         }
       ],
-      "good": "overview, waterhole, kopje, herd, river, storm, and dawn all deliver exactly what their descriptions promise -- genuinely strong, well-composed, atmospheric photography-adjacent framing. kopje subject (lion pride) holds up under fresh independent inspection. river and dawn are among the best single images reviewed in this whole critic pass. Module adds no scene content of its own (verified via draw-call attribution); dispose()/API/lint clean."
+      "good": "Round-5 wrong-scene defects genuinely fixed: close has its own grass/trunk/kopje subject (holds at 16 h and 6.5 h); hero no longer faces the sun (no glare at 17.4 h or 12 h). herd is a well-composed frame; golden-hour colour, escarpment haze layering and world layout are coherent. 0 errors on 13 captures, worst 228 draws / 5.11 M tris, lint ok, contract clean."
     },
     "park": {
       "wave": 3,
@@ -1005,6 +1024,13 @@
       "score": 6.8,
       "by": "independent-critic-agent",
       "date": "2026-09-22"
+    },
+    {
+      "module": "savannah",
+      "round": 6,
+      "score": 6.0,
+      "by": "independent-critic-agent",
+      "date": "2026-09-24"
     }
   ]
 }
