@@ -47,9 +47,11 @@ export async function stage(ctx, presetName) {
   if (lb && Number.isFinite(lb.rot)) {
     const c = Math.cos(lb.rot), s = Math.sin(lb.rot);
     const toWorld = (lx, lz) => [lb.x + lx * c + lz * s, lb.z - lx * s + lz * c];
-    const [tx, tz] = toWorld(3, 11);
-    const [dx, dz] = toWorld(0.5, 1); // camera direction from the target: out the front, pool side
-    setTarget(presets.close, tx, tz, { distance: 30, pitch: 16, yaw: Math.atan2(dx - lb.x, dz - lb.z) * 180 / Math.PI });
+    // pitch 22 looks DOWN onto the water: at 16° the pool's rim sat behind the foreground grass
+    // (verified park-close-16_5, first re-anchor pass — veranda read, pool did not).
+    const [tx, tz] = toWorld(4.5, 12);
+    const [dx, dz] = toWorld(0.6, 1); // camera direction from the target: out the front, pool side
+    setTarget(presets.close, tx, tz, { distance: 27, pitch: 22, yaw: Math.atan2(dx - lb.x, dz - lb.z) * 180 / Math.PI });
   }
 
   // habitat: the old fixed yaw at the disc centre looked across whatever lay beyond it (a river

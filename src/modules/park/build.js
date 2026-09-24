@@ -216,7 +216,24 @@ export async function buildPark(ctx, opts = {}) {
     // plains/browsers vertices subject to a pairwise disc-separation constraint (12 m gap).
     const PL_R = 100, BR_R = 105;
     const sepFrom = (i, a, ar, own) => !a || dist(loop.verts[i].x, loop.verts[i].z, a.x, a.z) > own + (a.r ?? 85) + 12;
-    plainsIdx = order.find((i) => sepFrom(i, predatorsAnchor, predatorsAnchor.r, PL_R)) ?? order[0];
+    // ...and the plains disc must stay off the river and clear of the wetland disc. On seed 1 the
+    // most "open" vertex, once offRoad() pulled it 70 m inward, landed ON the channel 60 m from the
+    // wetland anchor: two overlapping habitats straddling the water, the grazers spawned 125 m from
+    // their own anchor, and the habitat preset framed a river (critic park-round4 #1). Judged on
+    // the same inward-pulled point offRoad() starts from, with no rng draw, so the seeded stream
+    // (and every later placement) is unchanged whenever the first pick was already dry.
+    const wet = pointBesideRiver(world, features, 0.5) || pointBesideRiver(world, features, 0.35) || pointBesideRiver(world, features, 0.65);
+    const inward = (i) => {
+      const v = loop.verts[i], dx = loopCenter.x - v.x, dz = loopCenter.z - v.z, d = Math.hypot(dx, dz) || 1;
+      return { x: v.x + (dx / d) * PL_R * 0.7, z: v.z + (dz / d) * PL_R * 0.7 };
+    };
+    const dryOf = (i, gap) => {
+      const a = inward(i);
+      return distToWater(a.x, a.z, features) > PL_R * 0.45 && (!wet || dist(a.x, a.z, wet.x, wet.z) > PL_R + 110 * 0.6 + gap);
+    };
+    plainsIdx = order.find((i) => sepFrom(i, predatorsAnchor, predatorsAnchor.r, PL_R) && dryOf(i, 12))
+      ?? order.find((i) => sepFrom(i, predatorsAnchor, predatorsAnchor.r, PL_R) && dryOf(i, -40))
+      ?? order.find((i) => sepFrom(i, predatorsAnchor, predatorsAnchor.r, PL_R)) ?? order[0];
     browsersIdx = order.find((i) => i !== plainsIdx
       && sepFrom(i, predatorsAnchor, predatorsAnchor.r, BR_R)
       && sepFrom(i, loop.verts[plainsIdx], PL_R, BR_R)) ?? order.find((i) => i !== plainsIdx) ?? order[1];
