@@ -8,6 +8,7 @@ import { CameraRig } from './CameraRig.js';
 import { Perf } from './Perf.js';
 import { Textures } from './Textures.js';
 import { Materials } from './Materials.js';
+import { Assets } from './Assets.js';
 import { parseParams } from './Showcase.js';
 import { hourToSunElevation, hourToSunAzimuth, wrapHour, clamp } from './Units.js';
 
@@ -48,6 +49,7 @@ export class App {
     this.perf = new Perf(renderer);
     this.textures = new Textures(renderer);
     this.materials = new Materials();
+    this.assets = new Assets(renderer, this.log);
     this.registry = new ModuleRegistry(this);
 
     // Fallback lighting / ground so a lone module is visible without environment/terrain.
@@ -317,6 +319,7 @@ export class App {
       modules: this.registry.status(),
       time: { ...this.world.time },
       camera: this.rig.getState(),
+      assets: this.assets.stats(),
       world: this.world.snapshot(),
       texturesGenerated: this.textures.generated,
       note: /swiftshader|llvmpipe|software/i.test(gpu) ? 'software GL: fps is not representative of GPU performance' : undefined,

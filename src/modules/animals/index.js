@@ -10,6 +10,7 @@ import { bakeSkin, makeMaterials, skinSize } from './skin.js';
 import { evalPose } from './anim.js';
 import { Behaviour, STEP, STATES, wantsSleep } from './behaviour.js';
 import { presets, stage } from './showcase.js';
+import { GltfPool, loadModel, ASSET_SPECIES, FIXTURES } from './gltfpool.js';
 
 const LOD_FAR = 250;      // beyond: half-detail rigid-pose instances, no shadow
 const CULL_DIST = 1400;
@@ -17,6 +18,7 @@ const START_CAPACITY = 32;
 
 let ctx = null, group = null, S = null, beh = null, acc = 0, shadows = null;
 const pools = new Map();
+const models = new Map(); // species id → baked authored model (gltfpool.js); absent → procedural
 
 const _p = new THREE.Vector3(), _s = new THREE.Vector3(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _m = new THREE.Matrix4(), _fwd = new THREE.Vector3();
 const _sp = new THREE.Vector3(), _ss = new THREE.Vector3(), _sq = new THREE.Quaternion(), _sq2 = new THREE.Quaternion(), _se = new THREE.Euler(), _sm = new THREE.Matrix4(), _sn = new THREE.Vector3(), _sun = new THREE.Vector3(), _lt = new THREE.Vector3();
@@ -241,10 +243,36 @@ class Pool {
 }
 
 function getPool(spec, variant) {
-  const key = `${spec.id}:${variant}`;
+  const model = models.get(spec.id);
+  const key = model ? `${spec.id}:gltf` : `${spec.id}:${variant}`;
   let p = pools.get(key);
+  if (!p && model) {
+    try {
+      // behaviour still reads procedural body dims (stride, separation radius): take them from a
+      // throwaway coarse build, then drop its geometry
+      const probe = buildAnimal(spec, { detail: 0.25, variant });
+      probe.geometry.dispose();
+      p = new GltfPool({ ctx, group, spec, dims: probe.dims, capacity: START_CAPACITY }, model, key);
+    } catch (err) { ctx.log.error(`[animals] ${spec.id}: authored pool failed, procedural fallback`, err); models.delete(spec.id); return getPool(spec, variant); }
+    pools.set(key, p);
+  }
   if (!p) { p = new Pool(spec, variant); pools.set(key, p); }
   return p;
+}
+
+/** Load every authored species (ASSET_SPECIES) plus any test mapping from ?animalModel=species:fixture,…
+ * Failures just leave the species procedural. */
+async function loadModels() {
+  const map = { ...ASSET_SPECIES };
+  const test = String(ctx.params?.animalModel || '');
+  for (const pair of test.split(',').filter(Boolean)) {
+    const [sp, fx] = pair.split(':');
+    if (SPECIES[sp] && FIXTURES[fx]) map[sp] = FIXTURES[fx];
+  }
+  await Promise.all(Object.entries(map).map(async ([sp, def]) => {
+    const m = await loadModel(ctx, def);
+    if (m) { models.set(sp, m); ctx.log.info(`[animals] ${sp}: authored model ${def.path} (${m.triangles | 0} tris, ${Object.keys(m.clips).length} clips)`); }
+  }));
 }
 
 function variantFor(spec, sex) {
@@ -411,7 +439,8 @@ export default {
       const zoning = ctx.modules.get('zoning');
       if (zoning?.getHabitatQuality) S.qualityFn = (herd, species) => zoning.getHabitatQuality(herd, species);
     } catch (err) { ctx.log.warn('zoning habitat quality unavailable', err); }
-    ctx.log.info(`animals ready: ${SPECIES_IDS.length} species`);
+    try { await loadModels(); } catch (err) { ctx.log.warn('authored models unavailable', err); }
+    ctx.log.info(`animals ready: ${SPECIES_IDS.length} species, ${models.size} authored`);
   },
 
   update(dt, t) {
@@ -461,8 +490,11 @@ export default {
       const facing = (dx * _fwd.x + dy * _fwd.y + dz * _fwd.z) * inv;
       const inView = d2 < CULL_DIST * CULL_DIST && (facing > -0.35 || d2 < 60 * 60);
       if ((inView && !far && live) || !a._posed) {
-        evalPose(a, a._spec, pool.dims, pool.rig, t);
-        pool.rig.evaluate(a._rot, a._off, pool.boneArr, a._slot * pool.nb * 16);
+        if (pool.gltf) pool.pose(a, t);
+        else {
+          evalPose(a, a._spec, pool.dims, pool.rig, t);
+          pool.rig.evaluate(a._rot, a._off, pool.boneArr, a._slot * pool.nb * 16);
+        }
         pool.dirty = true; a._posed = true;
       }
       if (!inView) continue;
@@ -497,7 +529,7 @@ export default {
   dispose() {
     if (!S) return;
     for (const p of pools.values()) p.dispose();
-    pools.clear();
+    pools.clear(); models.clear();
     try { shadows?.dispose(); } catch (err) { ctx.log.warn('shadow dispose', err); }
     shadows = null;
     api.clear();

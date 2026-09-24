@@ -382,16 +382,16 @@ uniform highp sampler2D uBones;
 mat4 animBone(float i){ int x = int(i) * 4; int y = int(aSlot + 0.5);
   return mat4(texelFetch(uBones, ivec2(x, y), 0), texelFetch(uBones, ivec2(x + 1, y), 0), texelFetch(uBones, ivec2(x + 2, y), 0), texelFetch(uBones, ivec2(x + 3, y), 0)); }`;
 
-function injectSkinning(material, uBones) {
+export function injectSkinning(material, uBones) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uBones = uBones;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', SKIN_VERT)
-      .replace('#include <skinbase_vertex>', 'mat4 skinM = aBoneWeight.x * animBone(aBoneIndex.x) + aBoneWeight.y * animBone(aBoneIndex.y);')
+      .replace('#include <skinbase_vertex>', 'mat4 skinM = aBoneWeight.x * animBone(aBoneIndex.x) + aBoneWeight.y * animBone(aBoneIndex.y) + aBoneWeight.z * animBone(aBoneIndex.z) + aBoneWeight.w * animBone(aBoneIndex.w);')
       .replace('#include <skinnormal_vertex>', 'objectNormal = (skinM * vec4(objectNormal, 0.0)).xyz;')
       .replace('#include <skinning_vertex>', 'transformed = (skinM * vec4(transformed, 1.0)).xyz;');
   };
-  material.customProgramCacheKey = () => 'animals-instanced-skin-v1';
+  material.customProgramCacheKey = () => 'animals-instanced-skin-v2'; // v2: 4 weights (glTF models)
   return material;
 }
 

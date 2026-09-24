@@ -106,7 +106,7 @@ export class ModuleRegistry {
       app, world: app.world, events, rng, noise: new Noise(rng.fork('noise')),
       scene: app.scene, camera: app.camera, renderer: app.renderer, rig: app.rig,
       modules: { get: (mid) => this.get(mid), has: (mid) => this.has(mid), status: () => this.status() },
-      log, quality: app.params.quality, textures: app.textures, materials: app.materials,
+      log, quality: app.params.quality, textures: app.textures, materials: app.materials, assets: app.assets,
       isShowcase: !!app.params.module, params: app.params, input: app.input,
     };
   }

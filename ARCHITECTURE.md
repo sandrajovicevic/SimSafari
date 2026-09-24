@@ -114,6 +114,7 @@ export default {
 | `ctx.log` | Logger | `info/warn/error`; errors are recorded per-module |
 | `ctx.quality` | `'low'|'medium'|'high'` | from `?quality=`, default `high` |
 | `ctx.textures` | Textures | procedural PBR texture helpers |
+| `ctx.assets` | Assets | authored files under `public/assets/`: `gltf(path)`, `texture(path,{srgb})`, `hdri(path)` → Promise of result or `null` (§8) |
 | `ctx.materials` | Materials | shared material factory |
 | `ctx.app` | App | `setRenderFn(fn)` (effects only), `requestFrame()`, `time` |
 | `ctx.isShowcase` | boolean | true when running a single module's showcase |

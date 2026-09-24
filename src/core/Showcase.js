@@ -24,5 +24,6 @@ export function parseParams(search = window.location.search) {
     size: num('size', 1024),
     debug: num('debug', 0) === 1,
     noui: num('noui', 0) === 1,
+    animalModel: str('animalModel', null), // test-only: map species to asset fixtures, e.g. zebra:fox (animals/gltfpool.js)
   };
 }
