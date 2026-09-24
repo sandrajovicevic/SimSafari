@@ -9,7 +9,8 @@
 // Flags: --dom        full-page screenshot (canvas + DOM UI) instead of canvas-only capture; suffix -dom
 //        --gesture    synthetic click after ready (unlocks AudioContext), --gestureWait ms (1500)
 //        --eval "js"  evaluate JS in the page after ready; result stored as evalResult in the JSON
-//        --settle N   frames to wait after ready (40); --w/--h viewport; --seed/--quality
+//        --settle N   frames to settle after ready (40): all but --renderFrames (4) are simulated
+//                     without rendering (__SIM__.settle); --slow renders all N like before; --w/--h; --seed/--quality
 // Exit code 1 if the page never became ready or any console/page error was recorded.
 import { chromium } from 'playwright';
 import fs from 'node:fs';
@@ -36,6 +37,7 @@ const args = parseArgs(process.argv.slice(2));
 const URL_BASE = args.url || process.env.SIM_URL || 'http://127.0.0.1:5173';
 const W = +(args.w || 1920), H = +(args.h || 1080);
 const SETTLE_FRAMES = +(args.settle || 40);
+const RENDER_FRAMES = +(args.renderFrames || 4); // fast settle: real rendered frames at the end
 const TIMEOUT = +(args.timeout || 90000);
 
 async function launch() {
@@ -70,7 +72,13 @@ async function shoot(browser, { module: mod, preset, tod, seed, quality, name, e
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUT });
     await page.waitForFunction(() => window.__SIM__ && window.__SIM__.ready === true, null, { timeout: TIMEOUT });
     ready = true;
-    await page.evaluate((n) => new Promise((res) => { let i = 0; const f = () => (++i >= n ? res() : requestAnimationFrame(f)); requestAnimationFrame(f); }), SETTLE_FRAMES);
+    // Fast settle (default): run SETTLE_FRAMES - RENDER_FRAMES frames of simulation WITHOUT rendering
+    // (__SIM__.settle), then render RENDER_FRAMES real frames so GPU-side state (PMREM, LUTs, shadow
+    // cascades, grass packs) catches up. Under SwiftShader the render is ~all of a frame's cost, so
+    // this cuts a 40-frame settle from ~5-8 min to well under 1. --slow restores the old behaviour.
+    const renderFrames = args.slow ? SETTLE_FRAMES : Math.min(SETTLE_FRAMES, RENDER_FRAMES);
+    if (!args.slow) await page.evaluate((n) => (window.__SIM__.settle ? window.__SIM__.settle(n) : 0), SETTLE_FRAMES - renderFrames);
+    await page.evaluate((n) => new Promise((res) => { let i = 0; const f = () => (++i >= n ? res() : requestAnimationFrame(f)); requestAnimationFrame(f); }), renderFrames);
     if (args.gesture) { // synthetic user gesture (audio context unlock)
       await page.mouse.move(W / 2, H / 2); await page.mouse.down(); await page.mouse.up();
       await page.waitForTimeout(+(args.gestureWait || 1500));

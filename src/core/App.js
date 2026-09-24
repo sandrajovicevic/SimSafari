@@ -176,30 +176,9 @@ export class App {
       requestAnimationFrame(frame);
       timer.update();
       const dt = clamp(timer.getDelta(), 0, 0.1);
-      this.time += dt;
       this.perf.beginFrame();
       this.renderer.info.reset();
-
-      // game time
-      const T = this.world.time;
-      if (!T.paused && T.speed > 0) {
-        const gh = dt * T.speed; // game hours elapsed
-        T.hour += gh;
-        while (T.hour >= 24) { T.hour -= 24; T.day++; }
-        this._simAcc += gh;
-        const step = 1 / SIM_TICKS_PER_HOUR;
-        let n = 0;
-        while (this._simAcc >= step && n < 20) {
-          this._simAcc -= step; n++;
-          this.registry.tick(step);
-          this.events.emit('time:tick', { hour: T.hour, day: T.day, simDt: step });
-        }
-      }
-
-      this.materials.update(dt, this.world);
-      this.rig.update(dt);
-      this._updateInputGround();
-      this.registry.update(dt, this.time);
+      this._simulate(dt);
 
       try {
         if (this._renderFn) this._renderFn(this.scene, this.camera, dt);
@@ -215,6 +194,34 @@ export class App {
       if (this._afterReadyFrames > 0 && --this._afterReadyFrames === 0) this._setReady();
     };
     frame();
+  }
+
+  /** Everything a frame does except rendering: clocks, sim ticks, materials, camera, modules. Also
+   * driven by __SIM__.settle(), which runs it without rendering so screenshots converge in seconds
+   * instead of waiting ~40 SwiftShader frames (the render, not this, is the expensive part). */
+  _simulate(dt) {
+    this.time += dt;
+
+    // game time
+    const T = this.world.time;
+    if (!T.paused && T.speed > 0) {
+      const gh = dt * T.speed; // game hours elapsed
+      T.hour += gh;
+      while (T.hour >= 24) { T.hour -= 24; T.day++; }
+      this._simAcc += gh;
+      const step = 1 / SIM_TICKS_PER_HOUR;
+      let n = 0;
+      while (this._simAcc >= step && n < 20) {
+        this._simAcc -= step; n++;
+        this.registry.tick(step);
+        this.events.emit('time:tick', { hour: T.hour, day: T.day, simDt: step });
+      }
+    }
+
+    this.materials.update(dt, this.world);
+    this.rig.update(dt);
+    this._updateInputGround();
+    this.registry.update(dt, this.time);
   }
 
   _setReady() {
@@ -290,6 +297,8 @@ export class App {
         return stats;
       },
       stats: () => app.stats(),
+      /** Advance n frames of simulation at dt (default 0.1 s, the loop's own cap) WITHOUT rendering. */
+      settle: (n = 36, dt = 0.1) => { for (let i = 0; i < n; i++) app._simulate(dt); return n; },
     };
     this.__SIM__ = sim;
     window.__SIM__ = sim;
