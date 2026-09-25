@@ -5,6 +5,7 @@
 import { Rng } from '../../core/Rng.js';
 import { Simulation } from './sim.js';
 import { createPlainWorld, buildPark, applyPark } from './worldgen.js';
+import { PLANTS, PLANT_INDEX } from '../../core/Plants.js';
 
 const failures = [];
 const passes = [];
@@ -357,6 +358,119 @@ console.log('determinism');
   assert(ja === jb, `same seed → identical 90-day history (cash d90 $${fmt(a.last.cash)})`);
   assert(ja !== jc, `different seed → different history (cash d90 $${fmt(c.last.cash)})`);
   assert(JSON.stringify(a.sim.getReport()) === JSON.stringify(b.sim.getReport()), 'same seed → identical final report');
+}
+
+console.log('food web + vegetation (Wave P1)');
+{
+  const T = PLANT_INDEX;
+  const layer = (w, t) => w.vegetation.cover.subarray(t * 4096, (t + 1) * 4096);
+  const mean = (a, idx) => idx.reduce((x, i) => x + a[i], 0) / Math.max(1, idx.length);
+  // seeding from biomes: a plain world painted GRASS | WETLAND strip | ROAD_DUST strip
+  const w0 = createPlainWorld({ seed: 5 });
+  const t0 = w0.terrain, r0 = t0.res;
+  for (let iz = 0; iz < r0; iz++) for (let ix = 0; ix < r0; ix++) t0.biome[iz * r0 + ix] = ix < 200 ? 0 : ix < 300 ? 5 : ix < 340 ? 7 : 1;
+  const ev0 = [];
+  const s0 = new Simulation(w0, new Rng(5), { emit: (n, p) => ev0.push({ n, p }) });
+  const cellsWhere = (x0, x1) => { const out = []; for (let iz = 4; iz < 60; iz++) for (let ix = 0; ix < 64; ix++) { const cx = (ix + 0.5) * 16; if (cx >= x0 && cx < x1) out.push(iz * 64 + ix); } return out; };
+  const grassCells = cellsWhere(16, 380), wetCells = cellsWhere(420, 580), roadCells = cellsWhere(620, 660);
+  const oat = layer(w0, T.red_oat), sedge = layer(w0, T.sedge), umb = layer(w0, T.umbrella_thorn);
+  assert(mean(oat, grassCells) > 0.4 && mean(sedge, wetCells) > 1.5 * mean(oat, wetCells) && mean(sedge, grassCells) < 0.1,
+    `seeding follows biomes: red-oat ${mean(oat, grassCells).toFixed(2)} on GRASS, sedge ${mean(sedge, wetCells).toFixed(2)} vs red-oat ${mean(oat, wetCells).toFixed(2)} on WETLAND`);
+  let roadMax = 0; for (let t = 0; t < PLANTS.length; t++) for (const i of roadCells) roadMax = Math.max(roadMax, w0.vegetation.cover[t * 4096 + i]);
+  const treeShare = grassCells.filter((i) => umb[i] > 0).length / grassCells.length;
+  assert(roadMax === 0 && treeShare > 0.1 && treeShare < 0.8, `roads bare (max ${roadMax}), trees are individuals: umbrella thorn in ${(treeShare * 100).toFixed(0)} % of grass cells`);
+  assert(ev0.some((e) => e.n === 'vegetation:changed' && e.p.x0 === -512 && e.p.x1 === 512), 'seeding emits a whole-world vegetation:changed');
+  const s0b = new Simulation(createPlainWorld({ seed: 5 }), new Rng(5));
+  assert(Object.keys(s0.getVegetation(-300, 0)).length === PLANTS.length && s0.getVegetation(-300, 0).red_oat > 0 && s0b.getVegetation(0, 0).red_oat > 0, 'getVegetation(x, z) → { [plant]: cover }');
+
+  // spread: bare grassland (red oat cleared, e.g. after a fire), plant a 24 m patch, 30 days, no herds
+  const spreadRun = (drought) => {
+    const w = createPlainWorld({ seed: 6 });
+    const s = new Simulation(w, new Rng(6));
+    layer(w, T.red_oat).fill(0);
+    const res = s.plant('red_oat', 8, 8, 24, 0.25);
+    const count = () => { let n = 0; for (const c of layer(w, T.red_oat)) if (c >= 0.05) n++; return n; };
+    const n0 = count();
+    if (drought) s.injectEvent('drought', { duration: 40, strength: 1 });
+    s.runDays(30);
+    const cov = layer(w, T.red_oat).reduce((a, c) => a + c, 0);
+    return { res, n0, n30: count(), cov, ms: s.veg.lastStepMs };
+  };
+  const sp = spreadRun(false), spD = spreadRun(true);
+  assert(sp.res.ok && sp.n0 === sp.res.cells && sp.n30 > sp.n0 * 1.5, `a planted red-oat patch spreads outward: ${sp.n0} → ${sp.n30} cells ≥ 0.05 cover in 30 days`);
+  assert(spD.n30 < sp.n30 && spD.cov < sp.cov * 0.8, `drought slows spread: ${spD.n30} cells / Σcover ${spD.cov.toFixed(1)} vs ${sp.n30} / ${sp.cov.toFixed(1)} without`);
+
+  // plant(): cost = cost × ha through spend('plant'); refused when unaffordable; unknown type
+  const pw = makeSim(21);
+  const cash0 = pw.world.economy.cash;
+  const pr = pw.sim.plant('aloe', -250, 250, 40, 0.3);
+  const exp = Math.round(PLANTS[T.aloe].cost * pr.cells * 0.0256 * 100) / 100;
+  assert(pr.ok && pr.cells > 10 && Math.abs(pr.cost - exp) < 0.01 && Math.abs(cash0 - pw.world.economy.cash - pr.cost) < 0.01,
+    `plant('aloe', r 40 m) charges cost × ha: ${pr.cells} cells = ${(pr.cells * 0.0256).toFixed(2)} ha × $900 = $${pr.cost}`);
+  assert(pw.sim.getSpendLog(1)[0].reason === 'plant' && pw.events.some((e) => e.n === 'vegetation:changed' && e.p.x0 <= -290 && e.p.x1 >= -210), 'plant() books spend reason "plant" and emits vegetation:changed for the planted rect');
+  assert(Math.abs(pw.sim.getVegetation(-250, 250).aloe - 0.3) < 1e-6, 'planted cells carry the requested cover');
+  pw.world.economy.cash = 10;
+  const before = pw.sim.getVegetation(250, 250).marula;
+  const poor = pw.sim.plant('marula', 250, 250, 40);
+  assert(!poor.ok && pw.world.economy.cash === 10 && pw.sim.getVegetation(250, 250).marula === before, 'plant() is refused (nothing written, nothing charged) when the park cannot afford it');
+  assert(pw.sim.plant('cactus', 0, 0, 20).ok === false, 'plant() rejects an unknown plant id');
+
+  // capacity coupling: capacity = min(space, food ÷ need)
+  const cw = makeSim(22);
+  const fr0 = cw.sim.getFoodReport(1);
+  const hab1 = cw.world.habitats.get(1);
+  const zebraSpace = Math.floor(hab1.area / 1200);
+  assert(fr0.zebra.spaceCapacity === zebraSpace && fr0.zebra.capacity === Math.min(zebraSpace, fr0.zebra.foodCapacity) && fr0.zebra.food > 0 && fr0.zebra.need === +(14 * 1.1).toFixed(2),
+    `getFoodReport: zebra food ${fr0.zebra.food}/d, need ${fr0.zebra.need}/d, capacity ${fr0.zebra.capacity} = min(space ${zebraSpace}, food ${fr0.zebra.foodCapacity})`);
+  const hc = cw.sim.veg.habitatCells(hab1);
+  for (const t of [T.red_oat, T.couch]) for (const i of hc.idx) cw.world.vegetation.cover[t * 4096 + i] = 0;
+  cw.world.vegetation.version++;
+  const fr1 = cw.sim.getFoodReport(1);
+  assert(fr1.zebra.food === 0 && fr1.zebra.capacity === 1 && fr1.wildebeest.food > 0 && fr1.wildebeest.capacity < fr0.wildebeest.capacity,
+    `no zebra food → zebra capacity 1 (was ${fr0.zebra.capacity}); wildebeest keeps its lovegrass (capacity ${fr0.wildebeest.capacity} → ${fr1.wildebeest.capacity})`);
+  cw.sim.runDays(10);
+  const zh = cw.sim.getReport().habitats[1].species.zebra, zc = makeSim(22); zc.sim.runDays(10);
+  assert(zh.happiness < zc.sim.getReport().habitats[1].species.zebra.happiness - 0.05, `a herd over its food capacity is unhappier (zebra h ${zh.happiness} vs ${zc.sim.getReport().habitats[1].species.zebra.happiness} fed)`);
+
+  // consumption: normal stocking holds the grass; 3000 zebra overgraze it and the capacity falls with it
+  const grazeRun = (n) => {
+    const g = makeSim(23);
+    if (n) g.sim.setPopulation(1, 'zebra', n);
+    const hc1 = g.sim.veg.habitatCells(g.world.habitats.get(1));
+    const cov = () => mean(layer(g.world, T.red_oat), [...hc1.idx]) + mean(layer(g.world, T.couch), [...hc1.idx]);
+    const c0 = cov(), cap0 = g.sim.getFoodReport(1).zebra.foodCapacity;
+    g.sim.runDays(5);
+    return { c0, c5: cov(), cap0, cap5: g.sim.getFoodReport(1).zebra.foodCapacity };
+  };
+  const gN = grazeRun(0), gO = grazeRun(3000);
+  assert(gN.c5 > gN.c0 * 0.95, `normal stocking: grass cover holds (${gN.c0.toFixed(3)} → ${gN.c5.toFixed(3)})`);
+  assert(gO.c5 < gO.c0 * 0.6 && gO.cap5 < gO.cap0 * 0.6, `overgrazing (3000 zebra): cover ${gO.c0.toFixed(3)} → ${gO.c5.toFixed(3)} in 5 days, zebra food capacity ${gO.cap0} → ${gO.cap5}`);
+
+  // predators follow prey after a lag: strip Lion Ridge (habitat 4) of prey
+  const lionRun = (strip) => {
+    const l = makeSim(24);
+    if (strip) for (const s of ['wildebeest', 'zebra', 'impala']) l.sim.setPopulation(4, s, 0);
+    const series = [], caps = [];
+    for (let d = 0; d < 40; d++) { l.sim.runDays(1); series.push(l.sim.pop.get(4).get('lion').n); caps.push(l.sim.getFoodReport(4).lion.capacity); }
+    return { series, caps };
+  };
+  const lc = lionRun(false), ls = lionRun(true);
+  const firstDrop = ls.series.findIndex((n, i) => n < lc.series[i]);
+  assert(ls.caps[0] > 1 && ls.caps[0] > ls.caps[39], `lion capacity follows prey biomass with a lag: ${ls.caps[0]} on day 1 → ${ls.caps[39]} on day 40 (control ${lc.caps[39]})`);
+  assert(firstDrop >= 3 && ls.series[39] < lc.series[39], `prey removed → lions decline after a lag: first below control on day ${firstDrop + 1}, day 40: ${ls.series[39]} vs ${lc.series[39]} (control)`);
+  const pk = makeSim(25); pk.sim.setPopulation(4, 'elephant', 20); pk.sim.runDays(60);
+  assert(pk.sim.pop.get(4).get('elephant').died <= 3, `lions only take prey in their diet (elephants in the pride habitat: ${pk.sim.pop.get(4).get('elephant').died} deaths in 60 days)`);
+
+  // determinism of the vegetation layer + daily budget
+  const d1 = makeSim(31), d2 = makeSim(31), d3 = makeSim(32);
+  for (const d of [d1, d2, d3]) d.sim.runDays(60);
+  const same = d1.world.vegetation.cover.every((c, i) => c === d2.world.vegetation.cover[i]);
+  const diff = d1.world.vegetation.cover.some((c, i) => c !== d3.world.vegetation.cover[i]);
+  assert(same && diff, 'same seed → bit-identical vegetation cover after 60 days; a different seed differs');
+  let msSum = 0, msMax = 0;
+  const b = makeSim(33);
+  for (let d = 0; d < 30; d++) { b.sim.runDays(1); const ms = b.sim.getState().vegetation.stepMs; msSum += ms; msMax = Math.max(msMax, ms); }
+  assert(msSum / 30 < 5, `daily vegetation update ${(msSum / 30).toFixed(2)} ms mean, ${msMax.toFixed(2)} ms max (budget 5 ms, 64² × ${PLANTS.length})`);
 }
 
 // ---------------------------------------------------------------- last report of the baseline park
