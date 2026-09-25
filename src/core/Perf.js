@@ -1,5 +1,7 @@
 // Frame timing and renderer stats. Under SwiftShader (headless) fps is not representative.
 
+const WARMUP = 5; // module update samples ignored at start-up
+
 export class Perf {
   constructor(renderer) {
     this.renderer = renderer;
@@ -10,7 +12,9 @@ export class Perf {
     this._acc = 0;
     this._n = 0;
     this._last = performance.now();
-    this.moduleMs = new Map(); // id → EMA of update ms
+    this.moduleMs = new Map();   // id → steady-state update ms (see recordModule)
+    this.modulePeak = new Map(); // id → worst single update ms after warm-up
+    this._modN = new Map();      // id → samples seen
   }
 
   beginFrame() { this._t0 = performance.now(); }
@@ -30,9 +34,18 @@ export class Perf {
     this.frameMs = this.frameMs === 0 ? ms : this.frameMs * 0.9 + ms * 0.1;
   }
 
+  /** Steady-state module cost. The first WARMUP samples (lazy builds, first-use work) are skipped, the
+   *  next samples form a plain running mean, then it becomes an EMA. Before 2026-09-25 this was an EMA
+   *  seeded with the very first sample at α 0.05: after a ~44-frame capture ~10 % of a one-off start-up
+   *  spike was still in the number (profiled: animals 0.39 ms real vs 4–5 ms reported; props 22 ms
+   *  reported with no steady-state cost), so budget findings were measuring start-up, not frames. */
   recordModule(id, ms) {
-    const prev = this.moduleMs.get(id);
-    this.moduleMs.set(id, prev === undefined ? ms : prev * 0.95 + ms * 0.05);
+    const n = (this._modN.get(id) || 0) + 1;
+    this._modN.set(id, n);
+    if (n <= WARMUP) return;
+    const k = n - WARMUP, prev = this.moduleMs.get(id) || 0;
+    this.moduleMs.set(id, k <= 20 ? prev + (ms - prev) / k : prev * 0.95 + ms * 0.05);
+    if (ms > (this.modulePeak.get(id) || 0)) this.modulePeak.set(id, ms);
   }
 
   snapshot() {
