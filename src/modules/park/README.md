@@ -123,6 +123,16 @@ re-anchors its camera onto whatever actually got placed for the active seed, fol
 
 ## Gameplay-loop verification (measured)
 
+**Re-run 2026-09-25** (`node tools/fidelity.mjs`, all 11 scenarios, 0 console errors, determinism identical)
+after the plains habitat was moved off the river (2026-09-24). Conclusions unchanged; numbers moved:
+net $/day at $10/12/15/20/25/40/60 = −597/−47/**+627**/−1,157/−2,497/−4,629/−5,906 (arrivals
+279/279/273/187/144/83/50) — **$15 still breaks even**, now at +$627/day; births at $25: 10 in 30 days;
+sightings 17 with tours vs 0 without; unpumped wetland hippo quality still falls to 0.21 at −6 m;
+bankruptcy still day 17; disease vet spend +29 %, 6 excess impala deaths. **Changed materially:**
+poaching with rangers fired now takes **11 animals from day 51** (zebra, ostrich, giraffe, rhino)
+instead of 2 ostrich on day 97. Also observed: the drought scenario reports 11 habitat regions, not
+the demo's 4 named ones — not yet investigated. The round-3 table below is kept for history.
+
 Scripted by `tools/fidelity.mjs` against the live demo park (seed 1, 2026-09-08, round 3 — clock
 paused, sim time advanced through `simulation.runDays`, vehicle time pumped through the real
 `update()`). Every scenario is a fresh page of the full game with the demo auto-built; existing six
