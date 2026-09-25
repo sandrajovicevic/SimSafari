@@ -172,6 +172,27 @@ export function rebuildHabitats() {
   return assigned.map((a) => a.id);
 }
 
+/**
+ * Cheap per-frame refresh for animal spawn/death: updates `species`/`quality` on every existing
+ * habitat without re-flooding the grid, recomputing physical stats or rebuilding fences (critic r6
+ * #5 — the batched refresh was calling the full rebuildHabitats(), which is what actually cost
+ * 2.1-2.3 ms/frame). Physical stats don't change on animal spawn/death anyway (see README).
+ */
+export function refreshSpeciesOnly() {
+  const ctx = Z.ctx, world = Z.world;
+  if (!world.habitats.size) return;
+  const speciesByHid = speciesPerHabitat(world);
+  const touched = [];
+  for (const [id, entry] of world.habitats) {
+    entry.species = speciesByHid.get(id) || new Set();
+    let qSum = 0, qN = 0;
+    for (const sp of entry.species) { qSum += getHabitatQuality(id, sp); qN++; }
+    entry.quality = qN ? qSum / qN : 0.6;
+    touched.push(id);
+  }
+  for (const id of touched) ctx.events.emit('habitat:changed', { id });
+}
+
 // ---------------------------------------------------------------------------------------------------------
 // boundary tracing (fences.js consumes traceBoundaryEdges directly; boundary() chains it into polylines)
 // ---------------------------------------------------------------------------------------------------------
