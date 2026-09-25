@@ -12,10 +12,12 @@ export const RoadTool = {
 
   activate(ctx, S) {
     S.road = { points: [], lastClickT: 0, lastClickPt: null };
+    _committedSnap.valid = false;
   },
 
   deactivate(ctx, S) {
     S.road = { points: [], lastClickT: 0, lastClickPt: null };
+    _committedSnap.valid = false;
     S.ribbon.hide();
   },
 
@@ -35,6 +37,7 @@ export const RoadTool = {
     const isDouble = S.road.lastClickPt && now - S.road.lastClickT < DOUBLE_CLICK_MS
       && Math.hypot(snapped.x - S.road.lastClickPt.x, snapped.z - S.road.lastClickPt.z) < 2;
     S.road.lastClickT = now; S.road.lastClickPt = { x: snapped.x, z: snapped.z };
+    if (snapped.snapped) { _committedSnap.x = snapped.x; _committedSnap.z = snapped.z; _committedSnap.valid = true; }
 
     S.road.points.push(snapped);
     if (isDouble || S.road.points.length >= 24) commitPath(ctx, S, roads);
@@ -55,6 +58,7 @@ export const RoadTool = {
       pts.push(p);
       if (p.snapped) snap = p;
     }
+    if (!snap && _committedSnap.valid) snap = _committedSnap; // ring also marks the snapped committed point
     const kind = roads.KINDS?.[S.options.kind];
     S.ribbon.update(ctx.world, pts, kind?.width || 5, snap);
   },
@@ -78,6 +82,12 @@ export const RoadTool = {
 
 const _preview = [];
 const _cursor = { x: 0, z: 0, snapped: null };
+// The most recent committed point that snapped to a road node/edge (module-level scratch — no
+// per-frame allocation). The snap ring marks it as well as the live cursor, so a preview visibly
+// hangs off the node it snapped to (critic tools r4: the ring never showed in the road preset,
+// whose committed start point snaps but whose live cursor point does not). Lasts until the tool
+// is (de)activated — a later non-snapped point does not unmark the junction the path is pinned to.
+const _committedSnap = { x: 0, z: 0, valid: false };
 
 /** Snap (x,z) to a road node or edge. Writes into `out` when given (per-frame preview), else allocates
  *  (committed points must be their own objects). */
