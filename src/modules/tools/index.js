@@ -177,9 +177,24 @@ function updateMarker(dt) {
   const sel = ctx.world.selection;
   if (!sel.id) { S.marker.update(dt, null); return; }
   if (!markerTarget || markerTarget.kind !== sel.kind || markerTarget.id !== sel.id) {
-    markerTarget = { kind: sel.kind, id: sel.id, pos: entityPosition(ctx, sel.kind, sel.id) };
+    const pos = entityPosition(ctx, sel.kind, sel.id);
+    const b = sel.kind === 'building' ? ctx.world.buildings.get(sel.id) : null;
+    // ring sized from the footprint (a fixed 4 m ring sat hidden under a 30 m lodge)
+    const radius = b ? Math.hypot(b.w || 8, b.d || 8) * 0.5 + 1.5 : sel.kind === 'habitat' ? 6 : 2;
+    markerTarget = { kind: sel.kind, id: sel.id, pos: pos ? { x: pos.x, y: pos.y, z: pos.z } : null, radius };
   }
-  S.marker.update(dt, markerTarget.pos, sel.kind === 'building' ? 4 : sel.kind === 'habitat' ? 6 : 2);
+  if (sel.kind === 'animal' && markerTarget.pos) {
+    // animals walk: follow the live record (written into the cached object, no allocation)
+    const a = ctx.world.animals.get(sel.id);
+    if (a) { markerTarget.pos.x = a.x; markerTarget.pos.z = a.z; markerTarget.pos.y = a.y ?? ctx.world.getHeight(a.x, a.z); }
+  }
+  S.marker.update(dt, markerTarget.pos, markerTarget.radius);
+}
+
+/** After undo/redo: drop a selection whose entity no longer exists (ui would show a ghost panel). */
+function dropStaleSelection() {
+  const sel = ctx.world.selection;
+  if (sel.id && !entityPosition(ctx, sel.kind, sel.id)) setSelection(null, null);
 }
 
 const api = {
@@ -192,8 +207,8 @@ const api = {
   setOption(key, value) { S.options[key] = value; },
   getOptions() { return { ...S.options }; },
 
-  undo() { if (!S.undo.canUndo()) return false; const op = S.undo.undo(ctx); if (op) ctx.events.emit('tool:applied', { tool: 'undo', detail: { label: op.label } }); return !!op; },
-  redo() { if (!S.undo.canRedo()) return false; const op = S.undo.redo(ctx); if (op) ctx.events.emit('tool:applied', { tool: 'redo', detail: { label: op.label } }); return !!op; },
+  undo() { if (!S.undo.canUndo()) return false; const op = S.undo.undo(ctx); dropStaleSelection(); if (op) ctx.events.emit('tool:applied', { tool: 'undo', detail: { label: op.label } }); return !!op; },
+  redo() { if (!S.undo.canRedo()) return false; const op = S.undo.redo(ctx); dropStaleSelection(); if (op) ctx.events.emit('tool:applied', { tool: 'redo', detail: { label: op.label } }); return !!op; },
   canUndo() { return S.undo.canUndo(); },
   canRedo() { return S.undo.canRedo(); },
   historySize() { return S.undo.sizes(); },

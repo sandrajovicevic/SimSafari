@@ -45,10 +45,13 @@ export const RoadTool = {
     const input = ctx.app.input;
     if (!roads) { S.ribbon.hide(); return; }
     if (S.options.bulldoze) { S.ribbon.hide(); return; }
-    const pts = S.road.points.slice();
+    // committed points + the live cursor point, in reused scratch (no per-frame arrays/objects)
+    const pts = _preview;
+    pts.length = 0;
+    for (let i = 0; i < S.road.points.length; i++) pts.push(S.road.points[i]);
     let snap = null;
     if (input.groundValid) {
-      const p = snapPoint(roads, input.ground.x, input.ground.z);
+      const p = snapPoint(roads, input.ground.x, input.ground.z, _cursor);
       pts.push(p);
       if (p.snapped) snap = p;
     }
@@ -73,12 +76,18 @@ export const RoadTool = {
   },
 };
 
-function snapPoint(roads, x, z) {
+const _preview = [];
+const _cursor = { x: 0, z: 0, snapped: null };
+
+/** Snap (x,z) to a road node or edge. Writes into `out` when given (per-frame preview), else allocates
+ *  (committed points must be their own objects). */
+function snapPoint(roads, x, z, out = { x: 0, z: 0, snapped: null }) {
   const node = roads.nearestNode?.(x, z, SNAP_DIST);
-  if (node) return { x: node.x, z: node.z, snapped: 'node' };
+  if (node) { out.x = node.x; out.z = node.z; out.snapped = 'node'; return out; }
   const edge = roads.nearestEdge?.(x, z, SNAP_DIST);
-  if (edge) return { x: edge.point.x, z: edge.point.z, snapped: 'edge' };
-  return { x, z, snapped: null };
+  if (edge) { out.x = edge.point.x; out.z = edge.point.z; out.snapped = 'edge'; return out; }
+  out.x = x; out.z = z; out.snapped = null;
+  return out;
 }
 
 function pathLength(points) {

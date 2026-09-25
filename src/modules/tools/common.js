@@ -17,10 +17,12 @@ export function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 /** Subtract cost from world.economy.cash, only when a `simulation` module is loaded (per spec).
  * There is no public "spend" API on world.economy (it's owner-written by `simulation`) — this is a
  * pragmatic direct write, flagged as a core-change-request (docs/requests/tools.md). */
-export function spend(ctx, amount) {
+export function spend(ctx, amount, reason = 'tools') {
   if (!amount) return true;
   const sim = ctx.modules.get('simulation');
   if (!sim) return false;
+  // simulation.spend (since 2026-09-08) charges cash, logs it (getSpendLog) and emits economy:updated
+  if (typeof sim.spend === 'function' && sim.spend(amount, reason) !== null) return true;
   const eco = ctx.world.economy;
   eco.cash -= amount;
   ctx.events.emit('economy:updated', { cash: eco.cash, income: eco.income, expenses: eco.expenses, day: ctx.world.time.day });

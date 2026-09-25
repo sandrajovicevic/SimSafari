@@ -155,7 +155,9 @@ were ~0.1–0.2 fps / 300–560 ms per frame across all four, dominated by `prop
 - **Habitat components (2026-09-25):** painted HABITAT cells join into one habitat through edges *and*
   corners (8-connected), and a component under **10 cells (160 m²)** gets no habitat id — it keeps its
   paint but is not listed, scored, fenced or counted until it grows. This removes the 1–3-cell
-  fragments a road or river cut used to leave (critic r6: 12 habitats listed for 4 painted). Not done:
+  fragments a road or river cut used to leave (critic r6: 12 habitats listed for 4 painted; measured
+  after the change in the full game: 7 — the 4 named plus 3 real river/road-split pieces of 6,608,
+  1,280 and 432 m²). Not done:
   a river-split habitat still becomes two habitats, and a NO_BUILD line that is only diagonally
   connected (a 1-cell staircase) would not separate two habitats.
 

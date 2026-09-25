@@ -92,7 +92,9 @@ async function runScriptedSession(ctx) {
   // 1) terrain: raise at 3 points
   if (terrain) {
     tools.activate('terrain', { mode: 'raise', radius: 9, strength: 5 });
-    for (const [x, z] of TERRAIN_PTS) { simDown(ctx, x, z); simUp(ctx, x, z); }
+    // one click applies strength/60 m (8 cm at strength 5 — invisible from 640 m, critic r4); 24 clicks
+    // per point build a ~2 m mound the overview can actually show
+    for (const [x, z] of TERRAIN_PTS) for (let k = 0; k < 24; k++) { simDown(ctx, x, z); simUp(ctx, x, z); }
   }
 
   // 2) road: draw with 5 points, gravel
