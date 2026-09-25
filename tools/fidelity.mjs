@@ -34,7 +34,7 @@ const URL_BASE = args.url || process.env.SIM_URL || 'http://127.0.0.1:5173';
 const SEED = +(args.seed || 1);
 const DAYS = +(args.days || 30);
 const TIMEOUT = +(args.timeout || 120000);
-const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep']);
+const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep', 'plant-aloe', 'remove-prey', 'spread']);
 
 async function launch() {
   const gpuArgs = ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-gpu-sandbox', '--no-sandbox', '--autoplay-policy=no-user-gesture-required'];
@@ -409,6 +409,173 @@ async function scenarioPriceSweep(browser) {
   return result;
 }
 
+// ---------------------------------------------------------------- Wave P1 food web (docs/specs/p1-food-web.md)
+
+/** plant-aloe: aloe + marula planted over the woodland habitat vs an unplanted control page, 30 days
+ * each (same seed). Measures the elephant's food capacity and carrying capacity (= min(space, food))
+ * every day through simulation.getFoodReport. Pass: capacity(planted) − capacity(control) ≥ 1 on day 30. */
+async function scenarioPlantAloe(browser) {
+  const run = async (label, planted) => {
+    const { page, errors } = await loadGame(browser, { label });
+    const r = await page.evaluate(async ({ planted, days }) => {
+      const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+      const world = window.__SIM__.world;
+      const h = [...world.habitats.values()].find((x) => /woodland/i.test(x.name || '')) || null;
+      if (!h) return { error: 'no woodland habitat' };
+      // centroid + radius of the habitat's grid cells
+      const g = world.grid; let sx = 0, sz = 0;
+      for (const idx of h.cells) { const ix = idx % g.res, iz = (idx - ix) / g.res; const c = world.cellCenter(ix, iz); sx += c.x; sz += c.z; }
+      const cx = sx / h.cells.length, cz = sz / h.cells.length, radius = Math.sqrt(h.area / Math.PI) * 0.7;
+      const ele = () => { const f = sim.getFoodReport(h.id)?.elephant || {}; return { n: f.n ?? 0, food: f.food ?? 0, capacity: f.capacity ?? 0, foodCapacity: f.foodCapacity ?? 0, spaceCapacity: f.spaceCapacity ?? 0 }; };
+      const cash0 = world.economy.cash; // cashSpent is read right after planting, before any day runs
+      const plantings = planted ? [sim.plant('aloe', cx, cz, radius, 0.3), sim.plant('marula', cx, cz, radius, 0.25)] : [];
+      const cashAfterPlant = world.economy.cash;
+      const day0 = ele();
+      const series = [];
+      for (let d = 0; d < days; d++) { sim.runDays(1); series.push(ele()); if (d % 10 === 9) await new Promise((res) => setTimeout(res)); }
+      return { habitat: h.name, habitatHa: +(h.area / 1e4).toFixed(2), centre: [Math.round(cx), Math.round(cz)], radius: Math.round(radius),
+        plantings, plantCost: +plantings.reduce((a, p) => a + (p.cost || 0), 0).toFixed(2), cashSpent: +(cash0 - cashAfterPlant).toFixed(2),
+        day0, day30: series[series.length - 1], capacitySeries: series.map((e) => e.capacity), foodCapacitySeries: series.map((e) => e.foodCapacity),
+        elephantsEnd: sim.getState().population.elephant ?? 0 };
+    }, { planted, days: DAYS });
+    await page.close();
+    return { ...r, consoleErrors: errors };
+  };
+  const control = await run('plant-aloe-control', false);
+  const planted = await run('plant-aloe', true);
+  const out = {
+    control, planted,
+    capacityDelta: (planted.day30?.capacity ?? 0) - (control.day30?.capacity ?? 0),
+    foodCapacityDelta: (planted.day30?.foodCapacity ?? 0) - (control.day30?.foodCapacity ?? 0),
+  };
+  out.pass = out.capacityDelta >= 1;
+  const result = { scenario: 'plant-aloe', result: out, consoleErrors: [...control.consoleErrors, ...planted.consoleErrors] };
+  writeJson('plant-aloe', result);
+  return result;
+}
+
+/** remove-prey: every impala/warthog/zebra in the lions' habitat removed through the animals API
+ * (the sim's daily census writes them off) vs a control page; lion count, lion capacity and lion
+ * happiness recorded daily for 40 days. Pass: lions fall below the control only after ≥ 3 days. */
+async function scenarioRemovePrey(browser) {
+  const DAYS_RP = 40;
+  const run = async (label, strip) => {
+    const { page, errors } = await loadGame(browser, { label });
+    const r = await page.evaluate(async ({ strip, days }) => {
+      const reg = window.__SIM__.app.registry.modules;
+      const sim = reg.get('simulation').def.api, animals = reg.get('animals').def.api;
+      const world = window.__SIM__.world;
+      let hid = null;
+      for (const h of world.habitats.values()) if ((sim.getFoodReport(h.id)?.lion?.n ?? 0) > 0) { hid = h.id; break; }
+      if (hid == null) return { error: 'no lions' };
+      const hab = world.habitats.get(hid);
+      let removed = 0;
+      if (strip) {
+        const ids = [];
+        for (const a of world.animals.values()) {
+          if (!a || !['impala', 'warthog', 'zebra'].includes(a.species)) continue;
+          const ah = a.habitat ?? a.habitatId ?? (world.grid.habitatId[world.cellAt(a.x, a.z).index] || 0);
+          if (ah === hid) ids.push(a.id);
+        }
+        for (const id of ids) { animals.remove(id); removed++; }
+      }
+      const lions = [], caps = [], happy = [], preyKg = [];
+      for (let d = 0; d < days; d++) {
+        sim.runDays(1);
+        const rec = sim.getReport()?.habitats?.[hid]?.species?.lion;
+        const f = sim.getFoodReport(hid)?.lion;
+        lions.push(rec?.n ?? 0); happy.push(rec?.happiness ?? 0);
+        caps.push(f?.capacity ?? 0); preyKg.push(f?.food ?? 0);
+        if (d % 10 === 9) await new Promise((res) => setTimeout(res));
+      }
+      return { habitat: hab?.name, removed, lions, capacity: caps, happiness: happy, preyOfftakeKg: preyKg };
+    }, { strip, days: DAYS_RP });
+    await page.close();
+    return { ...r, consoleErrors: errors };
+  };
+  const control = await run('remove-prey-control', false);
+  const removed = await run('remove-prey', true);
+  const firstBelow = (removed.lions || []).findIndex((n, i) => n < control.lions[i]);
+  const out = { control, removed, lagDays: firstBelow < 0 ? null : firstBelow + 1,
+    lionsDay40: { removed: removed.lions?.at(-1), control: control.lions?.at(-1) } };
+  out.pass = out.lagDays !== null && out.lagDays >= 3;
+  const result = { scenario: 'remove-prey', result: out, consoleErrors: [...control.consoleErrors, ...removed.consoleErrors] };
+  writeJson('remove-prey', result);
+  return result;
+}
+
+/** spread: a 24 m red-oat patch planted on free grassland outside every habitat (no grazing), four
+ * runs on one page from the same start state via simulation.reset(): control (no planting), planted,
+ * control + drought, planted + a forced 30-day drought. The patch's reach = cells within 200 m whose red-oat cover exceeds
+ * the unplanted run's under the same weather by ≥ 0.01; extra cover-ha = Σ (planted − control) × 0.0256 ha;
+ * covered ha = cells with red-oat cover ≥ 0.3. The site is the free ground with the least red oat. */
+async function scenarioSpread(browser) {
+  const { page, errors } = await loadGame(browser, { label: 'spread' });
+  const out = await page.evaluate(async (days) => {
+    const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+    const world = window.__SIM__.world;
+    const V = world.vegetation, R = V.res, C = V.cell, half = world.half;
+    // pick free ground (no habitat, no building/road, dry land, GRASS/DRY_GRASS/DIRT biome) where red oat
+    // is sparsest (so the patch is not hidden in an existing sward), nearest the centre on ties
+    let best = null;
+    for (let iz = 4; iz < R - 4; iz++) for (let ix = 4; ix < R - 4; ix++) {
+      const x = (ix + 0.5) * C - half, z = (iz + 0.5) * C - half;
+      let ok = true;
+      for (let dz = -24; dz <= 24 && ok; dz += 8) for (let dx = -24; dx <= 24 && ok; dx += 8) {
+        const c = world.cellAt(x + dx, z + dz);
+        const b = world.biomeAt(x + dx, z + dz);
+        if (world.grid.habitatId[c.index] || world.grid.occupancy[c.index] || world.isWater(x + dx, z + dz) || (b !== 0 && b !== 1 && b !== 2)) ok = false;
+      }
+      if (!ok) continue;
+      const d = x * x + z * z;
+      let oat = 0;
+      for (let dz = -16; dz <= 16; dz += 16) for (let dx = -16; dx <= 16; dx += 16) oat += sim.getVegetation(x + dx, z + dz).red_oat;
+      if (!best || oat < best.oat - 1e-6 || (Math.abs(oat - best.oat) <= 1e-6 && d < best.d)) best = { x, z, d, oat };
+    }
+    if (!best) return { error: 'no free grassland' };
+    const window200 = [];
+    for (let iz = 0; iz < R; iz++) for (let ix = 0; ix < R; ix++) {
+      const x = (ix + 0.5) * C - half, z = (iz + 0.5) * C - half;
+      if ((x - best.x) ** 2 + (z - best.z) ** 2 <= 200 * 200) window200.push([x, z]);
+    }
+    const oat = () => window200.map(([x, z]) => sim.getVegetation(x, z).red_oat);
+    const runVariant = async (plant, drought) => {
+      sim.reset();
+      const res = plant ? sim.plant('red_oat', best.x, best.z, 24, 0.25) : null;
+      if (drought) sim.injectEvent('drought', { duration: days, strength: 1 });
+      const snaps = { 0: oat() };
+      for (let d = 1; d <= days; d++) { sim.runDays(1); if (d % 10 === 0) { snaps[d] = oat(); await new Promise((r) => setTimeout(r)); } }
+      return { res, snaps };
+    };
+    const control = await runVariant(false, false);
+    const planted = await runVariant(true, false);
+    const controlDrought = await runVariant(false, true);
+    const droughtRun = await runVariant(true, true);
+    // each planted run is compared with the unplanted run under the same weather
+    const reach = (v, ctl, d) => v.snaps[d].filter((c, i) => c - ctl.snaps[d][i] >= 0.01).length;
+    const extraHa = (v, ctl, d) => +(v.snaps[d].reduce((a, c, i) => a + Math.max(0, c - ctl.snaps[d][i]), 0) * (C * C / 1e4)).toFixed(3);
+    const coveredHa = (v, d) => +(v.snaps[d].filter((c) => c >= 0.3).length * (C * C / 1e4)).toFixed(3);
+    const days10 = [0, 10, 20, 30].filter((d) => d <= days);
+    return {
+      site: { x: Math.round(best.x), z: Math.round(best.z), biome: world.biomeAt(best.x, best.z), redOatAround: +(best.oat / 9).toFixed(3) },
+      planting: planted.res,
+      days: days10,
+      reachCells: { planted: days10.map((d) => reach(planted, control, d)), drought: days10.map((d) => reach(droughtRun, controlDrought, d)) },
+      extraCoverHa: { planted: days10.map((d) => extraHa(planted, control, d)), drought: days10.map((d) => extraHa(droughtRun, controlDrought, d)) },
+      coveredHaOver03: { control: days10.map((d) => coveredHa(control, d)), planted: days10.map((d) => coveredHa(planted, d)),
+        controlDrought: days10.map((d) => coveredHa(controlDrought, d)), drought: days10.map((d) => coveredHa(droughtRun, d)) },
+    };
+  }, DAYS);
+  if (!out.error) {
+    const ep = out.extraCoverHa.planted, ed = out.extraCoverHa.drought, cp = out.coveredHaOver03.planted, cd = out.coveredHaOver03.drought;
+    out.pass = cp[cp.length - 1] > cp[0] && ep[ep.length - 1] > ep[0] && ed[ed.length - 1] < ep[ep.length - 1];
+  }
+  const result = { scenario: 'spread', result: out, consoleErrors: errors };
+  writeJson('spread', result);
+  await page.close();
+  return result;
+}
+
 function writeJson(name, data) {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const p = path.join(OUT_DIR, `fidelity-${name}.json`);
@@ -479,6 +646,23 @@ function writeJson(name, data) {
     if (SCENARIOS.includes('price-sweep')) {
       results['price-sweep'] = await scenarioPriceSweep(browser);
       console.log(JSON.stringify(results['price-sweep'].result, null, 2));
+    }
+    if (SCENARIOS.includes('plant-aloe')) {
+      console.log('[plant-aloe] aloe + marula over the woodland vs control, 30 days each');
+      results['plant-aloe'] = await scenarioPlantAloe(browser);
+      const r = results['plant-aloe'].result;
+      console.log(JSON.stringify({ capacityDelta: r.capacityDelta, foodCapacityDelta: r.foodCapacityDelta, pass: r.pass, control: r.control.day30, planted: r.planted.day30, cost: r.planted.plantCost }, null, 2));
+    }
+    if (SCENARIOS.includes('remove-prey')) {
+      console.log('[remove-prey] impala/warthog/zebra removed from the lions\' habitat vs control, 40 days');
+      results['remove-prey'] = await scenarioRemovePrey(browser);
+      const r = results['remove-prey'].result;
+      console.log(JSON.stringify({ lagDays: r.lagDays, lionsDay40: r.lionsDay40, pass: r.pass, removed: r.removed.removed, lions: r.removed.lions, control: r.control.lions }, null, 2));
+    }
+    if (SCENARIOS.includes('spread')) {
+      console.log('[spread] red-oat patch on free grassland: control / planted / planted + drought');
+      results.spread = await scenarioSpread(browser);
+      console.log(JSON.stringify(results.spread.result, null, 2));
     }
   } finally {
     await browser.close();
