@@ -435,9 +435,9 @@
     "buildings": {
       "wave": 2,
       "domain": "built",
-      "round": 3,
-      "score": 8.5,
-      "status": "pass",
+      "round": 4,
+      "score": 6.0,
+      "status": "fail",
       "errors": 0,
       "drawCalls": 296,
       "reviewedBy": "independent-critic-agent",
@@ -448,16 +448,45 @@
         "close 16.5",
         "hide 8",
         "night 21.5",
-        "overview 8 (extra)",
-        "stats() readback (extra)"
+        "critic pool 16 (lookAt -64.5,-97.9)",
+        "critic front 12 (lookAt -72,-104)",
+        "critic pool with buildings hidden (diagnostic)"
       ],
       "issues": [
         {
+          "sev": "blocker",
+          "text": "lodge preset (yaw 182) frames the BACK of the lodge; the deck/terrace/pool it and the README describe are not in frame (claim not reproduced, cap 6). overview also sees the back."
+        },
+        {
+          "sev": "major",
+          "text": "Stray rail geometry: two parallel rails + plank run ~12 m from the east end of the lodge deck diagonally across the lawn/pool coping, plus long thin lines tens of metres between terrace, restaurant and field; proven buildings geometry by hiding the group."
+        },
+        {
+          "sev": "major",
+          "text": "Hide rafters pierce the thatch: ~10 sticks project 1-2 m above the roof like antennas (buildHide rafter beams)."
+        },
+        {
+          "sev": "major",
+          "text": "Terrain covers the lodge terrace (slab top 0.12 m): grass right of/behind the pool and under the stair; pool reads as sitting in lawn."
+        },
+        {
+          "sev": "major",
+          "text": "Close-range surfaces are programmer-art: grid paving with black grout, veranda timber posts render smooth grey on black rings, flat unweathered plaster."
+        },
+        {
           "sev": "minor",
-          "text": "Polish is uneven across the 16-type catalogue -- lodge and gate are clear hero assets, tower/hide-adjacent/staff-house structures read plainer at overview distance."
+          "text": "Thatch reads as uniform stacked slats on every roof; break up course spacing/colour."
+        },
+        {
+          "sev": "minor",
+          "text": "placeLamps() allocates every frame at night (array, objects, closure); time:set listener not removed in dispose()."
+        },
+        {
+          "sev": "minor",
+          "text": "Showcase hide stands on open lawn beside the lodge, not at a waterhole/bush edge."
         }
       ],
-      "good": "Thatch roof system (course lips, noise-displaced ragged eave, rolled ridge) genuinely convincing and matches the detailed README description exactly. Gate park-name sign legible and correct. Night lighting (lantern glow on thatch underside, warm deck pool) atmospheric, one of the better night results in the project. Own-module budget independently verified via stats() (34 draws, 131,730 triangles, 25 buildings/16 types) comfortably inside the <=60 draws / <=400k triangle spec. Zero console errors across every preset. API matches README; dispose() present and thorough."
+      "good": "1860e5c pool fix verified: water renders from above day and night inside an intact coping, no seams from the slab cut. Gate sign legible, stone piers and boom convincing. Night lantern glow still atmospheric. Zero console errors, lint clean, whole frame <=296 draws."
     },
     "props": {
       "wave": 2,
@@ -1204,6 +1233,12 @@
       "module": "tools",
       "round": 4,
       "score": 5.5,
+      "date": "2026-09-25"
+    },
+    {
+      "module": "buildings",
+      "round": 4,
+      "score": 6.0,
       "date": "2026-09-25"
     }
   ]
