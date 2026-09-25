@@ -3,6 +3,7 @@
   "wave": 3,
   "passThreshold": 8.5,
   "notes": [
+    "2026-09-25 iteration wave (orchestrated agentic session): asset wave shipped — 9 authored glTF species wired via ASSET_SPECIES (incl. a genuinely striped Poly by Google zebra; lioness honestly not found, variant mechanism shipped empty), Poly Haven 1k terrain photo layers (habitta kept as fallback tier), exposure-neutral effects GradePass fix (scotopic luma-normalised, night ratio 0.89->0.97+), night stars fixed at the bake — the round-8 speckle wall was the BAKED STAR TEXTURE, not cumulus (the SwiftShader clouds-off diagnostic was misleading; always cross-check diagnostics on the render backend being judged). Three independent critics re-scored all 15 modules on real-GPU D3D11 captures; two fix-builders then closed every blocker/major that was fixable same-day (all verified with captures read by the orchestrator). Scores: simulation 6->8.5 PASS, zoning 6->8.5 PASS, terrain 6->8.0, effects 6->8.0, park 6->8.0, buildings 6->7.5, animals 7->8.0, environment 6->7.5, savannah 6->7.5, props 7.0 held, tools 5.5->7.0, traffic 5->7.0, ui 7.0 held (credits panel added, closes the CC-BY obligation). Round-6 blind test 6.8->7.5. Fidelity: all scenarios pass, $15 break-even +$433.13/d exact, determinism identical, 89/89 tests, lint ok, build green. Protocol notes: gpu-check.mjs does NOT auto-pin &speed=0 (screenshot.mjs does); the capture backend is now real-GPU D3D11 — never byte-compare against SwiftShader-era baselines; poaching/disease per-run counts are high-variance, quote multi-seed means. Top remaining defects for the next wave: wild-night self-shadowed foregrounds, close-range grass squiggle (D3D11-confirmed), golden-hour hero shading, tools terrain-stroke 157 ms/frame (needs a terrain batching API), roads night paint glow, props overview tris over the 3 M spec line. Authored-asset obligations are met: every file registered in docs/ASSETS.md, >1 MB binaries on LFS, CC-BY credited in the in-game settings panel.",
     "2026-09-25 overnight: visual fixes (water Fresnel sky reflection + lit silt line, leaf albedo, props photo-rock ReferenceError fix) and tools' missing tool:request bridge (toolbar/panel buttons did nothing). Critic pass on 9 modules: audio 8.5 PASS; roads 7.0, ui 7.0, zoning 6.0, simulation 6.0 (claims cap, engine ~8.5), buildings 6.0 (cap), effects 6.0 (cap, ~8.0 visually), tools 5.5 (cap), traffic 5.0 (preset shows empty road). Most drops vs round 3 are stricter claim-checking of unchanged code, not regressions. Highest-value follow-ups: (1) effects: post chain shifts brightness with time of day (+39% golden hour, -30% night) — calibrate against a grey card, affects every module's look; (2) cheap claim-cap removals: README/preset mismatches in traffic, buildings (lodge preset shoots the back), simulation (boom numbers), zoning (MAX_PULL text), tools (4 claims); (3) zoning habitat fragments (no min size), traffic hero truck spawned driving, ui facts grid CSS + 720p overlap, roads junction/bridge staging. Screenshot tool now pins --game clock (speed=0) by default.",
     "2026-09-24 night — asset-policy switch + visual overhaul (critic pass PAUSED after savannah r6; park r5 was stopped mid-run, no files). DONE: fast-settle screenshots (~2 min vs ~7 min per 960x540 shot); ctx.assets (core/Assets.js); animals GltfPool (rigged glTF species with baked clips, procedural fallback; proven with the Khronos Fox test fixture via ?animalModel=elephant:fox — ASSET_SPECIES is still EMPTY, no real species yet); terrain photo layers (Poly Haven CC0 withered grass / dry ground rocks / rock boulder dry via a GitHub mirror, 512 px); props boulders capped at the angle of repose (no more popcorn boulders on cliffs) + rock scan; two-view tree imposters (trees no longer read as dashes from above); softer grass ring. MORNING (after the user opens network access): 1) re-check reachability (poly.pizza, quaternius.com, itch.io/gobkit.com, polyhaven.com); 2) Gobkit hippo+rhino, Quaternius horse->zebra / bull->buffalo,wildebeest / deer,stag->impala, Poly Pizza for giraffe/elephant/lion; fill animals/gltfpool.js ASSET_SPECIES + docs/ASSETS.md rows; 3) swap the habitta 512 px textures for Poly Haven 1k/2k originals, add bark/leaf/ground sets; 4) resume the critic pass with modules whose look is not changing (roads, zoning, ui, simulation, audio, traffic, tools, buildings, effects); animals/props/terrain/environment/savannah/park after assets land. Known open: water is a flat opaque plane with no reflections + a bright night shoreline ring (critic savannah r6); tree canopies very dark; park fidelity numbers stale since the plains siting change.",
     "2026-09-24 wrong-scene pass (camera-anchor defect class from critic round 5): savannah close aimed at the herd's own spawn point (duplicated herd) -> re-staged on its own subject; savannah hero shot into the 17.4 h sun -> sun-aware bearing search, aims at the live herd; park habitat framed a river because build.js sited the plains habitat ON the channel overlapping the wetland -> siting fixed (moves the plains herd; fidelity numbers need re-run); park close aimed at the lodge site not the lodge -> aims at the terrace; the lodge pool never rendered because buildings/lodge.js buried the water in a solid terrace slab -> slab cut. All verified by screenshots read at 960x540, seed 1, 0 errors. Descriptions of savannah hero and park habitat were rewritten to what the shots deliver (no kopje in hero; hide/fence out of habitat's frame) -- disclosed in both READMEs. Scores NOT touched: critic to re-verify.",
@@ -39,12 +40,12 @@
     "terrain": {
       "wave": 1,
       "domain": "nature",
-      "round": 4,
-      "score": 6,
+      "round": 5,
+      "score": 8,
       "status": "fail",
       "errors": 0,
       "drawCalls": 44,
-      "reviewedBy": "independent-critic-agent",
+      "reviewedBy": "critic-sweep",
       "presetsSeen": [
         "overview 15",
         "plains 16.5",
@@ -58,33 +59,37 @@
       ],
       "issues": [
         {
-          "sev": "major",
-          "text": "Night water renders brighter than the sky and ground (measured pixel readback: water RGB~83,85,67 vs ground ~33,25,11 vs sky ~22,18,14) — contradicts the README claim that forcing envMapIntensity=0.10 fixed water blowing out to white; the same failure mode reproduces at night."
-        },
-        {
-          "sev": "major",
-          "text": "Escarpment cliff face is a repeating uniform-width vertical-fluted column motif, visible at overview and escarpment showcase distances (not just extreme close range as the README frames it) — reads as procedural repetition rather than natural stratified rock."
+          "sev": "resolved",
+          "text": "FIXED post-round (3fba5b4/9d0d964) and orchestrator-verified: apron.js border ridges decayed to a plains baseline (measured 86-90 m hard extensions at both seam origins); both lines clean at two sun angles (seb-after2-terrain-overview-15/12.png), draws/tris identical | was: Two straight hairline seams cross the apron from where the escarpment meets the west/east world borders (unprojected to ~(-504,-355)->(-945,-625) and (511,-342)->(761,-487)); present on SwiftShader and D3D11, unchanged with shadows off — apron height/control seam, visible at the flagship overview framing."
         },
         {
           "sev": "minor",
-          "text": "Water has no visible ripple/flow structure at river or close presets — reads as a flat murky slab; disclosed in README but confirmed in these shots."
+          "text": "Wetland/mud crack motif reads as metre-scale angular voronoi webbing at close range (close 16/6.5h) — cell scale ~100x too large vs real cracked clay."
         },
         {
           "sev": "minor",
-          "text": "Night ground is close to unlit black (confirmed by pixel readback, ~RGB 33,25,11); disclosed as a shared cross-module issue, not terrain-specific."
+          "text": "Water still has no flow structure or silhouette at river/overview distance; ripples are close-range normal detail only (disclosed)."
+        },
+        {
+          "sev": "minor",
+          "text": "River's west end cuts off in a straight vertical water edge + pale sand rectangle at the x=-512 border."
+        },
+        {
+          "sev": "minor",
+          "text": "Night ground near-black in the darkest fields (readback 12,8,5) — shared environment-owned ambient issue, improved by NIGHT_LIFT but still darker than moonlit reference."
         }
       ],
-      "good": "Kopjes are genuinely angular stacked-block forms with correct shadowing (round-3 claim verified). Plains/close grass and laterite patchwork read convincingly as dry-season savannah with no obvious tiling. Draw calls and triangles comfortably within budget across every preset; zero console errors."
+      "good": "Round-4 blockers verified fixed with own captures + pixel readback: night water dark (water ~ground brightness at 21.5/3h), escarpment jagged and variably fluted at all distances/sun angles. Poly Haven 1k photo layers on disk and visible with palette intact. Convincing dry-season savannah at every distance; 0 errors in 15 shots; well inside all budgets."
     },
     "environment": {
       "wave": 1,
       "domain": "nature",
-      "round": 7,
-      "score": 6,
-      "status": "fail",
+      "round": 8,
+      "score": 7.5,
+      "status": "near-pass",
       "errors": 0,
       "drawCalls": 44,
-      "reviewedBy": "independent-critic-agent",
+      "reviewedBy": "critic-sweep+orchestrator-verification",
       "presetsSeen": [
         "overview 14",
         "dawn 6.3",
@@ -100,29 +105,37 @@
       ],
       "issues": [
         {
-          "sev": "major",
-          "text": "overview (pitch 32) and overcast (pitch 24) presets: entire view frustum points below horizontal given 45deg FOV, so almost no sky is visible -- just flat ground haze. overview is the primary midday sky/cloud/shadow shot and fails to show sky at all. Re-aiming to pitch 10 on the same preset/weather confirms the sky itself is fine underneath -- a showcase camera-authoring bug."
+          "sev": "resolved",
+          "text": "FIXED post-round (3fba5b4/9d0d964) and orchestrator-verified: the speckle wall was the BAKED STAR TEXTURE (sub-texel sigmas now), not cumulus — the SwiftShader clouds-off diagnostic was misleading (real-GPU live toggle diagnostic); clouds gained uNight response (bank octave, night thinning, moonlit boost x25->x4); night 22 h/3 h now points-only with a Milky-Way band (seb-after3-env-night-22.png); night-sky claim now reproduces — critic-stated uncapped value 7.5 applied | was: CLAIM CAP: README's 'night sky mostly points' does not reproduce — the night preset's upper sky is a dense bright grey-white cumulus speckle wall (verified clouds via setDebug({clouds:false}) toggle; present at 22h and 3h, cloud=0.08). Night flecks need a higher density threshold / lower moon boost plus spatial clustering."
         },
         {
-          "sev": "major",
-          "text": "No cumulus clouds visible at any fair-weather coverage tested (overview cloud=0.18, dawn=0.3, golden=0.25), despite golden/overview preset descriptions explicitly promising cumulus. Cloud shader works fine at high coverage (overcast renders a full streaky deck) -- there appears to be no response between invisible and solid overcast; verified with camera re-aimed to guarantee sky in frame, not a framing artifact."
+          "sev": "resolved",
+          "text": "FIXED post-round (3fba5b4/9d0d964) and orchestrator-verified: the speckle wall was the BAKED STAR TEXTURE (sub-texel sigmas now), not cumulus — the SwiftShader clouds-off diagnostic was misleading (real-GPU live toggle diagnostic); clouds gained uNight response (bank octave, night thinning, moonlit boost x25->x4); night 22 h/3 h now points-only with a Milky-Way band (seb-after3-env-night-22.png); night-sky claim now reproduces — critic-stated uncapped value 7.5 applied | was: Dusk sky reads as a uniform high-contrast speckle wall edge-to-edge (18.7h) — coverage->density field has no large-scale spatial variance, so backlit gaps and flecks tile uniformly instead of forming banks with clear sky between."
         },
         {
           "sev": "minor",
-          "text": "Storm sky brightness (about 147 avg RGB per README) still reads a bit above overcast (about 129) despite the \"dark cloud deck\" description -- disclosed by the builder as a first, un-tuned correction."
+          "text": "Fair-weather cumulus under-scale and under-lit at midday/golden (faint flecks at overview 14, 'lit cumulus' at golden barely distinguishable from cirrus); need ~2x scale and shaded bases."
+        },
+        {
+          "sev": "minor",
+          "text": "Smudgy darker band hugs the horizon in day presets (overview 9/14, golden 12) — below-horizon plain to fog transition reads as a dirty stripe from showcase pitches."
+        },
+        {
+          "sev": "minor",
+          "text": "Disclosed residuals stand: single-scatter anti-solar twilight darker than reference; storm no longer brighter than overcast but not yet clearly darker."
         }
       ],
-      "good": "Sunrise/golden/dusk gradients are convincing and well time-differentiated; close preset sun disc+corona genuinely legible (DISC_K fix verified, not just claimed); night balances legibility vs darkness well with real stars/Milky Way; storm is the best-executed weather state (full cloud deck + wind-driven rain). API matches README exactly, update() allocation-free, dispose() thorough."
+      "good": "Round-7 majors verified fixed: overview/overcast now show the sky (pitch 12/10) and cumulus render as discrete puffs at fair-weather coverage. DISC_K sun disc + clean corona reproduce at close 17h and dawn; dusk afterglow + first stars, dawn haze, shadowless overcast and moody storm deck all present and well time-differentiated; night ground legible without wash-out. 0 console errors in 12 GPU captures, contract/dispose/allocation discipline clean."
     },
     "animals": {
       "wave": 1,
       "domain": "nature",
-      "round": 5,
-      "score": 7,
-      "status": "fail",
+      "round": 6,
+      "score": 8,
+      "status": "near-pass",
       "errors": 0,
-      "drawCalls": 103,
-      "reviewedBy": "independent-critic-agent",
+      "drawCalls": 185,
+      "reviewedBy": "critic-sweep+orchestrator-verification",
       "presetsSeen": [
         "overview 16",
         "herd 16.5",
@@ -135,33 +148,41 @@
       ],
       "issues": [
         {
-          "sev": "major",
-          "text": "update() exceeds its 3ms per-module budget by 40-65%, measured twice (4.179ms and 4.997ms at overview, 128 animals, two different times of day). Not tracked in the README's own performance table, which only reports draw calls/triangles."
+          "sev": "resolved",
+          "text": "FIXED post-round (3fba5b4/9d0d964) and orchestrator-verified: zebra remapped to Poly by Google Zebra.glb (CC-BY, UVs + painted stripes; row in ASSETS.md) — §8 markings now genuine; herd visibly striped (final-animals-herd-16.5.png, blind6 8.0) | was: Authored zebra is a stripe-less white horse (mesh has no UVs) — fails the §8 'correct silhouettes and markings' target in the herd/waterhole flagship shots; reads as horse at any distance. Needs a UV-carrying equine-class model or a projected stripe treatment, else revert zebra to the procedural striped pool."
         },
         {
           "sev": "major",
-          "text": "The overview preset (230m) cannot verify its own species-diversity claim -- every animal collapses to an indistinguishable pale speck at that distance in both the module preset and an extra tod=9 angle; cannot confirm the claimed 11+ species roster is actually present/distinguishable."
+          "text": "Giraffe/elephant/lion are static one-bone rigs: no walk/graze/rest articulation; the predators 'resting pride' stands, waterhole elephants freeze mid-drink, and the glTF pool's single maned male mesh renders the whole lion pride as males (variantFor ignored for glTF pools)."
+        },
+        {
+          "sev": "resolved",
+          "text": "FIXED post-round (3fba5b4/9d0d964) and orchestrator-verified: critic hypothesis corrected by parsing the GLB: single-material model whose embedded bake is near-flat (best on source) — real latent bug fixed (multi-primitive meshes took material[0] with groups cleared) + elephant-only hide lift (map gain 1.9 + wrinkle octaves); textured hide at 12 m (final-animals-close-15.png) | was: close preset (12 m hero) regressed: the organic-wrinkle procedural elephant was replaced by a flat untextured faceted static model; the giraffe keeps its texture so the elephant's bare grey points at the multi-material merge path (material[0] only) — undisclosed in Known gaps."
         },
         {
           "sev": "minor",
-          "text": "predators preset reads as pale tan-white shapes rather than tawny lions with legible manes -- confirms the README's own disclosed overexposure gap."
+          "text": "Procedural cheetah reads as a pale greyhound next to the authored lion (predators); impala scaled from antler-top height 1.0 reads ~40% too small (fawn) vs the lion."
         },
         {
           "sev": "minor",
-          "text": "Night is close to unlit black (disclosed, core/environment issue); river in the same frame is anomalously bright, cross-confirming the terrain night-water bug found independently in that module's round-4 review."
+          "text": "Gobkit hippo/rhino read as chibi toys up close; hippo tint renders cold blue-grey, rhino near-black chocolate."
         },
         {
           "sev": "minor",
-          "text": "Herd reads as a tight static clump rather than a spread walking group; pale species mip-collapse to grey at distance (both disclosed in README)."
+          "text": "Overview at 230 m still cannot visually demonstrate the 'all 12 species' claim (giraffe/elephant/pale herd legible; small species collapse) — improved from round 5's uniform specks."
+        },
+        {
+          "sev": "minor",
+          "text": "README preset-table wording over-promises for static species ('lion pride resting/sleeping'); disclosed in the same README's authored-models section, so no claim cap applied — reword the rows."
         }
       ],
-      "good": "close elephant shot is the strongest single image in the module -- correct proportions, legible silhouette, organic wrinkle skin, convincing pose/lighting. waterhole composition (elephants drinking, giraffe approaching) reads as genuine staged wildlife, not a tech demo. 12 species confirmed present matching spec. Module-isolated stats() shows real geometry (358,930 tri, 37 draws, 128 animals) comfortably within budget -- the alarming frame-wide triangle totals are correctly attributable to terrain/props sharing the scene, not this module, verified independently. API matches README exactly, update() hot loop allocation-free, dispose() thorough."
+      "good": "Round-5 update-budget blocker fixed and re-measured (0.2-2.3 ms vs 3 ms budget; was 4.2-5.0). Asset pipeline verified end to end: 9 authored species load, README's real-GPU draws/tris table reproduces to the digit on all six rows, ?animalModel=elephant:fox override works live, gobkit de-interleave fix confirmed (hippo/rhino visible), per-species procedural fallback intact in code. Night is legible moonlight (was unlit black); predators now reads as lions; the giraffe is genuinely excellent at every distance; herd staging spreads naturally with real leg articulation on rigged species."
     },
     "roads": {
       "wave": 1,
       "domain": "built",
       "round": 4,
-      "score": 7.0,
+      "score": 7,
       "status": "fail",
       "errors": 0,
       "drawCalls": 67,
@@ -213,7 +234,7 @@
       "wave": 1,
       "domain": "built",
       "round": 5,
-      "score": 7.0,
+      "score": 7,
       "status": "fail",
       "errors": 0,
       "drawCalls": 0,
@@ -262,12 +283,12 @@
     "simulation": {
       "wave": 1,
       "domain": "sim",
-      "round": 6,
-      "score": 6.0,
-      "status": "fail",
+      "round": 7,
+      "score": 8.5,
+      "status": "pass",
       "errors": 0,
-      "drawCalls": 75,
-      "reviewedBy": "independent-critic-agent",
+      "drawCalls": 100,
+      "reviewedBy": "critic-sweep",
       "presetsSeen": [
         "overview (15)",
         "boom (11)",
@@ -281,31 +302,23 @@
       ],
       "issues": [
         {
-          "sev": "major",
-          "text": "Cap trigger: boom preset claims do not reproduce -- README 38 births / ~282 arrivals/d / +$37k vs measured 32 / 308 / +$58.8k at tod 11; panel says \"happier herds breed fast\" but boom breeds fewer than overview (32 vs 46), happiness not higher, several habitat qualities lower; both hit the same 140 ceiling."
-        },
-        {
-          "sev": "major",
-          "text": "Staged showcase outcome depends on capture tod despite \"same seed -> identical numbers\" footer: overview 46 vs 42 births (15h vs 6.5h), bust 6/25/-$435k vs 5/22/-$427k (17h vs 3h); README bust row matches tod 3, not the preset tod 17. Pin the staged start hour."
-        },
-        {
-          "sev": "major",
-          "text": "Overview \"cash climbs, healthy\" rests on a single seeded viral event: same $20 park is net-negative between events (night stream -$6.5k/60d, close -$11.4k/30d, overview@6.5 declines between two viral steps)."
+          "sev": "minor",
+          "text": "Poaching targets animals-module 'appeal' (overwriting rarity), so zebra/ostrich are high-value targets; keep a separate poaching-value field"
         },
         {
           "sev": "minor",
-          "text": "Poaching targets rarity>=0.7 but in the live game animals appeal overwrites rarity, so zebra/ostrich count as high-value targets (3 of 5 events in the fidelity run). Poaching rate itself is plausible (5 events/100d vs ~3.2 expected; old 1-event run was the unlucky tail) -- report multi-seed means."
+          "text": "No lasting consequences: reputation recovers through the satisfaction EMA after poaching massacres; a bankrupt park keeps frozen pre-collapse sentiment and 85% staff morale with $0 income"
         },
         {
           "sev": "minor",
-          "text": "Poaching has no lasting reputation cost (rep 0.50 -> 0.665 across 5 poaching events); bust dashboard shows frozen 66-69% satisfaction / 64% rep and 86% staff morale with 0 visitors for 50 days while still overstaffed."
+          "text": "The $20 overview park is net-negative day-to-day (median -$284/d; gain is event windfalls); fidelity harness says $15 is break-even (+$433/day, reproduced exactly)"
         },
         {
           "sev": "minor",
-          "text": "README Measured section stale ($15 break-even +$383/day vs +$627 in the 2026-09-25 park re-run; boom figures). Disclosed: village scalar, aggregate visitors, no poacher agents."
+          "text": "Disclosed fidelity simplifications: aggregate visitors, scalar village, event-based poaching, speed(n)/ui multiplier doubling"
         }
       ],
-      "good": "89/89 deterministic tests re-run (0.7 s); fidelity poaching scenario re-run byte-identical; poaching risk model behaves per its own formula; bankruptcy state, habitat-quality matrix and drought flagging legible and correct; 0 console errors in 7 captures; ~2 own draws, ~0.01 ms/frame. Engine ~8.5 uncapped; fails on showcase claims."
+      "good": "Every README preset number reproduces exactly (42/6/134, +$16,577, -284 median, 310/d +39%, +$58,809, 140 cap, bust 6/21/178 -$418,852 bankrupt, close 108/15, night 109/+$28,745); staged runs bit-identical across capture tods; 89/89 tests re-run; fidelity price-sweep re-run reproduces +$433/day at $15 with 11 births and 0 migrations; world.animals.size == sim.count() at every preset; honest panel narratives; 0 console errors; ~2 own draws, ~0.01 ms update."
     },
     "audio": {
       "wave": 1,
@@ -358,12 +371,12 @@
     "effects": {
       "wave": 1,
       "domain": "nature",
-      "round": 4,
-      "score": 6.0,
+      "round": 5,
+      "score": 8,
       "status": "fail",
       "errors": 0,
-      "drawCalls": 213,
-      "reviewedBy": "independent-critic-agent",
+      "drawCalls": 215,
+      "reviewedBy": "critic-sweep",
       "presetsSeen": [
         "overview 17.5",
         "close 17",
@@ -379,45 +392,37 @@
       ],
       "issues": [
         {
-          "sev": "blocker",
-          "text": "README A/B claim does not reproduce (capped at 6): at 960x540 overview vs off mean abs diff 25.8 (claimed 12.7), frame +34%, centre +44% brighter (claimed 3% darker), corners 2.5% darker (claimed 11%). Bare chain with every optional pass off is still +39% vs direct at golden hour; in game the chain is neutral at 14h but darkens night by ~30%. The shared chain is not exposure-neutral. Fix: grey-card byte diff direct vs bare chain at 8/17.5/21.5h, then rewrite the A/B."
-        },
-        {
-          "sev": "major",
-          "text": "Mip-chain bloom halos are square/boxy (night lamp heads, game-night lights). Use a 13-tap Karis downsample + tent upsample with 4-5 levels."
-        },
-        {
-          "sev": "major",
-          "text": "Night grade reads sepia/brown instead of cool moonlit (game 21.5h shots). Needs a Purkinje-style low-luminance blue/desaturation shift; coordinate with environment."
+          "sev": "minor",
+          "text": "Heat haze effectively invisible as an image effect: strength 0.875 confirmed but only a faint skyline wobble in any still (spec must-deliver). Needs distance-scaled amplitude + luminance lift in the band, verified with a frame-diff."
         },
         {
           "sev": "minor",
-          "text": "Heat haze barely perceptible (strength 0.875 confirmed, but only a faint horizon wobble in stills)."
+          "text": "Pipeline costs 14 extra draws vs the spec's own <=12 line (disclosed; the round-4-recommended bloom kernel spent them). Merge FXAA into the grade output or re-spec to <=14."
         },
         {
           "sev": "minor",
-          "text": "stats().particles.alive is never updated (always 0 while a dense dust trail is on screen)."
+          "text": "Showcase authoring: world-edge/void at top of overview, identical wrinkly bump on every sphere, test yard costs ~190 of ~206 frame draws (instancing opportunity)."
         },
         {
           "sev": "minor",
-          "text": "Per-frame object literal in update(): pipeline.setFrame({...}) at index.js:150."
+          "text": "Grain and SMAA still not visually isolated (sub-pixel at capture size; no preset exercises SMAA) — disclosed, carried from round 4."
         },
         {
           "sev": "minor",
-          "text": "Showcase framing: overview shows the world-plane edge/void; identical wrinkle bump on all spheres; close fast-settle shows one dust blob (trail only visible with --slow)."
+          "text": "toneMapped:false materials still tone-mapped by OutputPass (animals decals, tools overlays differ slightly chain-on/off) — disclosed, not visible in shots."
         }
       ],
-      "good": "All draw-call claims reproduce exactly: extra 12 (high/medium), 5 (low), 14 SMAA, 20 unreal. Haze 0.875 at heat, grade values within spec, zero errors in 26 captures, update <=0.18 ms. GTAO grounding and soft-particle dust trail (--slow) convincing. Chain is clean and neutral in the real game at midday. dispose() correct."
+      "good": "Round-4 blocker dead under independent re-measurement: in-page A/B gives full/bypass 0.985 (17.5h) and 1.008 (13h); bare-chain lamp-free night patch +2.3% — the night frame-mean 1.16 is bloom's lamp halos, not re-exposure. Round bloom halos verified round; Purkinje night grade verified cool. All quantitative claims reproduce to the digit (measure extra=14, haze 0.875, draw/tri tables, particles.alive now live). Chain holds character at untested tods (dawn, deep night, noon). 0 errors in 18 captures."
     },
     "zoning": {
       "wave": 2,
       "domain": "built",
-      "round": 6,
-      "score": 6.0,
-      "status": "fail",
+      "round": 7,
+      "score": 8.5,
+      "status": "pass",
       "errors": 0,
-      "drawCalls": 171,
-      "reviewedBy": "independent-critic-agent",
+      "drawCalls": 192,
+      "reviewedBy": "critic-sweep",
       "presetsSeen": [
         "overview 15",
         "close 16.5",
@@ -430,41 +435,37 @@
       ],
       "issues": [
         {
-          "sev": "major",
-          "text": "Boardwalk (VISITOR) fill is still cell-quantised: by day it is effectively invisible (the fill alpha 0.30*smoothstep(0.42,0.9,field) barely engages on a 2-cell corridor), and at night it shows as hard 4 m cell squares in stepped bands that spill past the now-smooth boundary line. The planks run in a fixed world direction, not across the path. Fix: clip the fill to a distance field of the smoothed contour, floor the alpha for thin corridors, and orient the planks along the path."
-        },
-        {
-          "sev": "major",
-          "text": "Overlay fill is unlit with a fixed colour: the habitats glow near-white mint at night (brightest thing in the frame) and show neon mint over orange grass at dawn. Fix: scale by a scene-luminance/exposure uniform and desaturate/lower the alpha at night."
-        },
-        {
-          "sev": "major",
-          "text": "Habitat fragmentation: floodComponents is a pure 4-connected flood with no minimum area. The demo game yields 12 habitats (4 named + 8 fragments, including five 1-3-cell slivers of 16-48 m2, each scored, listed and fenced). This is the cause of the park harness reporting 11 regions. Fix: fold components under ~10 cells into NONE or into the adjacent habitat; consider 8-connectivity."
+          "sev": "minor",
+          "text": "Boardwalk fill still driven by the 5x5 cell field, not the smoothed ribbon: faint cell stepping at corridor edges at night; SDF-clip follow-up disclosed"
         },
         {
           "sev": "minor",
-          "text": "README claims a <=2 m smoothing clamp (and <=2 m fence/line divergence) but boardwalk-fix code has MAX_PULL = 3.2, and the in-code comment still says half a cell. The claim does not reproduce, so the score is capped at 6. The Measured draw-call table is also stale (150-158 listed vs 152-171 measured)."
+          "text": "Fence sits on exact cell edges while the contour may pull up to 3.2 m, so line and fence diverge at tight corners (visible at 15 m)"
         },
         {
           "sev": "minor",
-          "text": "updateMs 2.1-2.3 ms in all presets (>1.5 ms guide): species-only refresh triggers a full rebuildHabitats (flood + fences) on a wall-clock throttle. Needs a species-only path and a frame-count throttle."
+          "text": "Day fill is exposure-aware but still a flat unlit tint; reads slightly sticker-like at overview distance"
         },
         {
           "sev": "minor",
-          "text": "At night the boundary contour renders as a solid glowing white line instead of marching ants."
+          "text": "No stone-wall fence variant; showcase never builds a road so the gate opening is only synthetically verified"
+        },
+        {
+          "sev": "minor",
+          "text": "No undo for paint/erase/fill (delegated to tools in-game)"
         }
       ],
-      "good": "The round-5 blocker is fixed for the line: the MAX_PULL 3.2 m boardwalk contour is smooth at pixel level (verified at 45 m by day and night). Fences are clean and terrain-conforming. The module stays at 4 draw calls with 0 errors, lint ok, and API/dispose match the README."
+      "good": "All four r6 majors verified fixed with own real-GPU captures: night blowout and dawn neon gone (exposure-aware fill/line), boardwalk fill visible by day and contained by night with corridor-oriented planks, habitat fragmentation fixed (full game lists exactly 7 habitats matching the README to the m^2), updateMs steady 0.002-0.007 ms. 4 own draw calls, 0 console errors in 6 captures, lint ok, API/dispose match README, measured table reproduces exactly."
     },
     "buildings": {
       "wave": 2,
       "domain": "built",
-      "round": 4,
-      "score": 6.0,
+      "round": 5,
+      "score": 7.5,
       "status": "fail",
       "errors": 0,
-      "drawCalls": 296,
-      "reviewedBy": "independent-critic-agent",
+      "drawCalls": 291,
+      "reviewedBy": "critic-sweep",
       "presetsSeen": [
         "overview 16",
         "lodge 17.5",
@@ -478,49 +479,37 @@
       ],
       "issues": [
         {
-          "sev": "blocker",
-          "text": "lodge preset (yaw 182) frames the BACK of the lodge; the deck/terrace/pool it and the README describe are not in frame (claim not reproduced, cap 6). overview also sees the back."
-        },
-        {
           "sev": "major",
-          "text": "Stray rail geometry: two parallel rails + plank run ~12 m from the east end of the lodge deck diagonally across the lawn/pool coping, plus long thin lines tens of metres between terrace, restaurant and field; proven buildings geometry by hiding the group."
-        },
-        {
-          "sev": "major",
-          "text": "Hide rafters pierce the thatch: ~10 sticks project 1-2 m above the roof like antennas (buildHide rafter beams)."
-        },
-        {
-          "sev": "major",
-          "text": "Terrain covers the lodge terrace (slab top 0.12 m): grass right of/behind the pool and under the stair; pool reads as sitting in lawn."
-        },
-        {
-          "sev": "major",
-          "text": "Close-range surfaces are programmer-art: grid paving with black grout, veranda timber posts render smooth grey on black rings, flat unweathered plaster."
+          "text": "Close-range surfaces read as programmer-art: terrace paving is a regular blue-grey grid on black grout, veranda posts are smooth grey cylinders, plaster is flat unweathered white (r4 major, confirmed in close/gate captures)"
         },
         {
           "sev": "minor",
-          "text": "Thatch reads as uniform stacked slats on every roof; break up course spacing/colour."
+          "text": "Thatch reads as uniform stacked slats on every roof; course spacing/colour variation needed (makuti raggedness survives only on the night underside)"
         },
         {
           "sev": "minor",
-          "text": "placeLamps() allocates every frame at night (array, objects, closure); time:set listener not removed in dispose()."
+          "text": "Terrace sits low in the terrain (slab top 0.12 m): soil strip under the stair, grass near the pool per README; extend flatten footprint or add a slab upstand"
         },
         {
           "sev": "minor",
-          "text": "Showcase hide stands on open lawn beside the lodge, not at a waterhole/bush edge."
+          "text": "placeLamps() allocates (array, per-lamp objects, sort closure) on every night frame inside update(); time:set listener not removed in dispose()"
+        },
+        {
+          "sev": "minor",
+          "text": "No LOD beyond 300 m (disclosed); 2 showcase placements forced past too-steep (disclosed, reproduced); fence gate/feeder/toilets/parking have no detail shot"
         }
       ],
-      "good": "1860e5c pool fix verified: water renders from above day and night inside an intact coping, no seams from the slab cut. Gate sign legible, stone piers and boom convincing. Night lantern glow still atmospheric. Zero console errors, lint clean, whole frame <=296 draws."
+      "good": "r4 blocker dead: lodge preset (yaw 12) frames the terrace side with veranda, deck railings and blue plunge pool, day and night. Stray rail geometry gone in all 8 real-GPU captures and the hide's rafter spears are gone too (same kit.beam root cause); dev beam assert silent across all 16 types. Own budget 34 draws / 131.8k tris for 25 buildings across 16 types (spec <=60/<=400k). README measured numbers reproduce exactly (291/4.53M overview, 264/3.89M lodge, gate/close/hide all render clean). 0 console errors, lint ok, night lantern glow atmospheric."
     },
     "props": {
       "wave": 2,
       "domain": "nature",
-      "round": 3,
+      "round": 4,
       "score": 7,
       "status": "fail",
       "errors": 0,
-      "drawCalls": 155,
-      "reviewedBy": "independent-critic-agent",
+      "drawCalls": 154,
+      "reviewedBy": "critic-sweep",
       "presetsSeen": [
         "overview 16.5",
         "grass 17",
@@ -532,25 +521,41 @@
       ],
       "issues": [
         {
-          "sev": "major",
-          "text": "update() cost is 90x-175x over the 1.5ms budget on every single preset measured (132.5-262.8ms), not an occasional worst case. README discloses a 792ms grass-rebuild worst case but frames it as rare (\"not every frame\") -- in fact every preset switch IS a 14m threshold crossing, so this expensive rebuild fires on every preset load, every time. In the live game this is a repeated stutter on every camera pan/jump that crosses a chunk boundary."
+          "sev": "resolved",
+          "text": "FIXED post-round (3fba5b4/9d0d964) and orchestrator-verified: tuft mats re-tinted to terrain photo-layer means + full-cell jitter breaks the rows (fix-props-grass-v1.png / fix-props-close-v1.png); tri-over-budget disclosed as-is | was: Hard-edged dark-olive tuft ground-mat polygons are scattered across the sward (worst at grass/close range; visible in animals', park's and savannah's close frames too) — the tuft 'mat' quads' baked colour no longer matches terrain's new photo ground layers. Re-solve the mat albedo against the current layer means or alpha-fade mats in LOD0."
+        },
+        {
+          "sev": "resolved",
+          "text": "FIXED post-round (3fba5b4/9d0d964) and orchestrator-verified: tuft mats re-tinted to terrain photo-layer means + full-cell jitter breaks the rows (fix-props-grass-v1.png / fix-props-close-v1.png); tri-over-budget disclosed as-is | was: Tuft placement reads as regular rows/diagonal grid lines at close-to-mid range in every open-sward shot (grass, animals species/predators, park habitat). Jitter samples with the seeded RNG or rotate the grid per chunk."
         },
         {
           "sev": "minor",
-          "text": "kopje preset framed wide enough that the escarpment dominates the shot; could not clearly confirm \"thorn scrub in the cracks\" on the kopje itself at this framing."
+          "text": "Overview triangles 3.88 M remain over the spec's 3 M (disclosed); LOD1/LOD2 tuft segment-count levers unpulled."
+        },
+        {
+          "sev": "minor",
+          "text": "Dead-plant albedo reads burnt: shrubs render near-black while canopies were de-darkened; raise shrub leaf albedo to dry-savannah olive."
+        },
+        {
+          "sev": "minor",
+          "text": "props.updateMs reads 3.4-8.5 ms steady-state inside animals/park showcase frames vs 0.0 in its own presets — residual per-frame work when grass streams under other modules' staging (still 20-60x better than round 3's 132-263 ms)."
+        },
+        {
+          "sev": "minor",
+          "text": "Carried: log bark reads as noise up close; 'thorn scrub rooted in the cracks' reads only at boulder bases; kopje frame still cedes half its composition to the escarpment."
         }
       ],
-      "good": "Draw-call and triangle numbers match the README's own measurements exactly for every preset -- the most precise README-to-reproduction correspondence of any module reviewed. overview and riverine are the strongest single images reviewed in the project (naturalistic density gradients, correct silhouettes, atmospheric lighting). acacia and close demonstrate individual species/prop silhouettes precisely matching descriptions. Instancing delivers: 125-155 draws for 150k+ grass instances, comfortably inside the <=400 spec ceiling. API matches README; dispose() releases every instanced mesh; lint clean."
+      "good": "Round-3 blocker verified fixed: settled update() 0.0 ms on all nine captures (was 132-263 ms on every preset), amortised chunk queue implemented as described. Photo-scanned granite boulders with the angle-of-repose cap genuinely upgrade kopjes (real talus, no popcorn). Two-view imposters kill the dash-from-above tell — crowns read as umbrellas from altitude. Canopies no longer near-black. overview and riverine remain the project's best images. 121-154 draw calls for ~5.5k props + ~180k grass instances; zero console errors; lint ok; API/dispose match the README."
     },
     "traffic": {
       "wave": 2,
       "domain": "built",
-      "round": 4,
-      "score": 5.0,
+      "round": 5,
+      "score": 7,
       "status": "fail",
       "errors": 0,
-      "drawCalls": 155,
-      "reviewedBy": "independent-critic-agent",
+      "drawCalls": 157,
+      "reviewedBy": "critic-sweep",
       "presetsSeen": [
         "overview 16",
         "close 16.5",
@@ -562,45 +567,37 @@
       ],
       "issues": [
         {
-          "sev": "blocker",
-          "text": "close and night presets render an empty road: the hero truck is spawned driving (state drive), and after the standard 3.6 s settle it is 24 m from the camera target, out of the 11-14 m frame. Park it like spawnSighting does (_state stopped, _stopTimer 999)."
-        },
-        {
           "sev": "major",
-          "text": "README presets table does not reproduce: it says overview 11h, close 16h, sighting 16.5h beside elephants, night parked trucks at the lodge; the code has 16/16.5/17.5h, zebra, and trucks on the open road (cap 6)."
-        },
-        {
-          "sev": "major",
-          "text": "At close range the safari truck is programmer art: body reads as brown wood-grain (stretched paint fleck), no readable windscreen/glass, flat white disc hubs, grey slab canopy, box-and-sphere passengers. The spec asks for PBR paint with dust, glass, chrome."
-        },
-        {
-          "sev": "major",
-          "text": "Night: no taillights visible on a side-on truck; the body is an unlit silhouette (headlight ground pool itself is good)."
+          "text": "Vehicle reads as programmer art at the close range two presets stage: striated brown body, no readable windscreen/cab glass, flat disc hubs, slab canopy, box passengers; needs UV-scaled paint, glazed cab frame, rim detail"
         },
         {
           "sev": "minor",
-          "text": "overview at 430 m still makes vehicles invisible (disclosed)."
+          "text": "overview at 430 m shows no readable vehicle (disclosed since r3); closer default camera or labelled inset would fix the framing"
         },
         {
           "sev": "minor",
-          "text": "Sighting passengers do not visibly turn heads toward the animals (spec: head yaw)."
+          "text": "Sighting head-yaw is computed but never applied to passenger heads (spec asks for the turn)"
         },
         {
           "sev": "minor",
-          "text": "About 5 draw calls per vehicle when kinds do not share pools (15 draws for 3 vehicles), above the spec guidance of 3 per vehicle; module budget still fine."
+          "text": "~5 draw calls per vehicle when kinds do not share pools (spec guidance <=3); module budget still fine"
+        },
+        {
+          "sev": "minor",
+          "text": "Behaviour gaps (disclosed): ambient vehicles never sight-stop, no animal avoidance, single engine loop, no post-rain dust settling"
         }
       ],
-      "good": "Sighting preset staged robustly (forced stop, zebra at plausible distance, holds at 12h and 17.5h). Headlight ground pool convincing. Zero errors, updateMs 0.11-0.28 ms, no per-frame allocations, lint ok, API matches README."
+      "good": "r4 blocker dead: close/night hero trucks pinned and in frame at default settle (plus dusk/noon extras); red taillights clearly visible at night and dusk with a convincing headlight pool; README presets table now matches the code and its measured GPU numbers reproduce exactly (close 108/3.19M, night 130/3.06M, 0 errors); graphBackend 'roads'; sighting staging robust at 17.5h and 12h; 0.04-0.2 ms update, allocation-free; lint ok."
     },
     "tools": {
       "wave": 2,
       "domain": "built",
-      "round": 4,
-      "score": 5.5,
+      "round": 5,
+      "score": 7,
       "status": "fail",
       "errors": 0,
-      "drawCalls": 106,
-      "reviewedBy": "independent-critic-agent",
+      "drawCalls": 140,
+      "reviewedBy": "critic-sweep",
       "presetsSeen": [
         "overview 15",
         "road 16",
@@ -614,53 +611,41 @@
       ],
       "issues": [
         {
-          "sev": "blocker",
-          "text": "Nothing subscribes to ui's tool:request (spec line 1). Verified live: tool:request {tool:'road.gravel'} and {tool:'road'} both leave current()=select. Every toolbar and sidepanel Demolish/Sell button is dead in the real game. Fix: add a tool:request handler in init() that maps ui names (terrain.raise, road.gravel, zone.erase, building.place, animal.place, bulldoze, null) to activate()."
+          "sev": "major",
+          "text": "Held terrain stroke costs ~157 ms/frame (peak 382) in tools.update() - ~100x the 1.5 ms budget; each frame runs terrain's full afterEdit. MAX_STROKE_RISE bounds total height but not per-frame cost; needs a batched/deferred terrain edit API"
         },
         {
           "sev": "major",
-          "text": "Selection marker invisible on the close and night presets (README claim not reproduced, so cap 6 applies). updateMarker hard-codes radius 4 for buildings, which puts a 5 m ring under a ~30 m lodge. Size it from the footprint and draw with depthTest off, or outline the selected building."
-        },
-        {
-          "sev": "major",
-          "text": "A terrain drag costs ~130 ms/frame in tools.update() (preset 131 ms; eval EMA 52 after 10 frames), ~85x the 1.5 ms budget. Cause: terrain.raise() runs terrain's full afterEdit (chunk rebuild/water/texture upload) every frame. This is round 3's 'unexplained' spike. Batch/throttle brush flushes."
-        },
-        {
-          "sev": "major",
-          "text": "Road preview below CS2 grade: a flat constant-height slab cut through by terrain and grass; node discs (0.55 m) buried in grass; snap ring never shown in the road preset (snap.visible=false, README claim not reproduced); no warning for water crossings; no cost/length guide or straight mode (spec asks for both, neither is in Known gaps)."
-        },
-        {
-          "sev": "major",
-          "text": "Per-frame allocations in update(): RoadRibbon allocates new Vector3s plus a new CatmullRomCurve3 every frame, RoadTool does points.slice() and allocates a snap object, TerrainTool builds a colors literal. The README/cursors.js 'all pre-allocated' claim is false and the hard rule is broken."
+          "text": "Road tool missing spec bullets: no length/cost readout, no straight/curve mode, no water-crossing warning (now disclosed in Known gaps, still unimplemented)"
         },
         {
           "sev": "minor",
-          "text": "Undoing a placement leaves world.selection pointing at the deleted id (verified: b_2 after gate undo). The README claims it is cleared."
+          "text": "Snap ring and 0.55 m node markers unresolvable at the road preset's camera distance (ring live-verified visible at the committed node, but ~2 px in frame); needs a closer camera or screen-space sizing"
         },
         {
           "sev": "minor",
-          "text": "Selection marker position is cached once, so it does not follow a moving animal (verified: zebra moved 4.31 m and the marker stayed behind)."
+          "text": "Grade-warning red path (>12%) never demonstrated in any preset or capture"
         },
         {
           "sev": "minor",
-          "text": "Showcase honesty: 2 zebras released, not 3. The three 'raise' clicks add only 0.083 m each, so the overview shows no raised ground. The README says there is no spend API, but simulation.spend(amount, reason) exists; common.js still writes economy.cash directly and bypasses the spend log."
+          "text": "Shift+wheel radius adjust conflicts with CameraRig zoom (core request pending); keyboard brackets/comma/period are the reliable path"
         },
         {
           "sev": "minor",
-          "text": "(cross-module, buildings) The ghost preview renders as unsorted stacked translucent layers with no outline. Validity colouring reads fine."
+          "text": "Undo/redo of road/building/animal actions mints new entity ids (documented; positions/kinds restore correctly)"
         }
       ],
-      "good": "Undo/redo round-trips exactly (terrain heights to 3 decimals, cash to the dollar, 9/9 ops); Ctrl+Z/Y work via input:key. Two-press Delete confirm works as documented. The terrain ring cursor is clean. canPlace validity colouring is correct. Zero console errors; ≤5 own draw calls."
+      "good": "r4 blocker cleared: tool:request bridge verified live in showcase AND full game with the full ui vocabulary; selection marker footprint-sized, draped, visible day and night; snap ring live-verified marking the committed snapped node; 3 zebras released (r4: 2); full undo/redo round trip exact with selection cleared the moment a selected entity is removed; preview paths allocation-free; ribbon conforms to terrain; bounded strokes; 0 console errors in 8 real-GPU captures; ~5 own draw calls."
     },
     "savannah": {
       "wave": 3,
       "domain": "nature",
-      "round": 6,
-      "score": 6.0,
-      "status": "fail",
+      "round": 7,
+      "score": 7.5,
+      "status": "near-pass",
       "errors": 0,
-      "drawCalls": 228,
-      "reviewedBy": "independent-critic-agent",
+      "drawCalls": 307,
+      "reviewedBy": "critic-sweep+orchestrator-verification",
       "presetsSeen": [
         "overview 16.5",
         "close 16",
@@ -678,45 +663,45 @@
       ],
       "issues": [
         {
-          "sev": "major",
-          "text": "Two preset descriptions not reproduced (caps at 6): storm promises a dark sky but the pitch-22 aerial frames only a thin pale haze strip; night promises moonlit hippos at the waterhole with the herd asleep beyond, but the only hippo is a frame-edge blob in foreground grass, no herd is identifiable and there is no moon glitter path."
+          "sev": "resolved",
+          "text": "FIXED post-round (3fba5b4/9d0d964) and orchestrator-verified: camera pitch 22->6 puts the grey deck and rain shafts in frame (fix-sav-storm-v1.png); description reworded to delivered truth | was: Cap trigger (second round): storm's 'dark sky, rain approaching' is still not in frame — the pitch-22 aerial from 330 m shows only a pale-grey haze strip; rain streaks improved but no dark front anywhere. Lower pitch to 4-8 degrees and frame the front, or rewrite the description."
+        },
+        {
+          "sev": "resolved",
+          "text": "FIXED post-round (3fba5b4/9d0d964) and orchestrator-verified: hippo pod re-placed at the lens-side waterline; two hippos readable against the pan at 22 h (fix-sav-night-v6.png, -3h.png) | was: Cap trigger (second round): night still has no legible hippos at the waterhole at 22 h or 3 h — the only identifiable hippo is a pink frame-edge blob in the grass; 'moon glitter path' is a faint sheen; 'herd asleep beyond' is three pale blobs. Stage half-submerged hippos on the lens side with hold, or rewrite."
+        },
+        {
+          "sev": "resolved",
+          "text": "FIXED post-round (3fba5b4/9d0d964) and orchestrator-verified: pride re-staged at ~11 m three-quarter front-lit with boulder backdrop (fix-sav-kopje-v2.png); README states the asset facts (all-maned, standing) | was: kopje claims no longer survive the animals asset swap: README promises 'the male three-quarter front-lit at ~8 m against the boulder backdrop, lionesses resting around him' — the shot shows three standing fully-maned MALES in open grass at ~30-40 m, no boulder backdrop (glTF pool has one maned male mesh, no female/rest variant; camera march landed far beyond 8 m). Re-stage around the actual mesh or request a female variant; rewrite the row."
         },
         {
           "sev": "major",
-          "text": "Night waterhole still glows. The terrain 09-22 fix removed the uniform fill, but a thick blotchy cream shoreline glint ring remains at 22 h and 3 h (mean luma 64, max 168, vs grass 7): the brightest thing below the horizon. Needs a terrain request."
-        },
-        {
-          "sev": "major",
-          "text": "Preset subjects read as CG or programmer art. kopje male lion at ~8 m is a box-and-cylinder body with a polygon-paper mane (a lioness reads as a dog). The hero flagship shows the herd as ~15 grey blobs with the bottom 55% of frame empty uniform grass. Needs a closer, lower hero lens with a foreground element, a kopje camera pulled back, and an animals request."
-        },
-        {
-          "sev": "major",
-          "text": "Water is a flat opaque plane in daylight: river spends half its frame on featureless dark-olive water with cast shadows and no reflections; the waterhole is a brown mud disc with no sky reflection at 8 h."
+          "text": "hero still buries its subject: herd reads as ~20 small pale/dark blobs at 200+ m with the bottom ~45% of the flagship frame empty grass (tod-independent, verified at 12 h). March the lens to 60-100 m from the herd, pitch 3-5 degrees, foreground element in the lower third."
         },
         {
           "sev": "minor",
-          "text": "overview: a hard-edged polygonal near-field grass/LOD footprint reads as a fenced field from 780 m."
+          "text": "overview from 780 m: heavy uniform haze plus a hard-edged polygonal near-field grass footprint and a straight fog-band boundary (props/terrain levers or re-aim)."
         },
         {
           "sev": "minor",
-          "text": "dawn: lens just above the canopy, so 60% of the frame is jagged alpha leaf cards; no river and no real mist, contrary to the description."
+          "text": "dawn still places the lens just above the canopy: >50% jagged dark alpha leaf cards, mist reads as orange haze only, river barely visible — 'heavy dawn mist' not delivered."
         },
         {
           "sev": "minor",
-          "text": "README Measured table is stale for close/hero after the 09-24 re-stage (close 183 vs 211 draws)."
+          "text": "README Measured table stale for close/hero/kopje (pre-re-stage and pre-asset-pass numbers; measured close 199/3.37M vs table 211/4.85M, hero 275/4.29M vs 206/4.80M)."
         }
       ],
-      "good": "Round-5 wrong-scene defects genuinely fixed: close has its own grass/trunk/kopje subject (holds at 16 h and 6.5 h); hero no longer faces the sun (no glare at 17.4 h or 12 h). herd is a well-composed frame; golden-hour colour, escarpment haze layering and world layout are coherent. 0 errors on 13 captures, worst 228 draws / 5.11 M tris, lint ok, contract clean."
+      "good": "09-24 re-verification passed: close holds its own subject and hero is genuinely sun-aware with zero glare at 17.4 h and 12 h, both re-verified at extra tods. Terrain's water work transforms the module: river and waterhole now mirror sky and clouds with lit silt banks, and the r6 night shoreline glow ring is GONE at 22 h and 3 h. herd is a well-composed wildlife frame; night is legible moonlight; the world layout reads coherent at every distance. Zero console errors on all 13 captures; worst 307 draws / 4.56 M tris, inside budget; contract clean, lint ok."
     },
     "park": {
       "wave": 3,
       "domain": "nature",
-      "round": 4,
-      "score": 6,
+      "round": 5,
+      "score": 8,
       "status": "fail",
       "errors": 0,
-      "drawCalls": 364,
-      "reviewedBy": "independent-critic-agent",
+      "drawCalls": 422,
+      "reviewedBy": "critic-sweep",
       "presetsSeen": [
         "overview 15 (retest after a one-off 320x180 flake)",
         "gate 9",
@@ -729,28 +714,36 @@
       "issues": [
         {
           "sev": "major",
-          "text": "habitat preset shows an entirely different scene than its description -- a river/gallery view instead of the plains-grazer habitat with fence/hide/zebra/wildebeest/impala. The dedicated demonstration of the \"4 fenced habitats\" headline feature does not show one. Same per-seed camera-anchor idiom as savannah, where an analogous (less severe) mismatch was found independently this round -- likely a systemic weakness, not two unrelated one-offs."
-        },
-        {
-          "sev": "major",
-          "text": "close preset shows a wide establishing view, not the promised lodge-veranda close-up with visible pool -- the lodge assets exist (confirmed in lodge/night presets) but this preset's camera does not frame them as described."
+          "text": "The habitat preset — the dedicated demo of the headline '4 fenced habitats' feature — shows its herd at 130 m where the named zebra/wildebeest/impala read as specks (species identifiable only in a 3x zoom crop). Halve the camera distance or frame across the grazing disc so animals fill the lower-middle third."
         },
         {
           "sev": "minor",
-          "text": "tour preset's safari truck not visually confirmed -- kopje subject correct but no vehicle located in frame."
+          "text": "props' grass artifacts (regular tuft rows + hard-edged dark ground-mat polygons, props round 4) dominate the habitat foreground — cross-module, but park's framing amplifies them."
         },
         {
           "sev": "minor",
-          "text": "Waterhole/pan surfaces read anomalously bright at night -- same bug independently confirmed in five other modules this round (terrain, animals, traffic, savannah); not park's own code."
+          "text": "tour's showcase truck confirmed present (4x zoom) but at the extreme right frame edge ~100 m from the kopje subject; spawn it on the near side within the framing triangle."
+        },
+        {
+          "sev": "minor",
+          "text": "Lodge close-range materials read toy-like: pool is an opaque flat-blue rectangle (buildings material, not terrain water), thatch a too-regular rib pattern, stray rail/fence lines still cross close's foreground grass (buildings round-4 finding, still visible)."
+        },
+        {
+          "sev": "minor",
+          "text": "Overview/gate sit under heavy grey-tan haze that flattens the composite at high sun; a lighter haze scalar at midday would restore colour separation."
+        },
+        {
+          "sev": "minor",
+          "text": "Disclosed and verified: two tents intrude on close's foreground corners at both tested tods."
         }
       ],
-      "good": "gate, lodge, and night all deliver exactly what their descriptions promise with real detailed construction and atmospheric lighting. Whole-park overview (once correctly captured) shows a coherent real composite built through the other modules' own APIs. Zero console errors anywhere; draw calls comfortably within budget. README documents an unusually rigorous numbers-based gameplay-fidelity verification (price elasticity, births, drought/disease/poaching/prosperity) via tools/fidelity.mjs -- not re-run this round, flagged for next pass to verify directly."
+      "good": "Both round-4 wrong-scene majors verified fixed at two tods each: habitat now shows the re-sited plains habitat with its mixed herd (no river), close frames the lodge terrace with the pool visible. gate/lodge/night deliver exactly as described; night is the best-lit frame in the project; the whole-park overview is a coherent composite built entirely through the other modules' APIs. Zero console errors on all 9 captures, worst 422 draws / 5.02 M tris, update ~0 ms; README's disclosed gaps (extra tour vehicle, tents in close, seed-generality) all verified accurate. Gameplay economy numbers and the 2026-09-25 fidelity re-run were not audited this round (out of scope for the visual pass)."
     }
   },
   "game": {
-    "round": 5,
+    "round": 6,
     "score": null,
-    "blindVisual": 6.8,
+    "blindVisual": 7.5,
     "gameplayFidelity": 8,
     "integration": {
       "loads": true,
@@ -779,8 +772,29 @@
       {
         "sev": "minor",
         "text": "game.gameplayFidelity (8.0) was not re-verified this round -- tools/fidelity.mjs not re-run due to session time budget spent on the full 15-module pass. Flagged for the next round to re-run directly."
+      },
+      {
+        "sev": "resolved",
+        "text": "VERIFIED (2026-09-25): the round-5 night-water blowout is gone on real GPU — blind6 night shots score 6.5-7.0 with dark water, lamps brightest, stars discrete."
+      },
+      {
+        "sev": "resolved",
+        "text": "VERIFIED (2026-09-25): fidelity harness all-pass on the final build — $15 break-even +$433.13/d with 11 births/0 migrations/3 lions reproduces exactly; determinism identical; bankruptcy day 17; sightings 16 vs 0; 89/89 tests; lint ok; vite build green."
+      },
+      {
+        "sev": "major",
+        "text": "Wild-night legibility now fails the other way (close-21.5 = 6.0, worst shot): near-black self-shadowed canopy/foreground hides anchor subjects away from lamps — needs a night foreground fill or staging rule."
+      },
+      {
+        "sev": "major",
+        "text": "Close-range grass squiggle mottle re-confirmed on real GPU (close-14) — round-4 close-range resolution did not hold; texture-scope work."
+      },
+      {
+        "sev": "minor",
+        "text": "Golden-hour hero shading reads plasticky (kopje males flat bright-cream, waterhole surface milky-flat) — materials/lighting pass."
       }
-    ]
+    ],
+    "savannahBlindSubset": 7.5
   },
   "history": [
     {
@@ -1213,32 +1227,32 @@
     {
       "module": "savannah",
       "round": 6,
-      "score": 6.0,
+      "score": 6,
       "by": "independent-critic-agent",
       "date": "2026-09-24"
     },
     {
       "module": "roads",
       "round": 4,
-      "score": 7.0,
+      "score": 7,
       "date": "2026-09-25"
     },
     {
       "module": "zoning",
       "round": 6,
-      "score": 6.0,
+      "score": 6,
       "date": "2026-09-25"
     },
     {
       "module": "ui",
       "round": 5,
-      "score": 7.0,
+      "score": 7,
       "date": "2026-09-25"
     },
     {
       "module": "simulation",
       "round": 6,
-      "score": 6.0,
+      "score": 6,
       "date": "2026-09-25"
     },
     {
@@ -1250,7 +1264,7 @@
     {
       "module": "traffic",
       "round": 4,
-      "score": 5.0,
+      "score": 5,
       "date": "2026-09-25"
     },
     {
@@ -1262,13 +1276,104 @@
     {
       "module": "buildings",
       "round": 4,
-      "score": 6.0,
+      "score": 6,
       "date": "2026-09-25"
     },
     {
       "module": "effects",
       "round": 4,
-      "score": 6.0,
+      "score": 6,
+      "date": "2026-09-25"
+    },
+    {
+      "module": "terrain",
+      "round": 5,
+      "score": 8,
+      "by": "critic-sweep",
+      "date": "2026-09-25"
+    },
+    {
+      "module": "environment",
+      "round": 8,
+      "score": 7.5,
+      "by": "critic-sweep+orchestrator-verification",
+      "date": "2026-09-25"
+    },
+    {
+      "module": "effects",
+      "round": 5,
+      "score": 8,
+      "by": "critic-sweep",
+      "date": "2026-09-25"
+    },
+    {
+      "module": "animals",
+      "round": 6,
+      "score": 8,
+      "by": "critic-sweep+orchestrator-verification",
+      "date": "2026-09-25"
+    },
+    {
+      "module": "props",
+      "round": 4,
+      "score": 7,
+      "by": "critic-sweep",
+      "date": "2026-09-25"
+    },
+    {
+      "module": "savannah",
+      "round": 7,
+      "score": 7.5,
+      "by": "critic-sweep+orchestrator-verification",
+      "date": "2026-09-25"
+    },
+    {
+      "module": "park",
+      "round": 5,
+      "score": 8,
+      "by": "critic-sweep",
+      "date": "2026-09-25"
+    },
+    {
+      "module": "game",
+      "round": 6,
+      "score": 7.5,
+      "by": "critic-blind-visual",
+      "date": "2026-09-25"
+    },
+    {
+      "module": "simulation",
+      "round": 7,
+      "score": 8.5,
+      "by": "critic-sweep",
+      "date": "2026-09-25"
+    },
+    {
+      "module": "zoning",
+      "round": 7,
+      "score": 8.5,
+      "by": "critic-sweep",
+      "date": "2026-09-25"
+    },
+    {
+      "module": "tools",
+      "round": 5,
+      "score": 7,
+      "by": "critic-sweep",
+      "date": "2026-09-25"
+    },
+    {
+      "module": "traffic",
+      "round": 5,
+      "score": 7,
+      "by": "critic-sweep",
+      "date": "2026-09-25"
+    },
+    {
+      "module": "buildings",
+      "round": 5,
+      "score": 7.5,
+      "by": "critic-sweep",
       "date": "2026-09-25"
     }
   ]
