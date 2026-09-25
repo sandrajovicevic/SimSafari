@@ -441,15 +441,15 @@ function buildHide(bc) {
     ti.box(s * X - 0.06 * s - 0.30, SILL, Z0 + 0.2, s * X + 0.06 * s + 0.02, SILL + 0.09, Z1 - 0.2, TILE.timber, '');
   }
 
-  // rafters + thatch. The roof is HIPPED (eave half-extents 5.55 × 4.25 incl. overhang, ridge only for
-  // |x| < 1.3), so toward the ends the roof over z = 0 drops; each rafter tops out 0.2 m under the
-  // local roof surface. A fixed WY+1.05 top pierced the hip at x = ±4 (critic buildings r4).
-  const RH = 1.55, EX = 9.2 / 2 + 0.95, EZ = 6.6 / 2 + 0.95;
+  // rafter tails: short poles from the eave line to ~1.5 m inside the walls, rising only 0.3 m, so they
+  // read under the eave and stay below the thatch. Full eave-to-ridge rafters (to WY+1.05) stood 1–2 m
+  // out of the roof — the thatch surface is lower than its nominal 1.55 m rise (critic buildings r4;
+  // confirmed 2026-09-25 by rendering with and without them).
+  const RH = 1.55;
   for (let i = 0; i < 5; i++) {
     const x = -X + i * (2 * X / 4);
-    const top = Math.min(1.05, RH * Math.min(1, (EX - Math.abs(x)) / EZ) - 0.2);
-    po.beam(x, WY - 0.02, Z0 - 0.7, x, WY + top, 0, 0.09, 0.13, TILE.pole);
-    po.beam(x, WY - 0.02, Z1 + 0.7, x, WY + top, 0, 0.09, 0.13, TILE.pole);
+    po.beam(x, WY - 0.02, Z0 - 0.7, x, WY + 0.28, Z0 + 1.5, 0.09, 0.13, TILE.pole);
+    po.beam(x, WY - 0.02, Z1 + 0.7, x, WY + 0.28, Z1 - 1.5, 0.09, 0.13, TILE.pole);
   }
   hipThatch(bc, 0, 0, 9.2, 6.6, WY + 0.02, RH, 0.95, { seg: 13, rows: 9, underside: true });
 
