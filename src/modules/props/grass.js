@@ -34,7 +34,7 @@ const STRIDE = 11;   // x,y,z, sx,sy, r,g,b, key, tilt, spare
  * Vertex colours darken the base so the field has depth without a texture; normals are bent
  * toward +Y so blades never go black when the sun is low.
  */
-function buildTuft(rng, { blades = 5, segments = 4, height = 1, width = 0.030, lean = 0.42, spread = 0.10, mat = 0 }) {
+export function buildTuft(rng, { blades = 5, segments = 4, height = 1, width = 0.030, lean = 0.42, spread = 0.10, mat = 0 }) {
   const pos = [], nrm = [], col = [], uv = [], idx = [];
   const a0 = rng.range(0, Math.PI * 2);
 
