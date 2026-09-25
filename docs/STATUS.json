@@ -261,35 +261,50 @@
     "simulation": {
       "wave": 1,
       "domain": "sim",
-      "round": 5,
-      "score": 9,
-      "status": "pass",
+      "round": 6,
+      "score": 6.0,
+      "status": "fail",
       "errors": 0,
-      "drawCalls": 2,
+      "drawCalls": 75,
       "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
-        "overview (day60)",
-        "boom (day60)",
-        "bust (day60)",
-        "close (day30)",
-        "night (day60)",
-        "test.mjs run directly"
+        "overview (15)",
+        "boom (11)",
+        "bust (17)",
+        "close (16.5)",
+        "night (21.5)",
+        "overview (6.5) extra",
+        "bust (3) extra",
+        "test.mjs 89/89 run directly",
+        "fidelity poaching re-run (byte-identical)"
       ],
       "issues": [
         {
-          "sev": "minor",
-          "text": "bust preset staff panel shows some roles still over-staffed relative to \"needed\" despite bankruptcy -- plausible (no auto-firing, player must act) but reads oddly unexplained next to the BANKRUPT stamp."
+          "sev": "major",
+          "text": "Cap trigger: boom preset claims do not reproduce -- README 38 births / ~282 arrivals/d / +$37k vs measured 32 / 308 / +$58.8k at tod 11; panel says \"happier herds breed fast\" but boom breeds fewer than overview (32 vs 46), happiness not higher, several habitat qualities lower; both hit the same 140 ceiling."
+        },
+        {
+          "sev": "major",
+          "text": "Staged showcase outcome depends on capture tod despite \"same seed -> identical numbers\" footer: overview 46 vs 42 births (15h vs 6.5h), bust 6/25/-$435k vs 5/22/-$427k (17h vs 3h); README bust row matches tod 3, not the preset tod 17. Pin the staged start hour."
+        },
+        {
+          "sev": "major",
+          "text": "Overview \"cash climbs, healthy\" rests on a single seeded viral event: same $20 park is net-negative between events (night stream -$6.5k/60d, close -$11.4k/30d, overview@6.5 declines between two viral steps)."
         },
         {
           "sev": "minor",
-          "text": "Village modelled as a staff-morale/prosperity scalar, not a physical village layer -- disclosed simplification vs SimSafari 1998."
+          "text": "Poaching targets rarity>=0.7 but in the live game animals appeal overwrites rarity, so zebra/ostrich count as high-value targets (3 of 5 events in the fidelity run). Poaching rate itself is plausible (5 events/100d vs ~3.2 expected; old 1-event run was the unlucky tail) -- report multi-seed means."
         },
         {
           "sev": "minor",
-          "text": "Visitors are aggregate counts/satisfaction, not individual agents -- disclosed, reasonable for a headless module."
+          "text": "Poaching has no lasting reputation cost (rep 0.50 -> 0.665 across 5 poaching events); bust dashboard shows frozen 66-69% satisfaction / 64% rep and 86% staff morale with 0 visitors for 50 days while still overstaffed."
+        },
+        {
+          "sev": "minor",
+          "text": "README Measured section stale ($15 break-even +$383/day vs +$627 in the 2026-09-25 park re-run; boom figures). Disclosed: village scalar, aggregate visitors, no poacher agents."
         }
       ],
-      "good": "Only module with real automated regression tests -- 89/89 passing, run directly by the critic (not taken on faith), including a determinism check and staged-population-reconciliation tests pinning the exact class of bug (silently-zeroed herd) the project has been burned by elsewhere. bust preset is a genuinely well-executed bankruptcy failure state (real stamp, visitor flatline, red happiness bars). Habitat-quality matrix (close preset) is a clear, correctly-thresholded implementation of the core spec requirement. Zero console errors across every preset; module-owned draw calls are 2; update()/tick() minimal and allocation-clean. Every claim independently checked held up."
+      "good": "89/89 deterministic tests re-run (0.7 s); fidelity poaching scenario re-run byte-identical; poaching risk model behaves per its own formula; bankruptcy state, habitat-quality matrix and drought flagging legible and correct; 0 console errors in 7 captures; ~2 own draws, ~0.01 ms/frame. Engine ~8.5 uncapped; fails on showcase claims."
     },
     "audio": {
       "wave": 1,
@@ -1097,6 +1112,12 @@
       "module": "ui",
       "round": 5,
       "score": 7.0,
+      "date": "2026-09-25"
+    },
+    {
+      "module": "simulation",
+      "round": 6,
+      "score": 6.0,
       "date": "2026-09-25"
     }
   ]
