@@ -60,7 +60,20 @@ export class RingCursor {
     this.mesh.position.set(0, 0, 0);
   }
 
-  dispose() { this.geo.dispose(); this.mat.dispose(); }
+  /** Drape the thin ring over the terrain around (pos, radius). Call when the selection changes; a flat
+   *  ring at the building's centre height was buried wherever the ground rose (critic r4 follow-up). */
+  drape(world, pos, radius) {
+    if (!pos || radius <= 6) return;
+    const a = this.thinGeo.attributes.position, b = this._thinBase;
+    for (let i = 0; i < a.count; i++) {
+      const ux = b[i * 3], uz = b[i * 3 + 2];
+      a.array[i * 3 + 1] = world.getHeight(pos.x + ux * radius, pos.z + uz * radius) - pos.y + 0.25;
+    }
+    a.needsUpdate = true;
+    this.thinGeo.computeBoundingSphere();
+  }
+
+  dispose() { this.geo.dispose(); this.thinGeo.dispose(); this.mat.dispose(); }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -119,15 +132,38 @@ export class RoadRibbon {
     this._m = new THREE.Matrix4();
     this._q = new THREE.Quaternion();
     this._s = new THREE.Vector3(1, 1, 1);
+    // one reusable curve over a fixed Vector3 pool; its arc-length table is rebuilt only when the
+    // control points actually change (so an idle cursor costs nothing and allocates nothing)
+    this._pool = [];
+    for (let i = 0; i < 40; i++) this._pool.push(new THREE.Vector3());
+    this._curvePts = [];
+    this._curve = new THREE.CatmullRomCurve3(this._curvePts, false, 'catmullrom', 0.5);
+    this._key = new Float64Array(40 * 2 + 2);
+    this._keyN = -1;
+  }
+
+  /** True (and remembers the new set) when points/width differ from the last built preview. */
+  _changed(points, width) {
+    const n = Math.min(points.length, 40), k = this._key;
+    let same = n === this._keyN && k[0] === width;
+    for (let i = 0; i < n && same; i++) same = k[1 + i * 2] === points[i].x && k[2 + i * 2] === points[i].z;
+    if (same) return false;
+    this._keyN = n; k[0] = width;
+    for (let i = 0; i < n; i++) { k[1 + i * 2] = points[i].x; k[2 + i * 2] = points[i].z; }
+    return true;
   }
 
   /** points: [{x,z}] committed + live cursor point appended by the caller. width in metres. */
   update(world, points, width, snapPoint) {
-    if (!points || points.length < 2) { this.mesh.visible = false; this.markers.count = 0; this.snap.visible = false; return; }
+    if (!points || points.length < 2) { this.hide(); return; }
+    if (!this._changed(points, width)) { this._placeSnap(world, snapPoint); return; }
     const n = Math.min(this.cap, Math.max(2, Math.min(points.length * 8, this.cap)));
     // sample a Catmull-Rom curve through the points at (x, height, z)
-    const curvePts = points.map((p) => new THREE.Vector3(p.x, world.getHeight(p.x, p.z) + 0.12, p.z));
-    const curve = new THREE.CatmullRomCurve3(curvePts, false, 'catmullrom', 0.5);
+    const m = Math.min(points.length, this._pool.length);
+    this._curvePts.length = 0;
+    for (let i = 0; i < m; i++) this._curvePts.push(this._pool[i].set(points[i].x, world.getHeight(points[i].x, points[i].z) + 0.12, points[i].z));
+    const curve = this._curve;
+    curve.needsUpdate = true;
     const pos = this.geo.attributes.position.array;
     const col = this.geo.attributes.color.array;
     const half = width * 0.5;
@@ -139,8 +175,10 @@ export class RoadRibbon {
       const px = -_v1.z, pz = _v1.x;
       const y = world.getHeight(_v0.x, _v0.z) + 0.12;
       const li = i * 2 * 3;
-      pos[li] = _v0.x + px * half; pos[li + 1] = y; pos[li + 2] = _v0.z + pz * half;
-      pos[li + 3] = _v0.x - px * half; pos[li + 4] = y; pos[li + 5] = _v0.z - pz * half;
+      // each edge follows the terrain under it (a flat cross-section let slopes cut through the ribbon)
+      const lx = _v0.x + px * half, lz = _v0.z + pz * half, rx = _v0.x - px * half, rz = _v0.z - pz * half;
+      pos[li] = lx; pos[li + 1] = Math.max(y, world.getHeight(lx, lz) + 0.12); pos[li + 2] = lz;
+      pos[li + 3] = rx; pos[li + 4] = Math.max(y, world.getHeight(rx, rz) + 0.12); pos[li + 5] = rz;
       // grade at this sample: compare to the previous sample
       let grade = 0;
       if (i > 0) {
@@ -179,6 +217,10 @@ export class RoadRibbon {
     this.markers.count = count;
     this.markers.instanceMatrix.needsUpdate = true;
 
+    this._placeSnap(world, snapPoint);
+  }
+
+  _placeSnap(world, snapPoint) {
     if (snapPoint) {
       const y = world.getHeight(snapPoint.x, snapPoint.z) + 0.1;
       this.snap.position.set(snapPoint.x, y, snapPoint.z);
@@ -186,7 +228,7 @@ export class RoadRibbon {
     } else this.snap.visible = false;
   }
 
-  hide() { this.mesh.visible = false; this.markers.count = 0; this.snap.visible = false; }
+  hide() { this.mesh.visible = false; this.markers.count = 0; this.snap.visible = false; this._keyN = -1; }
 
   dispose() {
     this.geo.dispose(); this.mat.dispose();
@@ -202,6 +244,10 @@ export class SelectionMarker {
   constructor() {
     const geo = new THREE.RingGeometry(1, 1.25, 32);
     geo.rotateX(-Math.PI / 2);
+    // large selections (buildings, radius > 6 m) use a thin band: 25 % of a 25 m radius is a 6 m stripe
+    this.thinGeo = new THREE.RingGeometry(1, 1.035, 96);
+    this.thinGeo.rotateX(-Math.PI / 2);
+    this._thinBase = Float32Array.from(this.thinGeo.attributes.position.array);   // flat unit ring
     const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.name = 'tools-selection-marker';
@@ -217,9 +263,25 @@ export class SelectionMarker {
     this._t += dt;
     const pulse = 1 + Math.sin(this._t * 4) * 0.08;
     this.mesh.position.set(pos.x, pos.y + 0.15, pos.z);
-    this.mesh.scale.setScalar(radius * pulse);
+    const thin = radius > 6;
+    // thin rings are draped over the terrain (see drape()), so their local y is metres: don't scale y
+    this.mesh.scale.set(radius * pulse, thin ? 1 : radius * pulse, radius * pulse);
+    this.mesh.geometry = thin ? this.thinGeo : this.geo;
     this.mesh.visible = true;
   }
 
-  dispose() { this.geo.dispose(); this.mat.dispose(); }
+  /** Drape the thin ring over the terrain around (pos, radius). Call when the selection changes; a flat
+   *  ring at the building's centre height was buried wherever the ground rose (critic r4 follow-up). */
+  drape(world, pos, radius) {
+    if (!pos || radius <= 6) return;
+    const a = this.thinGeo.attributes.position, b = this._thinBase;
+    for (let i = 0; i < a.count; i++) {
+      const ux = b[i * 3], uz = b[i * 3 + 2];
+      a.array[i * 3 + 1] = world.getHeight(pos.x + ux * radius, pos.z + uz * radius) - pos.y + 0.25;
+    }
+    a.needsUpdate = true;
+    this.thinGeo.computeBoundingSphere();
+  }
+
+  dispose() { this.geo.dispose(); this.thinGeo.dispose(); this.mat.dispose(); }
 }

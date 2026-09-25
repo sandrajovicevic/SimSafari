@@ -117,7 +117,7 @@ visitor appeal and placement rules per type are in `catalogue.js`.
 | preset | tod | what it shows |
 |---|---|---|
 | `overview` | 16 | the whole lodge complex from the south-west: gate, lodge, restaurant, shop, ranger, workshop, clinic, tower, hide, pump, tented camp, staff village |
-| `lodge` | 17.5 | the safari lodge close: thatch, poles, plinth, deck, pool |
+| `lodge` | 17.5 | the safari lodge from the terrace (south) side at 62 m: thatch, veranda poles, plinth, deck, railings, plunge pool. Yaw 12 since 2026-09-25 — the old yaw 182 shot the back of the building (critic r4) |
 | `gate` | 10 | entrance piers, lintel, park-name board, ticket kiosk, boom |
 | `close` | 16.5 | the veranda-to-terrace stair: timber posts on stone footings, deck and stair planking, railings, stone terrace paving, plastered back wall with clerestory windows |
 | `hide` | 8 | the hide on stilts: pole legs, plank deck, reed screen walls, thatch roof with exposed rafter tails |
@@ -164,6 +164,13 @@ majority of both; they are those modules' budgets, not this one's (ARCHITECTURE.
 soft cap at 64 draw calls and props' at 400, against a 1500 total).
 
 ## Known gaps
+
+* **Stray rail geometry** (critic r4 major): thin parallel rails/lines run diagonally from the lodge deck
+  across the lawn and between lodge, restaurant and field — still visible in `lodge` (2026-09-25).
+  Suspected `railing()`/`beam()` calls with mis-ordered endpoints; not yet fixed.
+* **Terrace sits low in the terrain** (slab top 0.12 m, grass pokes through near the pool), **close-range
+  surfaces read as programmer art** (grid paving, flat white plaster, smooth grey posts) and **thatch
+  reads as uniform stacked slats** — all critic r4, open.
 
 * **`findSite()` cannot always give every building perfectly flat ground.** The showcase's dense
   `canPlace()` slope check (9 points across each footprint, pre-flatten) occasionally still rejects

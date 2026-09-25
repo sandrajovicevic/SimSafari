@@ -242,6 +242,14 @@ vec4 shade(vec2 uv){
     this.stats.spawned++;
   }
 
+  /** Live emitted particles (ambient motes excluded). Counted on demand, not per frame. */
+  countAlive() {
+    let n = 0;
+    for (let i = this.ringStart; i < this.capacity; i++) if (this.time - this.info[i * 4] < this.info[i * 4 + 1]) n++;
+    this.stats.alive = n;
+    return n;
+  }
+
   /** Dust puff at ground level. amount ≈ 1 for a wheel/hoof, dir optional {x,z} or Vector3 for a travel direction. */
   spawnDust(x, z, amount = 1, dir = null) {
     if (!this.enabled) return;

@@ -10,6 +10,9 @@ const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 // flood fill: contiguous HABITAT cells -> stable habitat ids
 // ---------------------------------------------------------------------------------------------------------
 
+/** Smallest painted component that becomes a habitat: 10 cells = 160 m² (a 4 m brush dab is ~5 cells). */
+export const MIN_HABITAT_CELLS = 10;
+
 function floodComponents(world) {
   const g = world.grid, res = g.res, N = res * res, zone = g.zone;
   const visited = new Uint8Array(N);
@@ -27,6 +30,11 @@ function floodComponents(world) {
       if (cx < res - 1) { const n = c + 1; if (!visited[n] && zone[n] === ZONE.HABITAT) { visited[n] = 1; stack.push(n); } }
       if (cz > 0) { const n = c - res; if (!visited[n] && zone[n] === ZONE.HABITAT) { visited[n] = 1; stack.push(n); } }
       if (cz < res - 1) { const n = c + res; if (!visited[n] && zone[n] === ZONE.HABITAT) { visited[n] = 1; stack.push(n); } }
+      // diagonal touches join too: two painted cells meeting only at a corner are one habitat to a player
+      if (cx > 0 && cz > 0) { const n = c - res - 1; if (!visited[n] && zone[n] === ZONE.HABITAT) { visited[n] = 1; stack.push(n); } }
+      if (cx < res - 1 && cz > 0) { const n = c - res + 1; if (!visited[n] && zone[n] === ZONE.HABITAT) { visited[n] = 1; stack.push(n); } }
+      if (cx > 0 && cz < res - 1) { const n = c + res - 1; if (!visited[n] && zone[n] === ZONE.HABITAT) { visited[n] = 1; stack.push(n); } }
+      if (cx < res - 1 && cz < res - 1) { const n = c + res + 1; if (!visited[n] && zone[n] === ZONE.HABITAT) { visited[n] = 1; stack.push(n); } }
     }
     comps.push(cells);
   }
@@ -109,7 +117,11 @@ export function rebuildHabitats() {
   const ctx = Z.ctx, world = Z.world, g = world.grid;
   const oldHid = Uint16Array.from(g.habitatId);
   g.habitatId.fill(0);
-  const comps = floodComponents(world);
+  // Components under MIN_HABITAT_CELLS are paint left over where a road/river (NO_BUILD) cut a habitat,
+  // or a stroke still being painted. They keep their zone paint (the overlay still shows it) but get no
+  // habitat id: not listed, scored, fenced or counted by the sim until they grow past the threshold.
+  // Critic zoning r6: the demo park listed 12 habitats (4 real + 8 fragments of 1–3 cells, each fenced).
+  const comps = floodComponents(world).filter((cells) => cells.length >= MIN_HABITAT_CELLS);
 
   const usedOld = new Set();
   const assigned = [];

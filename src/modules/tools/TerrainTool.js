@@ -16,6 +16,8 @@
 import { COST, clamp, forEachTerrainCell, spend } from './common.js';
 import { BIOME } from '../../core/World.js';
 
+const RING_COLORS = { raise: 0x7dffb0, lower: 0xff8a5c, flatten: 0x6ec6ff, smooth: 0xffffff, paintBiome: 0xffd35c };
+
 const RADIUS_MIN = 2, RADIUS_MAX = 60;
 const STRENGTH_MIN = 1, STRENGTH_MAX = 20;
 // A stroke's cumulative |height change| is capped so a stuck button (or, under a slow/contended
@@ -60,8 +62,7 @@ export const TerrainTool = {
       else if (!dragging) endStroke(ctx, S);
     }
     // ring cursor
-    const colors = { raise: 0x7dffb0, lower: 0xff8a5c, flatten: 0x6ec6ff, smooth: 0xffffff, paintBiome: 0xffd35c };
-    S.ring.setColor(colors[S.options.mode] || 0x7dffb0);
+    S.ring.setColor(RING_COLORS[S.options.mode] || 0x7dffb0);
     if (terrain && input.groundValid) {
       S.ring.update(ctx.world, input.ground.x, input.ground.z, S.options.radius);
       S.ring.mesh.visible = true;

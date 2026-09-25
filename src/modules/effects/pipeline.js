@@ -3,7 +3,7 @@
 //   AOPass         GTAO from depth only (normals reconstructed) + Poisson denoise  [2]
 //   ResolvePass    sceneRT × AO, heat-haze refraction → composer read buffer        [1]
 //   ParticlesPass  instanced soft particles drawn over the read buffer              [1]
-//   BloomPass      threshold → 3-level mip chain → tent upsample (¼ res result)     [5]
+//   BloomPass      threshold → 4-level 13-tap mip chain → tent upsample (¼ res)     [7]
 //   GradePass      + bloom, exposure/contrast/saturation/warmth, vignette, grain    [1]
 //   FXAAPass | SMAAPass                                                             [1 | 3]
 //   OutputPass     ACES tone mapping + sRGB (renderer.toneMappingExposure)          [1]
@@ -137,9 +137,10 @@ class ParticlesPass extends Pass {
   }
 }
 
-/** Lean bloom: soft-knee threshold into a 3-level mip chain, tent-filter upsample. Result at ¼ res. */
+/** Lean bloom: soft-knee threshold + Karis-weighted 13-tap prefilter into a 4-level mip chain (13-tap
+ *  downsample), 3×3 tent upsample. Result at ¼ res. 7 draws. */
 class BloomPass extends Pass {
-  constructor(w, h, { threshold = 1.35, knee = 0.4, levels = 3, radius = 1.6 } = {}) {
+  constructor(w, h, { threshold = 1.35, knee = 0.4, levels = 4, radius = 1.0 } = {}) {
     super();
     this.needsSwap = false;
     this.levels = levels;
@@ -153,13 +154,29 @@ class BloomPass extends Pass {
     this.uDown = { tDiffuse: { value: null }, uTexel: { value: new THREE.Vector2() } };
     this.uUp = { tDiffuse: { value: null }, uTexel: { value: new THREE.Vector2() }, uRadius: { value: radius } };
     const common = { vertexShader: VERT, depthTest: false, depthWrite: false };
+    // 13-tap downsample (Jimenez, "Next Generation Post Processing in Call of Duty", 2014): five
+    // overlapping 2×2 boxes. The old 4-tap box chain left visibly square halos (critic effects r4).
+    const DOWN13 = /* glsl */ `
+vec3 box4(vec3 a, vec3 b, vec3 c, vec3 d) { return (a + b + c + d) * 0.25; }
+float karisW(vec3 c) { return 1.0 / (1.0 + max(c.r, max(c.g, c.b))); }
+vec3 down13(sampler2D t, vec2 uv, vec2 px, bool karis) {
+  vec3 A = texture2D(t, uv + px * vec2(-2.0, -2.0)).rgb, B = texture2D(t, uv + px * vec2(0.0, -2.0)).rgb, C = texture2D(t, uv + px * vec2(2.0, -2.0)).rgb;
+  vec3 D = texture2D(t, uv + px * vec2(-1.0, -1.0)).rgb, E = texture2D(t, uv + px * vec2(1.0, -1.0)).rgb;
+  vec3 F = texture2D(t, uv + px * vec2(-2.0, 0.0)).rgb, G = texture2D(t, uv).rgb, H = texture2D(t, uv + px * vec2(2.0, 0.0)).rgb;
+  vec3 I = texture2D(t, uv + px * vec2(-1.0, 1.0)).rgb, J = texture2D(t, uv + px * vec2(1.0, 1.0)).rgb;
+  vec3 K = texture2D(t, uv + px * vec2(-2.0, 2.0)).rgb, L = texture2D(t, uv + px * vec2(0.0, 2.0)).rgb, M = texture2D(t, uv + px * vec2(2.0, 2.0)).rgb;
+  vec3 b0 = box4(D, E, I, J), b1 = box4(A, B, F, G), b2 = box4(B, C, G, H), b3 = box4(F, G, K, L), b4 = box4(G, H, L, M);
+  if (!karis) return b0 * 0.5 + (b1 + b2 + b3 + b4) * 0.125;
+  // Karis average on the first level: weights each box by 1/(1+luma) so single hot pixels do not flicker
+  float w0 = karisW(b0) * 0.5, w1 = karisW(b1) * 0.125, w2 = karisW(b2) * 0.125, w3 = karisW(b3) * 0.125, w4 = karisW(b4) * 0.125;
+  return (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / (w0 + w1 + w2 + w3 + w4);
+}`;
     this.matPre = new THREE.ShaderMaterial({ ...common, uniforms: this.uPre, blending: THREE.NoBlending, fragmentShader: /* glsl */ `
 uniform sampler2D tDiffuse; uniform vec2 uTexel; uniform float uThreshold; uniform float uKnee;
 varying vec2 vUv;
+${DOWN13}
 void main() {
-  vec3 c = texture2D(tDiffuse, vUv + vec2(-1.0, -1.0) * uTexel).rgb + texture2D(tDiffuse, vUv + vec2(1.0, -1.0) * uTexel).rgb
-         + texture2D(tDiffuse, vUv + vec2(-1.0, 1.0) * uTexel).rgb + texture2D(tDiffuse, vUv + vec2(1.0, 1.0) * uTexel).rgb;
-  c = min(c * 0.25, vec3(24.0));
+  vec3 c = min(down13(tDiffuse, vUv, uTexel * 2.0, true), vec3(24.0));
   float br = max(c.r, max(c.g, c.b));
   float soft = clamp(br - uThreshold + uKnee, 0.0, 2.0 * uKnee);
   soft = soft * soft / (4.0 * uKnee + 1e-4);
@@ -169,11 +186,8 @@ void main() {
     this.matDown = new THREE.ShaderMaterial({ ...common, uniforms: this.uDown, blending: THREE.NoBlending, fragmentShader: /* glsl */ `
 uniform sampler2D tDiffuse; uniform vec2 uTexel;
 varying vec2 vUv;
-void main() {
-  vec3 c = texture2D(tDiffuse, vUv + vec2(-1.0, -1.0) * uTexel).rgb + texture2D(tDiffuse, vUv + vec2(1.0, -1.0) * uTexel).rgb
-         + texture2D(tDiffuse, vUv + vec2(-1.0, 1.0) * uTexel).rgb + texture2D(tDiffuse, vUv + vec2(1.0, 1.0) * uTexel).rgb;
-  gl_FragColor = vec4(c * 0.25, 1.0);
-}` });
+${DOWN13}
+void main() { gl_FragColor = vec4(down13(tDiffuse, vUv, uTexel, false), 1.0); }` });
     this.matUp = new THREE.ShaderMaterial({ ...common, uniforms: this.uUp, blending: THREE.AdditiveBlending, transparent: true, fragmentShader: /* glsl */ `
 uniform sampler2D tDiffuse; uniform vec2 uTexel; uniform float uRadius;
 varying vec2 vUv;
@@ -224,25 +238,38 @@ class GradePass extends Pass {
     this.needsSwap = true;
     this.uniforms = {
       tDiffuse: { value: null }, tBloom: { value: bloomTexture }, uBloom: { value: 0 },
-      uExposure: { value: 1 }, uContrast: { value: 1 }, uSaturation: { value: 1 }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uLift: { value: 0 },
-      uVignette: { value: 0 }, uGrain: { value: 0 }, uTime: { value: 0 }, uResolution: { value: new THREE.Vector2(1, 1) },
+      uExposure: { value: 1 }, uPivot: { value: 0.18 }, uContrast: { value: 1 }, uSaturation: { value: 1 }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uLift: { value: 0 },
+      uVignette: { value: 0 }, uGrain: { value: 0 }, uTime: { value: 0 }, uResolution: { value: new THREE.Vector2(1, 1) }, uNight: { value: 0 },
     };
     this.material = new THREE.ShaderMaterial({
       uniforms: this.uniforms, vertexShader: VERT, depthTest: false, depthWrite: false, blending: THREE.NoBlending,
       fragmentShader: /* glsl */ `
 uniform sampler2D tDiffuse; uniform sampler2D tBloom; uniform float uBloom;
-uniform float uExposure; uniform float uContrast; uniform float uSaturation; uniform vec3 uTint; uniform float uLift;
-uniform float uVignette; uniform float uGrain; uniform float uTime; uniform vec2 uResolution;
+uniform float uExposure; uniform float uPivot; uniform float uContrast; uniform float uSaturation; uniform vec3 uTint; uniform float uLift;
+uniform float uVignette; uniform float uGrain; uniform float uTime; uniform vec2 uResolution; uniform float uNight;
 varying vec2 vUv;
 float hash12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 void main() {
   vec3 c = texture2D(tDiffuse, vUv).rgb;
   if (uBloom > 0.0) c += texture2D(tBloom, vUv).rgb * uBloom;
   c = max(c * uExposure * uTint, vec3(0.0));
-  // contrast about middle grey (linear light, before the ACES curve in OutputPass)
-  c = 0.18 * pow(c / 0.18, vec3(uContrast));
+  // contrast about middle grey AS DISPLAYED: this pass runs before OutputPass applies
+  // renderer.toneMappingExposure (4 by day, up to 12 at night), so the pivot is 0.18 / exposure.
+  // A fixed 0.18 pivot crushed the whole night frame (linear ~0.015 before exposure) by ~15 %.
+  // Toe-protected: the curve fades to identity ~4 stops below the pivot, so deep shadows (most of a
+  // night frame) are not pulled down; contrast acts on the midtones and highlights where it reads.
+  float lp = dot(c, vec3(0.2126, 0.7152, 0.0722)) / uPivot;
+  float k = mix(1.0, uContrast, smoothstep(0.04, 0.5, lp));
+  c = uPivot * pow(c / uPivot, vec3(k));
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
   c = mix(vec3(l), c, uSaturation);
+  // Night: Purkinje-style scotopic shift. Dim areas lose colour and drift blue-grey (rod vision);
+  // lamps, fires and anything bright keep their warm colour. Driven by displayed luminance.
+  if (uNight > 0.0) {
+    float le = dot(c, vec3(0.2126, 0.7152, 0.0722)) / uPivot * 0.18;
+    float s = uNight * (1.0 - smoothstep(0.03, 0.45, le));
+    c = mix(c, vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))) * vec3(0.70, 0.90, 1.55), s * 0.6);
+  }
   c += uLift;
   // elliptical vignette, gentle
   vec2 q = vUv * 2.0 - 1.0;
@@ -406,7 +433,7 @@ export class Pipeline {
   setBloom(o = {}) { Object.assign(this.bloomParams, o); this._applyState(); }
 
   /** Per-frame inputs from the module: sun colour (linear, unnormalised ok), sun elevation factor, haze strength, ground y. */
-  setFrame({ sunColor, sunUp = 1, haze = 0, groundY = 0 }) {
+  setFrame(sunColor, sunUp = 1, haze = 0, groundY = 0) {
     const e = this.enabled, g = this.grade;
     if (e.grade && sunColor) {
       // warm tint follows the (luminance-normalised) sun colour while the sun is up; cool at night
@@ -414,10 +441,11 @@ export class Pipeline {
       const day = Math.min(1, sunUp * 12);
       const w = g.warmth;
       const tr = 1 + (sunColor.r / lum - 1) * w * day, tg = 1 + (sunColor.g / lum - 1) * w * day, tb = 1 + (sunColor.b / lum - 1) * w * day;
-      const night = 1 - day;
-      this.tint.set(tr * (1 - 0.08 * w * night), tg * (1 - 0.03 * w * night), tb * (1 + 0.12 * w * night));
+      this.tint.set(tr, tg, tb);
       this.gradePass.uniforms.uTint.value.copy(this.tint);
-    }
+      // night look: scotopic shift in the grade (sun below ~-2°: fully on)
+      this.gradePass.uniforms.uNight.value = 1 - Math.min(1, sunUp * 12);
+    } else this.gradePass.uniforms.uNight.value = 0;
     this.resolvePass.uniforms.uHaze.value = e.haze && this.tier.haze ? haze : 0;
     this.resolvePass.uniforms.uGroundY.value = groundY;
   }
@@ -434,6 +462,7 @@ export class Pipeline {
       return;
     }
     this.time += dt;
+    this.gradePass.uniforms.uPivot.value = 0.18 / Math.max(1e-4, r.toneMappingExposure);
     this.resolvePass.uniforms.uTime.value = this.time;
     this.gradePass.uniforms.uTime.value = this.time;
     this._composer.render(dt);
@@ -443,6 +472,7 @@ export class Pipeline {
   measure(scene, camera) {
     const r = this.renderer;
     r.info.reset(); r.render(scene, camera); const direct = r.info.render.calls;
+    this.gradePass.uniforms.uPivot.value = 0.18 / Math.max(1e-4, r.toneMappingExposure);
     r.info.reset(); this._composer.render(0); const chain = r.info.render.calls;
     return { direct, pipeline: chain, extra: chain - direct, msaa: this.msaaSamples, quality: this.quality, failed: { ...this.failed } };
   }
