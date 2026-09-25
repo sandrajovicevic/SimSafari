@@ -48,7 +48,7 @@ export function createWaterMaterial(ctx, heightTex, normalTex) {
     uSkyMix: { value: 1.0 }, uWaveStr: { value: 1.0 },
     // Beer–Lambert absorption for a silt/tannin-stained savannah river: blue is killed fastest,
     // so the residual colour walks from a warm ochre shallow to a near-black olive at depth.
-    uGlint: { value: 0.6 }, uGlintPow: { value: 3200.0 }, uSheen: { value: 0.0 }, uExposure: { value: 1.0 }, uReflI: { value: 1.0 },
+    uGlint: { value: 0.6 }, uGlintPow: { value: 3200.0 }, uSheen: { value: 0.0 }, uExposure: { value: 1.0 }, uDay: { value: 1.0 }, uReflI: { value: 1.0 },
     uBed: { value: new THREE.Color(0.155, 0.098, 0.042) },   // wet sand/mud seen through 0 m of water
     uBody: { value: new THREE.Color(0.030, 0.038, 0.024) },  // suspended-sediment body colour (deep asymptote)
     uExt: { value: new THREE.Vector3(1.35, 1.75, 3.10) },    // per-metre extinction, r/g/b
@@ -65,7 +65,7 @@ uniform sampler2D tHeight; uniform sampler2D tWaterN; uniform float uTime;
 uniform float uHalf; uniform float uInvCell; uniform float uInvRes;
 uniform vec3 uSkyZenith; uniform vec3 uSkyHorizon; uniform float uSkyMix; uniform float uWaveStr;
 uniform vec3 uBed; uniform vec3 uBody; uniform vec3 uExt;
-uniform float uGlint; uniform float uGlintPow; uniform float uSheen; uniform float uExposure; uniform float uReflI;
+uniform float uGlint; uniform float uGlintPow; uniform float uSheen; uniform float uExposure; uniform float uDay; uniform float uReflI;
 varying vec3 vWPos;
 vec3 gWaterN; float gFoam; float gDepth;
 ${GLSL_NOISE}`)
@@ -137,7 +137,12 @@ ${GLSL_NOISE}`)
   // the live exposure so the floor's DISPLAY brightness stays roughly constant across day/night
   // instead of tracking the night ceiling — restores the original day-only rescue without
   // reintroducing the night blowout.
-  outgoingLight += diffuseColor.rgb * 0.45 / max(uExposure, 0.3);
+  //
+  // 2026-09-25: dividing by exposure made the floor's DISPLAY brightness constant, day and night, so
+  // at night — when moonlit land falls near black — the river kept its daytime glow and read 2.5–3×
+  // brighter than ground and sky (critic terrain r4 #1). In-column scatter follows the light that is
+  // available: uDay scales it from 1 by day to 0.08 at night.
+  outgoingLight += diffuseColor.rgb * 0.45 * uDay / max(uExposure, 0.3);
   // Explicit sun glint. The material itself is left rough (0.8) so three's GGX lobe contributes almost
   // nothing — a roughness-0.15..0.45 water surface spread a blown-out highlight across half the channel.
   // Here the highlight is a single tight Blinn lobe: bright, but only a few metres wide.
@@ -162,7 +167,7 @@ ${GLSL_NOISE}`)
 }
 #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => 'terrain-water-v8';
+  m.customProgramCacheKey = () => 'terrain-water-v9';
   return m;
 }
 
@@ -182,6 +187,7 @@ export function updateWaterSky(material, world, renderer) {
   const el = hourToSunElevation(world.time.hour);
   const up = Math.max(0, Math.sin(el));
   const dusk = Math.max(0, 1 - Math.abs(up - 0.12) / 0.18); // warm band around sunrise/sunset
+  u.uDay.value = Math.max(0.08, Math.min(1, up * 4));   // daylight available for in-column scatter
   u.uSkyZenith.value.setHSL(0.6, 0.55, 0.05 + 0.45 * up);
   u.uSkyHorizon.value.setHSL(0.58, 0.4, 0.07 + 0.6 * up);
   _c.setRGB(0.9, 0.5, 0.25);
