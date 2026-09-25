@@ -120,7 +120,6 @@ void main(){
   float mu = dot(d, uSunDir);
   float sunAng = acos(clamp(mu, -1.0, 1.0));
   float discMask = 0.0;
-  float ringMask = 0.0;
   vec3 discCol = vec3(0.0);
   if (d.y < 0.0) {
     // distant savannah plain: ground albedo lit, then aerial perspective from the LUT. Converges to
@@ -148,18 +147,20 @@ void main(){
     // 4.5x is a legibility cheat (games routinely draw the sun larger than true angular size for
     // exactly this reason), tuned to read as a clear disc+corona without dominating the frame.
     const float DISC_K = 4.5;
-    float disc = 1.0 - smoothstep(0.0044 * DISC_K, 0.0050 * DISC_K, sunAng);
+    // Was a hard edge (smoothstep over only 0.0006*K rad) plus a separate post-tonemap darkening
+    // ring just outside it to fake contrast against the saturated Mie glow. At golden hour that ring
+    // is as visually distinct as the disc itself — a grey annulus between two bright regions reads as
+    // a "hollow ring", not a disc with a glow (round-4 finding, golden/17.6h). Fixed by widening the
+    // disc's own outer falloff (0.0050 -> 0.0090*K) so it fades directly into the corona; the
+    // contrast the ring used to manufacture now comes from the disc itself covering the region that
+    // used to blow out to flat white, so no separate darkening trick is needed.
+    float disc = 1.0 - smoothstep(0.0044 * DISC_K, 0.0090 * DISC_K, sunAng);
     float limb = sqrt(max(0.0, 1.0 - pow(sunAng / (0.0047 * DISC_K), 2.0)));
     float gate = uSunDiscOn * smoothstep(-0.03, 0.02, uSunDir.y + 0.02) * uDiscVis;
     // inner corona stays additive in HDR (uSunDisc already scales with cloud cover via discScale)
     col += uSunDisc * (0.06 * exp(-sunAng * 90.0 / DISC_K) + 0.012 * exp(-sunAng * 18.0 / DISC_K)) * gate;
     discMask = disc * gate;
     discCol = uSunDisc * (0.6 + 0.4 * limb);
-    // glare-recovery ring: just outside the disc the forward Mie glow is saturated white, and no
-    // additive brightness can draw a disc there. A thin (0.3-0.6 deg, scaled by DISC_K) dip in the
-    // post-tonemap glow restores the edge contrast so disc + corona read at close range.
-    // Post-exposure only — the light itself, exposure controller and PMREM are untouched.
-    ringMask = (smoothstep(0.0054 * DISC_K, 0.0066 * DISC_K, sunAng) - smoothstep(0.0088 * DISC_K, 0.0106 * DISC_K, sunAng)) * gate;
     // stars & milky way in celestial frame
     if (uNightAmount > 0.001) {
       vec3 cd = uCelestial * d;
@@ -192,9 +193,8 @@ void main(){
   #include <tonemapping_fragment>
   // sun disc, composited post-exposure with a clamped colour: the disc stays a readable white-hot
   // disc with a warm rim at any exposure instead of saturating into the Mie glow, and it can never
-  // blow the sky (it only ever brightens its own ~0.3 deg patch). uDiscVis fades both disc and ring
-  // out under thick cloud/rain so they cannot ghost through an overcast deck.
-  gl_FragColor.rgb *= 1.0 - 0.32 * ringMask;
+  // blow the sky (it only ever brightens its own patch). uDiscVis fades the disc out under thick
+  // cloud/rain so it cannot ghost through an overcast deck.
   vec3 discT = clamp(discCol / (1.0 + discCol) * 1.3, 0.0, 1.0);
   gl_FragColor.rgb = mix(gl_FragColor.rgb, discT, discMask);
   #include <colorspace_fragment>
@@ -263,14 +263,29 @@ void main(){
   float cov = uCoverage;
   float dens = cloudShape(p, cov);
   if (dens > 0.001) {
-    // cheap self shadowing: density toward the sun, 2 taps
+    // cheap self shadowing: density toward the sun, 2 taps. This is the right proxy for "is this
+    // patch of the (flat, 2D) cumulus layer behind upsun cloud mass" (low dSun = open path to the
+    // sun = a lit top/rim; high dSun = buried behind neighbours = a shadowed base).
     vec2 toSun = normalize(uSunDir.xz + vec2(1e-4, 0.0)) * (0.25 + 0.75 * (1.0 - abs(uSunDir.y)));
     float dSun = cloudShape(p + toSun * 0.012, cov) * 0.6 + cloudShape(p + toSun * 0.03, cov) * 0.4;
-    float thick = dens;
-    float shade = exp(-dSun * 2.6 * (0.6 + thick)) ;
-    float silver = pow(max(mu, 0.0), 10.0) * (1.0 - thick) * 1.6;
-    vec3 lit = uSunLight * (shade * (0.55 + 0.45 * (1.0 - thick)) + silver);
-    vec3 amb = uAmbient * (0.8 - 0.45 * thick);
+    // Root cause of the flat-mid-grey read: brightness used to be keyed on 'thick' (= dens, this
+    // sample's own local density) via (1 - thick) factors, but alpha a few lines below is ALSO
+    // driven by the same dens through 1-exp(-dens*4.5). Those two pulled against each other: the
+    // only samples with enough density to be opaque (thick -> 1) were exactly the ones the
+    // (1-thick) terms forced darkest, so the "bright top" code path never had enough alpha to be
+    // seen — every visible pixel came from the dark branch. Fixed by keying brightness on 'shade'
+    // (the actual self-shadow proxy) alone, decoupled from local density/opacity. Also softened the
+    // falloff (2.6 -> 1.1): dSun tracks this sample's own density almost as much as its upsun
+    // neighbours' (the offset is small relative to a ~0.5-1 km puff), so the old exponent collapsed
+    // shade to near-zero across nearly the whole opaque body of every puff, leaving only a sliver
+    // right at the upsun edge lit. The shallower curve still darkens genuine cores (where dSun is
+    // highest) but keeps most of a puff's sunward-facing bulk bright. Verified: cloud pixels average
+    // brighter than the surrounding sky (was ~40 sRGB points darker) at overview/14h, and golden/17.6h
+    // clouds now read with a visible warm-lit top instead of a uniform grey streak (see README).
+    float shade = exp(-dSun * 1.1);
+    float silver = pow(max(mu, 0.0), 10.0) * shade * 1.6;
+    vec3 lit = uSunLight * (0.32 + 0.68 * shade + silver);
+    vec3 amb = uAmbient * 0.55;
     // rain load darkens the whole deck (storm dim), on top of the flatter storm shading
     vec3 c = (lit + amb) * mix(1.0, 0.42, uStorm);
     float a = 1.0 - exp(-dens * 4.5);

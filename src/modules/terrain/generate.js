@@ -231,12 +231,41 @@ export function generateSavannah(world, noise, rng, opts = {}) {
         const profile = smooth(-75, 0, de) * 0.22 + smooth(0, 32, de) * 0.62 + smooth(32, 120, de) * 0.16;
         let he = escarp.height * profile;
         const cm = smooth(-6, 8, de) * (1 - smooth(30, 52, de));
-        const flute = noise.ridged2D(x / 26 + 5, z / 26 + 9, 3);
-        const flute2 = noise.ridged2D(x / 8.5 + 21, z / 8.5 + 3, 2);
-        he += cm * (7.5 * flute - 3.4) + cm * 3.4 * fb(x, z, 60, 2) + cm * 1.8 * (flute2 - 0.5);
-        // scree / talus cone at the foot: real escarpments are not a dam wall down to the plain
+        // Fluted-column fix (critic terrain r4 #2): the old flute/flute2 sampled ridged2D directly on
+        // (x, z) at a single fixed wavelength with no warp, so every groove along the whole 1024 m
+        // ridge came out the same width and spacing — a perfectly regular procedural column motif,
+        // visible at every distance, not just close range. Three changes, all gated by cm (cliff band
+        // only), none adding a draw call (same heightfield, same mesh):
+        //  1. domain-warp the sample position before feeding it to ridged2D, so groove spacing/width
+        //     drifts irregularly along and across the cliff instead of tiling at a constant period;
+        //  2. a slow along-ridge multiplier on the flute amplitude, so some stretches of cliff are
+        //     deeply fluted and others read almost smooth, rather than uniform depth everywhere;
+        //  3. a de-keyed (height-keyed) terrace term giving horizontal ledges/strata banding across
+        //     the flutes, since real escarpments read as layered rock, not just vertical grooving.
+        // The warp needs a wavelength comparable to (or shorter than) the 26 m groove period itself —
+        // a single slow large-scale warp (one tried, reverted) only shifts whole runs of grooves
+        // sideways together without changing their spacing RELATIVE to each other, so the pattern
+        // still reads perfectly periodic. Two octaves at 34 m and 130 m actually desynchronise
+        // neighbouring grooves' phase from one another.
+        const warpX = (fb(x, z, 34, 2) * 14 + fb(x, z, 130, 2) * 11) * S;
+        const warpZ = (fb(x + 51, z + 17, 22, 2) * 7 + fb(x + 9, z + 3, 90, 2) * 6) * S;
+        const fluteDepth = 0.22 + 1.3 * (0.5 + 0.5 * fb(x, 0, 260, 2));
+        const flute = noise.ridged2D((x + warpX) / 26 + 5, (z + warpZ) / 26 + 9, 3);
+        const flute2 = noise.ridged2D((x + warpX * 1.6) / 8.5 + 21, (z + warpZ * 1.6) / 8.5 + 3, 2);
+        he += cm * fluteDepth * (7.5 * flute - 3.4) + cm * fluteDepth * 3.4 * fb(x, z, 60, 2) + cm * fluteDepth * 1.8 * (flute2 - 0.5);
+        // horizontal ledges/strata: a terrace pattern keyed on de (monotonic with height across the
+        // cliff band) rather than x, so bands run along the ridge; period drifts slowly along x and
+        // jitters slightly with a small-scale noise so ledges are not perfectly parallel lines.
+        const stratPeriod = 7 + 2.5 * fb(x + 300, z, 260, 2);
+        const stratPhase = de / stratPeriod + 0.6 * fb(x, z, 40, 2);
+        const strat = Math.pow(Math.sin(stratPhase * Math.PI * 2) * 0.5 + 0.5, 2.2) - 0.35;
+        he += cm * 4.2 * strat;
+        // scree / talus cone at the foot: real escarpments are not a dam wall down to the plain.
+        // Warped ridged sampling plus a worley boulder-clump term breaks up what used to be a smooth
+        // uniform cone into irregular rockfall lobes.
         const tal = smooth(-62, -6, de) * (1 - smooth(-6, 14, de));
-        he += tal * (4.5 + 3.2 * noise.ridged2D(x / 15 + 21, z / 15 + 7, 2) + 1.2 * fb(x, z, 30, 2));
+        const talClump = Math.max(0, 1 - noise.worley2D(x / 20 * S + 4, z / 20 * S + 9) - 0.25);
+        he += tal * (4.5 + 3.2 * noise.ridged2D((x + warpX * 0.6) / 15 + 21, (z + warpZ * 0.6) / 15 + 7, 2) + 1.2 * fb(x, z, 30, 2) + 5.0 * talClump);
         const pl = smooth(30, 120, de);
         he += pl * (4 * fb(x, z, 150, 3) + 1.5 * noise.ridged2D(x / 40 + 1, z / 40 + 2, 3));
         he += smooth(-70, 0, de) * (1 - smooth(0, 20, de)) * 1.2 * fb(x, z, 9, 2);

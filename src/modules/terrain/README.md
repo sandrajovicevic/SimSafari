@@ -155,8 +155,31 @@ Terrain + water draw calls: 16 chunk meshes (4×4, always resident) + 1 water me
   brightness stayed at its daytime level all night. It now also scales with a daylight factor `uDay`
   (1 by day, 0.08 at night). Verified: `terrain-night-21_5.png` and `game-overview-21_5.png` show dark
   water with a faint sky reflection, lamps the brightest points; `terrain-river-auto.png` (9 h)
-  unchanged. Still open from the same review: the escarpment's repeating fluted motif (#2) and
-  illegible ripples (#3).
+  unchanged. Still open from the same review: illegible ripples (#3, see below).
+
+* **Escarpment fluted-column motif broken up, 2026-09-25** (critic r4 #2: uniform, equal-width
+  vertical grooves the full length of the ridge). Root cause: `flute`/`flute2` in `generate.js` fed
+  `ridged2D` a raw, unwarped `(x, z)` at a single fixed wavelength (26 m), so every groove along the
+  whole 1024 m ridge came out the same width and spacing — visible at every distance tested, not just
+  close range, exactly as the critic found. Fixed with three changes, all gated by the existing cliff
+  mask (`cm`), same heightfield/mesh, no new draw call:
+  1. domain-warp the sample position before `ridged2D`, using two warp octaves (34 m and 130 m —
+     comparable to the groove period itself, not just a slow large-scale shift, which was tried first
+     and only moved whole runs of grooves sideways together without changing their relative spacing);
+  2. a slow along-ridge multiplier (0.22×–1.5×) on flute amplitude so some stretches read deeply
+     fluted and others read almost smooth, instead of uniform depth everywhere;
+  3. a `de`-keyed (height-keyed) terrace term giving horizontal ledges/strata banding across the
+     flutes, and a worley boulder-clump term added to the talus cone at the base for irregular
+     rockfall lobes instead of a smooth uniform cone.
+  Verified with a same-camera before/after pixel diff (8.7% of pixels changed by >6/255, up to 157/255
+  in places) and by eye at both showcase distances: `escarpment` preset
+  (`tools/shots/terrain-escarpment-auto.png`, post-fix) now shows a visibly jagged, irregular skyline
+  and varying groove width/depth instead of a uniform comb, and `overview`/15h
+  (`tools/shots/terrain-overview-15.png`) confirms it at the module's other standard distance. This is
+  a heightfield-geometry fix (`generate.js`), not a shader/material change — the fluting is real
+   relief, not a texture pattern. **Still open**: at very close range (<3 m) the underlying ridged noise
+  is still recognisable as noise rather than true stratified rock, and no vegetation/talus breakup
+  from other modules (props) was added — out of this module's scope.
 
 * **Two-scale texture repeats are broken up, not eliminated.** The round-3 rotations, warps and
   masks stop the 3.7 m grass stamp and the dirt crack lattice from reading as motifs (verified
@@ -182,9 +205,10 @@ Terrain + water draw calls: 16 chunk meshes (4×4, always resident) + 1 water me
   camera distance; the spec's "optional LOD for far chunks" was not implemented. Not currently a
   budget problem (35–44 draw calls vs. a 64 soft cap), but a far/overview camera pays the same
   per-vertex cost as a close one.
-* **Escarpment fracture pattern is fbm/ridged-noise-driven**, not a true stratified rock-layer model;
-  it reads well at the showcase distances used here but would not hold up to a slow close flythrough
-  along the whole 1024 m ridge.
+* **Escarpment fracture pattern is fbm/ridged-noise-driven**, not a true stratified rock-layer model.
+  The repeating-column artifact this used to produce at showcase distances is fixed (see above,
+  2026-09-25); what remains is that a slow close flythrough along the whole 1024 m ridge would still
+  reveal the underlying noise as noise rather than distinct rock strata.
 * **Water is a flat-shaded per-cell mesh** (built only where the heightfield dips near a body's
   level), not a continuous surface with wave geometry — ripples are entirely a normal-map effect, so
   silhouette/edge waves are absent.

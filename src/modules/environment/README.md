@@ -96,10 +96,41 @@ SwiftShader software GL (fps is not representative; draws/tris/errors are real).
   the dashes vanish and the stars are points. At fair-weather coverage only noise peaks pass the
   threshold, and at the old sample scale (0.00021/m) those were ~150 m flecks that foreshorten into
   rows of dashes, by day too. Scale is now 0.00009/m: fewer, larger puffs (`env-after-overview.png`,
-  `env-after-golden.png`), night sky mostly points (`env-after2-night.png`). **Still open:** daytime
-  cumulus read flat mid-grey rather than white tops over grey bases (softening the 2-tap self-shadow
-  made no visible difference and was reverted), and the golden-hour sun disc renders as a hollow
-  white ring (`env-after-golden.png`, top left).
+  `env-after-golden.png`), night sky mostly points (`env-after2-night.png`).
+
+* **Cumulus flat-mid-grey and hollow sun-disc ring, fixed 2026-09-25** (iter-3 builder). Both were
+  measured before touching anything (`tools/shots/environment-overview-14.png`, pre-fix, cloud
+  pixels ~40 sRGB points *darker* than the surrounding sky).
+  - **Cumulus**: the self-shadow/brightness math keyed brightness on `thick` (= `dens`, the sample's
+    own local density) via `(1 - thick)` factors, but alpha a few lines below is *also* driven by the
+    same `dens` (`1 - exp(-dens*4.5)`). Those pulled against each other — the only samples with
+    enough density to be opaque (`thick -> 1`) were exactly the ones `(1 - thick)` forced darkest, so
+    the "bright top" code path never had enough alpha to be seen; every visible pixel came from the
+    dark branch. Separately, the self-shadow sample (`dSun`, offset a short distance toward the sun
+    in the same noise field) tracks a puff's own density almost as much as its neighbours' at a
+    puff's ~0.5-1 km scale, so the old shadow exponent (2.6) collapsed brightness to near-zero across
+    nearly the whole opaque body, leaving only a thin sunward sliver lit. Fixed by keying brightness
+    on the self-shadow term alone (decoupled from local density/alpha) and softening its falloff
+    (2.6 → 1.1) so most of a puff's sunward bulk stays bright. Verified: cloud pixels now average
+    *brighter* than the surrounding sky at `overview`/14h (was the reverse), and `golden`/17.6h
+    cumulus show a visible warm-lit top instead of a uniform grey streak
+    (`tools/shots/environment-overview-14.png`, `tools/shots/environment-golden-17_6.png`,
+    post-fix). `overcast`/`storm` decks re-verified unchanged (`tools/shots/environment-overcast-13.png`,
+    `tools/shots/environment-storm-15.png`); `night`/22h clouds re-verified still dim
+    (`tools/shots/environment-night-22.png`) — the moonlit branch replaces `uSunLight` entirely and
+    ambient is near-zero at night, so neither touched constant affects it.
+  - **Sun disc**: the "glare-recovery ring" (a post-tonemap darkening band just outside the disc,
+    added 2026-09-14 for the `close` preset) was a flat-plateaued trapezoid — full-strength constant
+    darkening between two radii, not a graded falloff. At golden hour, where the corona isn't fully
+    saturated white to begin with (unlike the close-range case it was tuned against), that flat grey
+    annulus reads as distinctly as the disc itself: a bright core, a grey ring, a bright corona —
+    "hollow ring", not a disc with a glow. Fixed by removing the separate darkening trick entirely
+    and instead widening the disc's own outer falloff (0.0050 → 0.0090 · `DISC_K`) so it fades
+    directly into the corona; the contrast the ring used to manufacture now comes from the disc
+    itself covering the region that used to blow out flat. Verified at `golden`/17.6h (ring gone,
+    smooth glow — `tools/shots/environment-golden-17_6.png`) and re-checked `dawn`/6.3h and
+    `close`/17h for regressions (both still show a clean legible disc+halo,
+    `tools/shots/environment-dawn-6_3.png`, `tools/shots/environment-close-17.png`).
 
 * **Single-scattering only** — no multiple scattering, so the sky directly anti-sunward at twilight
   is darker than reference photography; the phase function partly fakes the wide glow.
