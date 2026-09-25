@@ -13,13 +13,13 @@ const LODGE_TARGET = [-50, -60];
 const GATE_TARGET = [-225, -80];
 const HABITAT_TARGET = [110, 110];
 const HABITAT_RADIUS = 48;
-const ANIMAL_SPOTS = [[95, 95], [125, 118], [105, 135]]; // inside the painted habitat above
+const ANIMAL_SPOTS = [[95, 95], [125, 118], [112, 106]]; // inside the painted habitat above ((105,135) was refused: only 2 released, critic r4)
 
 export const presets = {
   overview: {
     camera: { target: [40, 60], distance: 640, pitch: 60, yaw: 14 },
     tod: 15,
-    description: 'after the scripted build session: raised ground, a gravel road, a lodge + gate, a painted habitat with zebras',
+    description: 'after the scripted build session: a gravel road with its bridge, a lodge + gate, a painted habitat with zebras',
   },
   road: {
     camera: { target: [270, -40], distance: 145, pitch: 24, yaw: 40 },
@@ -92,9 +92,9 @@ async function runScriptedSession(ctx) {
   // 1) terrain: raise at 3 points
   if (terrain) {
     tools.activate('terrain', { mode: 'raise', radius: 9, strength: 5 });
-    // one click applies strength/60 m (8 cm at strength 5 — invisible from 640 m, critic r4); 24 clicks
-    // per point build a ~2 m mound the overview can actually show
-    for (const [x, z] of TERRAIN_PTS) for (let k = 0; k < 24; k++) { simDown(ctx, x, z); simUp(ctx, x, z); }
+    // one click applies strength/60 m (~8 cm): exercises the tool + undo stack, not visible from the
+    // 640 m overview camera (the live mound is what the `terrain` preset shows)
+    for (const [x, z] of TERRAIN_PTS) { simDown(ctx, x, z); simUp(ctx, x, z); }
   }
 
   // 2) road: draw with 5 points, gravel

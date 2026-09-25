@@ -172,7 +172,7 @@ zebras inside the painted habitat. Then each preset leaves a different tool live
 
 | preset | tod | what it shows |
 |---|---|---|
-| `overview` | 15 | wide shot after the scripted session: the raised ground, the curving gravel road and its bridge, the gate, the lodge, and the painted habitat |
+| `overview` | 15 | wide shot after the scripted session: the curving gravel road and its bridge, the gate, the lodge, and the painted habitat. The three scripted terrain raises are single clicks (~8 cm each) — they exercise the tool and undo stack but are not visible at 640 m |
 | `road` | 16 | road tool **live**: a new paved path snapped onto the end of the committed gravel road (node-snap), with the preview ribbon, per-segment grade colouring, and the cyan snap-indicator ring |
 | `terrain` | 16.5 | terrain tool **live**: the ring cursor over a mound raised by a bounded, deterministic number of applications (see Known gaps for why the drag is frame-bounded, not wall-clock-bounded) |
 | `building` | 17 | building tool **live**: the real placed lodge, plus a ghost preview nudged onto it — red (invalid: `occupied`) — demonstrating `canPlace()` validity colouring |
