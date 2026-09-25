@@ -889,7 +889,28 @@
         "text": "Golden-hour hero shading reads plasticky (kopje males flat bright-cream, waterhole surface milky-flat) — materials/lighting pass."
       }
     ],
-    "savannahBlindSubset": 7.5
+    "savannahBlindSubset": 7.5,
+    "blindVisualSwiftShader": {
+      "round": 7,
+      "date": "2026-09-25",
+      "head": "2277f8d",
+      "score": 6,
+      "savannahSubset": 6.8,
+      "comparableTo": "round 5 (6.8 / 7.0), not round 6 real GPU",
+      "report": "docs/critic/game-round7-blind.md",
+      "integratorNotes": [
+        "Assets: every capture used procedural fallbacks — public/assets/** are Git LFS pointer stubs in cloud containers (no git-lfs). Resolved in the integrator checkout 2026-09-25 via the LFS batch API; child sessions still get stubs unless they do the same. Every cloud-session animal screenshot before this date scored fallback shapes, not the authored GLBs.",
+        "Night: re-shot game close 21.5 on the same render code with real assets (tools/shots/game-close-21_5.png): very dark but terrain, trees, escarpment and the elephant herd are legible — the report’s “almost pure black” overstates it on this capture. Night is still too dark; open item, not re-scored by the integrator.",
+        "Real-GPU recapture of the round-7 protocol still owed (Z Code machine) before night exposure is retuned."
+      ],
+      "topIssues": [
+        "night legibility (blocker per critic)",
+        "LFS stubs → fallback assets",
+        "flat disc tree impostors at overview (medium)",
+        "savannah-night soft bloom cluster in sky (medium)",
+        "close-range grass scribble mottle (minor)"
+      ]
+    }
   },
   "history": [
     {
