@@ -52,7 +52,19 @@ function getProto(type) {
   const def = TYPES[type];
   const fn = def && BUILDERS[def.builder || type];
   if (!def || !fn) { S.ctx.log.warn(`[buildings] no builder for "${type}"`); return null; }
-  const bc = new BuildCtx(S.ctx.rng.fork('proto:' + type), S.ctx.noise, { parkName: S.parkName });
+  // Dev assert: a beam() longer than the type's own footprint diagonal is almost certainly a mis-
+  // ordered/mis-scaled endpoint (round 4: "stray rail geometry" — see Buf.beam()'s fix in kit.js for
+  // the actual bug that caused it). Warn, don't throw: a bad beam shouldn't take down the whole type.
+  const maxBeamLen = (def.w != null && def.d != null) ? Math.hypot(def.w, def.d) : null;
+  const bc = new BuildCtx(S.ctx.rng.fork('proto:' + type), S.ctx.noise, {
+    parkName: S.parkName,
+    maxBeamLen,
+    onLongBeam: (len, ax, ay, az, bx, by, bz) => S.ctx.log.warn(
+      `[buildings] "${type}": beam ${len.toFixed(1)}m from (${ax.toFixed(1)},${ay.toFixed(1)},${az.toFixed(1)}) `
+      + `to (${bx.toFixed(1)},${by.toFixed(1)},${bz.toFixed(1)}) exceeds the footprint diagonal `
+      + `${maxBeamLen.toFixed(1)}m — check the caller's endpoints`,
+    ),
+  });
   let info = null;
   try {
     info = fn(bc) || {};

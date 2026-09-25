@@ -26,6 +26,8 @@ precision highp float;
 uniform sampler2D uZone;
 uniform float uRes;
 uniform float uOpacity;
+uniform float uNightAmount;
+uniform float uExposure;
 varying vec2 vUv;
 varying vec3 vWorldPos;
 
@@ -50,6 +52,7 @@ void main() {
   // boundary ribbon (boundaries.js) draws the line along their interface with painted regions.
   bool paints = zid > 0.5 && zid < 3.5;
   if (!paints) discard;
+  bool isVisitor = zid > 1.5 && zid < 2.5;
 
   float here = regionKey(here4);
 
@@ -70,18 +73,59 @@ void main() {
   // marching-ants dashes and the crisp contour line are drawn by the boundary ribbon; this pass is
   // fill only. The fill still feathers out over the field's falloff instead of stopping hard.
   float fillA = 0.30 * smoothstep(0.42, 0.9, field);
+  if (isVisitor) {
+    // Thin (2-cell) corridors never reach the 5×5 kernel's 0.9 consensus, so the plain smoothstep
+    // above stays near-zero on the boardwalk and the boundary ribbon (which IS visible) reads as a
+    // smoothed line over an invisible fill (critic r6 #1). Give VISITOR cells a floor alpha keyed to
+    // a much looser threshold so a thin corridor still shows a readable tint.
+    fillA = max(fillA, 0.20 * smoothstep(0.10, 0.32, field));
+  }
 
   vec3 col = zoneColor(zid);
-  if (zid > 1.5 && zid < 2.5) {
-    // boardwalk plank read: alternating tint + a thin seam every ~1.35 m across the visitor path.
+  if (isVisitor) {
+    // Local path direction: sample same-region membership a few cells out along each cardinal axis.
+    // The axis the corridor extends further along (higher membership survival) is its long axis, so
+    // this adapts the plank seam direction to a diagonal boardwalk without a full distance-field trace
+    // (critic r6 #1 — cheapest-credible version, not a full SDF clip).
+    float ax = 0.0, az = 0.0;
+    for (int r = 1; r <= 3; r++) {
+      float fr = float(r);
+      ax += (regionKey(texture2D(uZone, vUv + vec2(fr, 0.0) * texel)) == here ? 1.0 : 0.0)
+          + (regionKey(texture2D(uZone, vUv - vec2(fr, 0.0) * texel)) == here ? 1.0 : 0.0);
+      az += (regionKey(texture2D(uZone, vUv + vec2(0.0, fr) * texel)) == here ? 1.0 : 0.0)
+          + (regionKey(texture2D(uZone, vUv - vec2(0.0, fr) * texel)) == here ? 1.0 : 0.0);
+    }
+    float alongZ = az / max(ax + az, 0.001); // 0 = corridor runs along world x, 1 = along world z
+    vec2 axis = normalize(mix(vec2(1.0, 0.0), vec2(0.0, 1.0), alongZ) + vec2(1e-4));
+    // boardwalk plank read: alternating tint + a thin seam every ~1.35 m along the local path axis.
     // fwidth-derived antialiasing keeps this from turning into moire noise at a distant/top-down camera
     // (a naive fract() seam aliases hard once the plank period drops below a pixel's world footprint).
-    float plankPos = (vWorldPos.x * 0.7 + vWorldPos.z * 0.3) / 1.35;
+    float plankPos = dot(vWorldPos.xz, axis) / 1.35;
     float pf = fract(plankPos);
     float pw = clamp(fwidth(plankPos) * 1.4, 0.01, 0.5);
     float seam = smoothstep(0.0, pw, pf) * smoothstep(1.0, 1.0 - pw, pf);
     col *= mix(0.86, 1.05, seam);
   }
+
+  // Exposure- and night-aware dimming (critic r6 #2): this fill is unlit and writes straight into the
+  // shared HDR scene buffer that effects/pipeline.js then runs through Bloom -> Grade -> ACES Output
+  // using the SAME renderer.toneMappingExposure as every lit material. Measured empirically (a fixed-
+  // colour probe fragment through the real pipeline): raw linear magnitudes as small as 0.02-0.05
+  // already read back post-pipeline as ~0.6-0.9 (i.e. near white) once multiplied by a night-range
+  // exposure (~12x) — alpha blending happens in that same HDR buffer, before tonemap, so alpha alone
+  // can't fix it; the raw colour magnitude has to come down too, proportionally more than exposure
+  // goes up, or the fill outshines the tonemapped scene around it regardless of alpha.
+  float nightK = clamp(uNightAmount, 0.0, 1.0);
+  // Also caught: golden-hour/dawn, where exposure is already well above the ~0.75 noon baseline before
+  // uNightAmount turns on (critic r6: "neon mint over orange dawn grass" at 6.5h, nightAmount 0 there).
+  float exposureLift = clamp((uExposure - 0.8) / 4.0, 0.0, 1.0);
+  float mutedK = max(nightK, exposureLift);
+  vec3 dimCol = col * mix(1.0, 0.05, mutedK);
+  fillA *= mix(1.0, 0.4, mutedK);
+  float gray = dot(dimCol, vec3(0.299, 0.587, 0.114));
+  vec3 nightTint = vec3(gray * 0.85, gray * 0.92, gray * 1.08); // cool, desaturated — matches the night grade
+  col = mix(dimCol, nightTint, nightK * 0.85);
+
   gl_FragColor = vec4(col, fillA * uOpacity);
 }`;
 
@@ -146,6 +190,7 @@ export function buildOverlay(ctx) {
     uniforms: {
       uZone: { value: dataTex }, uRes: { value: res },
       uTime: { value: 0 }, uOpacity: { value: 1 },
+      uNightAmount: { value: 0 }, uExposure: { value: 1 },
     },
     transparent: true, depthWrite: false, depthTest: true,
     polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6,
@@ -161,8 +206,13 @@ export function buildOverlay(ctx) {
   mesh.visible = Z.overlayOn;
   Z.group.add(mesh);
 
-  // smooth boundary ribbon (one extra draw call); shares the fill's uTime uniform object
-  const lineMat = createBoundaryMaterial(material.uniforms.uTime);
+  // smooth boundary ribbon (one extra draw call); shares the fill's uTime/uNightAmount/uExposure
+  // uniform objects (same reference, so updateOverlay only needs to write one copy per frame).
+  const lineMat = createBoundaryMaterial({
+    uTime: material.uniforms.uTime,
+    uNightAmount: material.uniforms.uNightAmount,
+    uExposure: material.uniforms.uExposure,
+  });
   const lineGeo = buildBoundaryGeometry(world);
   let lineMesh = null;
   if (lineGeo) {
@@ -218,6 +268,11 @@ export function updateOverlay(dt) {
   const o = Z.overlay;
   if (!o) return;
   o.material.uniforms.uTime.value += dt;
+  // environment is optional: fall back to noon-ish defaults (no dimming) so the overlay still works
+  // when the module isn't loaded (a bare zoning showcase, or a game build without environment).
+  const env = Z.ctx?.modules?.get('environment');
+  o.material.uniforms.uNightAmount.value = env ? env.getNightAmount() : 0;
+  o.material.uniforms.uExposure.value = env ? env.getExposure() : 1;
   const rebuild = o.dirty || o.heightsDirty;
   if (o.dirty) { fillZoneData(Z.world, o.data); o.dataTex.needsUpdate = true; o.dirty = false; }
   if (o.heightsDirty) {
