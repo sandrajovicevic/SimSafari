@@ -18,7 +18,29 @@ time speed 0/1/3/10 comes from `world.time`.
   the world are written off as a counted removal, `r.left` + `totals.unmanaged`, never silently
   zeroed — the 2026-09-08 critic sweep caught the old census-copy zeroing a whole staged showcase
   herd down to the module's first spawned newborn).
-* `tables.js` — all balance numbers (species economics, staff roles/wages, arrival model constants).
+* `tables.js` — all balance numbers (species economics, staff roles/wages, arrival model constants,
+  and since Wave P1 the food web: `FOOD` herbivore need/mass, `DIET` predator prey + kg need,
+  `PREY_YIELD`, per-biome plant `SITE` suitability, `VEG` dynamics constants).
+* `vegetation.js` — the plant layer (Wave P1, `docs/specs/p1-food-web.md`). This module is the only
+  writer of `world.vegetation.cover` (64 × 64 cells of 16 m × 10 plants from `core/Plants.js`):
+  * **seeding** from terrain biomes: each cell samples its biome at 4 points → a site suitability per
+    plant (`SITE`; water and ROAD_DUST are 0). Grasses start at 60–100 % of their dry-season ceiling;
+    shrubs/trees are individuals (present with P = site × 0.6, then 50–100 % of their ceiling). Uses
+    its own `Rng('veg:<seed>')` stream so the sim's economy/population stream is untouched. Reseeded on
+    `terrain:ready` and on a whole-world `terrain:modified`;
+  * **daily growth**: logistic toward K = maxCover × rainfallFit(tier, rain) × site at rate
+    spread × fit, plus neighbour seeding (spread × fit × 0.5 × (4-neighbour mean − c) while c < K), so a
+    planted patch grows outward where the soil allows. Rain = 0.4 dry / 0.8 wet − 0.35 × drought
+    strength + 0.2 × today's weather rain. Above a (dry-season) ceiling cover dies back ≤ 10 %/day;
+  * **grazing**: per habitat and plant, pressure P = Σ over the species eating it of (herd need ÷ that
+    species' food). P ≤ 1 scales regrowth by (1 − 0.5 P); P > 1 eats the standing cover at
+    (P − 1) × 10 %/day grass, 5 % shrub, 2 % tree (≤ 50 %/day). As cover falls, food falls, P rises:
+    overgrazing runs away unless the herd shrinks — that is the intended feedback;
+  * **food-coupled capacity** (sim.js `_capacity`): herbivores `min(area/space, food ÷ need)` with
+    food = Σ cells Σ plants attracting it (cover × food × 0.0256 ha); predators
+    `min(area/space, preyKg × PREY_YIELD ÷ needKg)` where preyKg is an EMA (rate 0.15/day) of the
+    live biomass of the prey in their `DIET` — hunger lags the prey. Predator quality uses the same
+    lagged diet-prey count, and kills now come only from diet prey (lions no longer take elephants).
 * `worldgen.js` — synthetic park builder used by its own showcase (a self-contained park so the
   module can be screenshotted and tuned alone). The staged presets use it with a right-sized crew
   and herd (see "Presets") because the staged environment loads the real buildings catalogue
@@ -62,6 +84,15 @@ replan() → plannedArrivals                        // re-plan today from the li
 injectEvent(type, opts) → event | null            // debug/harness: force 'drought' | 'disease' |
                                                   //   'poachers' through the normal event paths
 speed(n) / reset(seed) / runDays(n) / markStart()
+plant(type, x, z, radius, cover=0.25)             // plant a core/Plants.js id in a disc: cells get
+  → {ok, cost, cells, ha}                         //   cover ≥ min(cover, maxCover) on prepared ground
+                                                  //   (site ≥ 0.8); charges cost × ha via
+                                                  //   spend(…, 'plant'); refused (nothing written or
+                                                  //   charged) when cash < cost; emits vegetation:changed
+getVegetation(x, z) → { [plantId]: cover }         // the 16 m cell at (x, z)
+getFoodReport(habitatId) → { [species]: {n, food, need, perAnimal, capacity, foodCapacity, spaceCapacity} }
+                                                  //   herbivores: food units/day (core/Plants.js unit);
+                                                  //   predators: kg/day prey offtake (lagged biomass × 0.05)
 species(name) → row / allSpecies() → row[]        // sim-side table: price, feed, vet, space, prefs
 getSim() → Simulation                             // raw instance (debugging / composers:
                                                   //   reconcileFromWorld() + markStart() after
@@ -71,7 +102,10 @@ getSim() → Simulation                             // raw instance (debugging /
 `report` shape (sim.js): `{day, cash, income, expenses, net, incomeBreakdown, expenseBreakdown,
 visitors, inParkPeak, lodgeNights, satisfaction, satisfactionBreakdown, reputation, attraction,
 population, happiness, habitats, born, died, left, predation, staff, staffCoverage, morale,
-prosperity, efficiency, spend, season, weather, loans, bankrupt, events, activeEvents}`.
+prosperity, efficiency, spend, season, weather, loans, bankrupt, vegetation, events, activeEvents}`.
+`report.habitats[id].species[s]` now also carries `spaceCapacity`, `foodCapacity`, `food`;
+`report.vegetation = {rain, changed}`; the daily step's timing is in `getState().vegetation.stepMs`
+(kept out of the report so same-seed reports stay byte-identical).
 
 Key balance numbers (tables.js): base arrivals 100/day at reputation 0.5; reference price 25 with
 elasticity 1.3 (the price factor clamps at 2.0, i.e. ≈$12 and below all arrive the same); group size
@@ -87,6 +121,8 @@ measured 0 births in the demo's first month — births per animal per day at ful
 |---|---|---|
 | `economy:updated` | emits | `{cash, income, expenses, day}` |
 | `sim:day` | emits | `{day, report}` |
+| `vegetation:changed` | emits | `{x0, z0, x1, z1}` world metres — after seeding (whole world), after `plant()` (the planted rect), and after each daily step (bounding rect of the cells where any plant moved ≥ 0.02 since the last emit; none when nothing did) |
+| `terrain:ready`, whole-world `terrain:modified` | consumes | reseed the vegetation from the (new) biomes |
 | `visitor:sighting` | consumes | `{species, vehicleId, distance}` (feeds daily sightings) |
 | `habitat:changed`, `zone:changed`, `road:added/removed/changed`, `building:placed/removed`, `terrain:modified` | consumes | habitat-quality cache invalidation |
 
