@@ -211,8 +211,8 @@
     "ui": {
       "wave": 1,
       "domain": "built",
-      "round": 4,
-      "score": 6.5,
+      "round": 5,
+      "score": 7.0,
       "status": "fail",
       "errors": 0,
       "drawCalls": 0,
@@ -224,27 +224,39 @@
         "toolbar 15",
         "close 16.5",
         "night 21.5",
-        "toolbar debug eval (extra)"
+        "toolbar 8 @1920x1080 + DOM eval (extra)"
       ],
       "issues": [
         {
           "sev": "major",
-          "text": "Toolbar active-tool pill renders a literal \"null\" as visible text (confirmed via innerHTML dump: \"<span>Building.Place</span>null<span class=\\\"muted\\\">.</span>...\"). Root cause: pill.append(...) uses the native Element.append(), which stringifies a null child, instead of the project's own append() helper in dom.js which skips null/undefined. Fires in the module's own toolbar showcase preset."
+          "text": "Animal panel Facts grid broken (panel preset, any resolution): key and value run together (\"AGE29 years\", \"SEXMale\"); \"HERDHerd #80 · 7 animals\" spills into the next cell and \"HABITATKopje Springs\" spills past the panel edge. Cause: .sf .fact .col has no display rule, so .k/.v are inline spans and the nowrap/ellipsis on inline .v does nothing. Fix: .col {display:flex; flex-direction:column}, .v {display:block}."
         },
         {
           "sev": "major",
-          "text": "Side panel can show \"0% HAPPY / Miserable\" contradicted by healthy need bars (83/50/52/65/77%) and \"Doing fine\" advice text. Root cause: animals.getHappiness(id) returns a hard 0 fallback for any id unknown to the real animals module registry -- exactly what happens for mock/showcase-injected animals (ui/mock.js writes directly into world.animals, bypassing animals.spawn()). The selected animal is also entirely absent from the 3D view for the same reason. Fires in the module's own panel showcase preset."
+          "text": "HUD surfaces overlap at 1280x720, the README's stated minimum width: in toolbar/close the minimap covers the item panel's left column and second row; in close the item panel runs under the side panel (Hippopotamus card cut off); in panel the side panel overlaps the toolbar View button. .tb-items is max-width 1180px, centred, and ignores the minimap and side panel. There is no overlap at 1920x1080."
+        },
+        {
+          "sev": "major",
+          "text": "Daily report contradicts itself: Treasury \"+$30,599 today\" vs header \"Profit $4,430\" (18,640 - 14,210). Cause: mock.js overwrites the last cash-history point with e.cash without adjusting the series; the report takes the delta from the last two points (also visible as a kink at the end of the sparkline)."
         },
         {
           "sev": "minor",
-          "text": "update()'s 0.5s refresh accumulator is wall-clock based, not frame-count based -- plausibly fires every frame under SwiftShader's slow frame time instead of twice a second, inflating measured updateMs (7.4-9.7ms EMA vs the 1.5ms/module budget); likely a measurement artifact of software GL rather than a confirmed real-hardware violation, but worth a frame-time-independent cap."
+          "text": "Active-tool pill shows the raw id \"Building.Place\" instead of \"Safari Lodge · $320,000\"; findItem does not resolve building.place with options.type, and no card is highlighted as active."
         },
         {
           "sev": "minor",
-          "text": "Empty notification panel container can appear; population/cash graph panel is a stub vs spec -- both already disclosed in the README."
+          "text": "Hover tooltip covers the item panel header hint (toolbar preset, both resolutions). All 16 building cards use the same generic house glyph."
+        },
+        {
+          "sev": "minor",
+          "text": "Selected subjects not in the 3D view (panel: orphan selection ring, no elephant; night: lodge out of frame) because mock entities are never spawned. Top-bar temperature fixed at 28° at 08:00, 15:00 and 21:30."
+        },
+        {
+          "sev": "minor",
+          "text": "Disclosed gaps still open: empty notification container can appear; graph panel is a stub. ui updateMs 2.1-2.8 ms (software GL), above the 1.5 ms guide: watch item."
         }
       ],
-      "good": "Visual/layout quality genuinely close to the Cities: Skylines II reference across overview/report/close/night. Daily report modal (canvas sparklines, income/expense breakdown, satisfaction rings, species table) is a complete, well-composed implementation. close preset shows the same panel system working correctly, proving the panel bug is a specific data-path defect not a systemic failure. Night HUD legibility excellent. Zero console errors anywhere; API matches README; dispose() thorough."
+      "good": "Both round-4 majors verified fixed at the root cause: the toolbar pill DOM readback has no stray \"null\" node, and the panel shows 68% Content consistent with its need bars. Visual language is close to CS2; the report modal is rich; night legibility is excellent. 0 console errors on 7 captures, lint clean, API matches the README, dispose() is thorough."
     },
     "simulation": {
       "wave": 1,
@@ -1079,6 +1091,12 @@
       "module": "zoning",
       "round": 6,
       "score": 6.0,
+      "date": "2026-09-25"
+    },
+    {
+      "module": "ui",
+      "round": 5,
+      "score": 7.0,
       "date": "2026-09-25"
     }
   ]
