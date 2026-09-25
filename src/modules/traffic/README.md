@@ -53,7 +53,7 @@ graphBackend() → 'roads' | 'fallback'
 | preset | tod | what it shows (from `showcase.js`, 2026-09-25) |
 |---|---|---|
 | `overview` | 16 | 6 vehicles (2 safari, ranger, 2 minibus, service) on a paved/gravel/dirt loop with a junction and two bridges — at 430 m a 4–5 m vehicle is a speck (see gaps) |
-| `close` | 16.5 | one **parked** open safari truck at ~11 m, 3/4 rear-side: tiered bench seats, 8 passengers, canopy, roof rails, spare wheel |
+| `close` | 16.5 | one **parked** open safari truck at ~11 m, 3/4 rear-side: tiered bench seats, 8 hatted passengers, canvas-tinted canopy, roof rails, spare wheel |
 | `sighting` | 17.5 | a tour truck stopped on the gravel road ~40 m from a **zebra** herd (needs `animals`; plain stop otherwise) |
 | `night` | 21.5 | the same parked truck as `close` at night: headlights lit with a warm pool on the asphalt ahead; a minibus and a ranger vehicle drive elsewhere on the loop (not in frame). The taillights read as two red lamps at the rear even from this side view — the lens geometry has wrap-around side wings and the emissive was raised (2.2 → ~6.2 at full night) after critic round 4; re-verified in `tools/shots/traffic-night-21_5-gpu.png` (2026-09-25) |
 
@@ -79,11 +79,32 @@ The `close` and `night` hero trucks are pinned (`_state = 'stopped'`, like `sigh
   inset would fix it. Not yet changed.
 * Ambient vehicles never sight-stop (only tours do); they also despawn/respawn around the player
   rather than running schedules.
-* Passengers are static figures (box torsos, sphere heads, varied clothing colours) — no arms or hats,
-  no head turn toward animals on a sighting (`_sightYaw` is computed but not applied to the heads),
-  no boarding animation, no individual visitors entering/leaving buildings.
-* **The vehicle reads as programmer art at close range** (critic round 4): striated brown body instead
-  of khaki paint, no readable windscreen/cab glass, box headlights, flat disc hubs, slab canopy.
+* Passengers are seated figures (torso, shoulders/arms, sphere head, a wide-brim hat merged into
+  every clothing instance) — but every passenger shares the **same** hat silhouette, tinted by their
+  own clothing colour rather than an independent hat palette (all instances of the clothing pool draw
+  one merged geometry, so a passenger-by-passenger hat-vs-no-hat or cap-vs-bush-hat choice would need
+  a second pool, which the module's draw-call budget has no headroom for — see `stats()` above). No
+  head turn toward animals on a sighting (`_sightYaw` is computed but not applied to the heads), no
+  boarding animation, no individual visitors entering/leaving buildings.
+* **Integrator re-check on the current pipeline (2026-09-25):** the builder session that made the
+  changes below worked from a stale pre-iteration-1 checkout, so its screenshots predate the
+  exposure-neutral effects chain. Re-shot on current `main`: hubs/lug bosses, hats, bull bar, canopy
+  trim and the night taillights (small red glows at the rear, `traffic-night-21_5.png`) all read; the
+  **body paint still reads as brown with a heavy speckle rather than clean khaki**
+  (`traffic-close-16_5.png`) — partly fixed, not done.
+* **Close-range fit and finish, addressed this round (critic round 4 #3/#4), with some corners cut:**
+  the `traffic:paint` fleck used a box's default `[0,1]` UV regardless of size, so a 6 m panel showed
+  the same low-frequency noise as a 0.3 m seat — stretched into a "wood grain" look. Fixed by mapping
+  box UVs to real metres (`scaleBoxUV` in `build.js`) and raising the bake frequency so even thin
+  panels (the 0.16 m chassis rail) show several cycles instead of a banded gradient. The safari cab
+  now has a framed, glazed windscreen and a bull bar; wheels have a dished hub with 6 lug bosses
+  (darkened for contrast against the rim — the geometry was there in an earlier attempt but too subtle
+  to read against a same-tone rim); the canopy is thicker with a dark edge-trim lip and a canvas tint
+  distinct from the painted body; taillights (and headlights, which share the same lamp geometry) got
+  wrap-around side wings so they read from a 3/4 angle, not just dead-on. **Not done:** only the
+  safari's cab got the window-frame/bull-bar treatment — `ranger`/`minibus`/`service` cabs are
+  unchanged; the paint fleck is procedural noise tuned by eye against screenshots, not a PBR paint
+  scan; the wheel dish is a stylised shape, not a real rim profile.
 * About 5 draw calls per vehicle when kinds do not share pools (15 for 3 vehicles of 3 kinds) — inside
   the module budget, above the spec's ≤3-per-vehicle guidance.
 * No vehicle–animal collision avoidance beyond slowing: a truck stops near a herd only on tour

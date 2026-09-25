@@ -121,11 +121,11 @@ SwiftShader software GL (fps is not representative; draws/tris/errors are real).
   counts identical to round 8 (44/60,218 worst case — no new passes; the banking octave reuses one
   extra texture fetch inside the existing cloud pass).
 
-* **Cumulus scale (2026-09-25).** The "stars smeared into horizontal dashes" several critics reported
-  at night were the cumulus layer, not the stars: with clouds toggled off (`setDebug({clouds:false})`)
-  the dashes vanish and the stars are points. At fair-weather coverage only noise peaks pass the
-  threshold, and at the old sample scale (0.00021/m) those were ~150 m flecks that foreshorten into
-  rows of dashes, by day too. Scale is now 0.00009/m: fewer, larger puffs (`env-after-overview.png`,
+* **Cumulus scale (2026-09-25).** At fair-weather coverage only noise peaks pass the threshold, and at
+  the old sample scale (0.00021/m) those were ~150 m flecks that foreshortened into rows of grey
+  confetti in the *daytime* sky. (This entry originally also claimed the critics' night "star dashes"
+  were this layer, based on a SwiftShader clouds-off toggle; that diagnosis was wrong — see the
+  round-8 entry: on a real GPU the night wall was the star bake.) Scale is now 0.00009/m: fewer, larger puffs (`env-after-overview.png`,
   `env-after-golden.png`). The "night sky mostly points" claim attached to `env-after2-night.png` was
   incomplete — that capture was SwiftShader; on a real GPU the dense grey-white wall still present at
   night was the star bake, not this layer (see the round-8 entry above for the real root cause and fix;

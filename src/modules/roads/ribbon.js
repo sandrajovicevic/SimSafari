@@ -296,35 +296,46 @@ export function buildRoadMeshes(graph, world, opts = {}) {
       const row = rows ? rows[arm.end] : null;
       if (!row) continue;
       Rmax = Math.max(Rmax, arm.trim || 0);
-      // gate vertices from a=+W → a=-W (increasing angle), excluding skirt verts (first/last)
+      // Gate vertices (skirt verts excluded), ordered by where they sit ACROSS the arm's outward
+      // direction: from its −90° side to its +90° side (rotating the outward direction toward the next
+      // arm by increasing angle). The old code took the row's +a/−a ends, but +a is relative to the
+      // EDGE's direction, which is reversed for arms at the edge's b end — the fillet then started from
+      // the wrong corner and cut diagonally through the junction (V notch + fan hole, critic r4 #1).
       const inner = row.desc.slice(1, -1);
-      const gate = deg === 1 ? [] : inner.slice().reverse().map((d) => ({ ...d, gate: true }));
-      // the +W and -W endpoints (for fillets); left normal n → +a side
-      const plus = inner[inner.length - 1], minus = inner[0];
-      gateSets.push({ arm, gate, plus, minus, n: { x: row.nx, z: row.nz }, d: { x: row.dx, z: row.dz }, W: arm.W });
+      const ad = arm.d, sideOf = (p) => (p.x - P.x) * -ad.z + (p.z - P.z) * ad.x;   // along rot+90(d)
+      const ordered = inner.slice().sort((p, q) => sideOf(p) - sideOf(q));
+      const gate = deg === 1 ? [] : ordered.map((d) => ({ ...d, gate: true }));
+      const plus = ordered[ordered.length - 1], minus = ordered[0];   // +90° side, −90° side
+      gateSets.push({ arm, gate, plus, minus, d: { x: ad.x, z: ad.z }, W: arm.W });
     }
     for (let i = 0; i < gateSets.length; i++) {
       const g = gateSets[i], gn = gateSets[(i + 1) % gateSets.length];
       // gate (ribbon end) — patch duplicates these with junction flag 1
       for (const d of g.gate) boundary.push({ x: d.x, y: d.y, z: d.z, a: d.a, ed: d.ed, gate: true, out: null });
-      // fillet from g.minus (a=-W, outward -n) to gn.plus (a=+W, outward +n)
-      const B = g.minus, E = gn.plus;
-      const outB = { x: -g.n.x, z: -g.n.z }, outE = { x: gn.n.x, z: gn.n.z };
+      // fillet from g's +90° corner (facing gn) to gn's −90° corner (facing g), outward normals
+      // pointing away from each road into the gap between them
+      const B = g.plus, E = gn.minus;
+      const outB = { x: -g.d.z, z: g.d.x }, outE = { x: gn.d.z, z: -gn.d.x };
       let th = gn.arm.ang - g.arm.ang;
       if (gateSets.length === 1) th = 2 * Math.PI;
       while (th <= 0) th += 2 * Math.PI;
       const pts = [];
-      if (th < Math.PI - 0.06 && deg > 1) {
-        // inside corner: quadratic bezier with control at the intersection of the two road edges
-        const Q = lineIntersect(B.x, B.z, -g.d.x, -g.d.z, E.x, E.z, -gn.d.x, -gn.d.z);
-        const ctrl = Q || { x: (B.x + E.x) * 0.5, z: (B.z + E.z) * 0.5 };
+      // Inside corner → bezier through the two road edges' intersection. The intersection must lie AHEAD
+      // along both edges (toward the node): for near-collinear legs (a gently bent road through a T) it
+      // falls behind the junction, and the curve folded the boundary into a V notch that the centre fan
+      // then triangulated as overlapping/inverted triangles — the torn patch with grass showing through
+      // (critic roads r4 #1). Such corners, and any bend within ~20° of straight, join straight instead.
+      const Qc = (th < Math.PI - 0.35 && deg > 1) ? lineIntersect(B.x, B.z, -g.d.x, -g.d.z, E.x, E.z, -gn.d.x, -gn.d.z) : null;
+      const Qok = Qc && Qc.t > 0 && Qc.u > 0;
+      if (Qok) {
+        const ctrl = Qc;
         const len = Math.hypot(E.x - B.x, E.z - B.z);
         const nS = Math.max(2, Math.ceil(len / 1.0));
         for (let k = 0; k <= nS; k++) {
           const t = k / nS, mt = 1 - t;
           pts.push({ x: mt * mt * B.x + 2 * mt * t * ctrl.x + t * t * E.x, z: mt * mt * B.z + 2 * mt * t * ctrl.z + t * t * E.z });
         }
-      } else if (Math.abs(th - Math.PI) <= 0.06 && deg > 1) {
+      } else if (th <= Math.PI + 0.06 && deg > 1) {
         const len = Math.hypot(E.x - B.x, E.z - B.z);
         const nS = Math.max(1, Math.ceil(len / 1.5));
         for (let k = 0; k <= nS; k++) { const t = k / nS; pts.push({ x: B.x + (E.x - B.x) * t, z: B.z + (E.z - B.z) * t }); }
@@ -334,7 +345,17 @@ export function buildRoadMeshes(graph, world, opts = {}) {
         let a1 = Math.atan2(E.z - P.z, E.x - P.x); const r1 = Math.hypot(E.x - P.x, E.z - P.z);
         while (a1 <= a0 + 1e-6) a1 += 2 * Math.PI;
         if (deg === 1) { a1 = a0 + Math.PI; }
-        const arcLen = (a1 - a0) * (r0 + r1) * 0.5;
+        else {
+          // Sweep through the GAP between the two arms (its bisector is g.ang + th/2), not always in
+          // the increasing-angle direction: when B/E's angles about P order the other way, the old sweep
+          // went the long way round the junction — covering the wrong side, leaving the real corner as
+          // grass and folding the centre fan into holes (critic roads r4 #1, roads-jn-top.png).
+          const bis = g.arm.ang + th * 0.5;
+          let off = (a0 + a1) * 0.5 - bis;
+          off = Math.atan2(Math.sin(off), Math.cos(off));
+          if (Math.abs(off) > Math.PI * 0.5) a1 -= 2 * Math.PI;
+        }
+        const arcLen = Math.abs(a1 - a0) * (r0 + r1) * 0.5;
         const nS = Math.max(3, Math.ceil(arcLen / 0.8));
         for (let k = 0; k <= nS; k++) {
           const t = k / nS, ang = a0 + (a1 - a0) * t, r = r0 + (r1 - r0) * t;
@@ -359,12 +380,20 @@ export function buildRoadMeshes(graph, world, opts = {}) {
       }
     }
     if (boundary.length < 3) continue;
-    // fan
+    // fan, with a mid ring halfway out whose vertices sit above the terrain beneath them: a single fan
+    // from the node's height to the ribbon ends let ground that bulges between them poke through the
+    // asphalt as grass slivers (critic roads r4 #1, roads-jn-top4.png).
     const bv = boundary.map((b) => acc.vert(b.x, b.y, b.z, b.x / rep, b.z / rep, b.a, sP, b.ed, 1));
+    const mv = boundary.map((b) => {
+      const mx = (P.x + b.x) * 0.5, mz = (P.z + b.z) * 0.5;
+      const my = Math.max((Py + b.y) * 0.5, H(mx, mz) + LIFT);
+      return acc.vert(mx, my, mz, mx / rep, mz / rep, b.a * 0.5, sP, (Wmin + b.ed) * 0.5, 1);
+    });
     for (let k = 0; k < bv.length; k++) {
-      const b0 = boundary[k], b1 = boundary[(k + 1) % bv.length];
-      if (b0.gate && b1.gate) { acc.tri(pc, bv[k], bv[(k + 1) % bv.length]); continue; }
-      acc.tri(pc, bv[k], bv[(k + 1) % bv.length]);
+      const k1 = (k + 1) % bv.length;
+      acc.tri(pc, mv[k], mv[k1]);
+      acc.tri(mv[k], bv[k], bv[k1]);
+      acc.tri(mv[k], bv[k1], mv[k1]);
     }
     // skirt ring along fillets (not gates)
     let prevOuter = -1, prevInner = -1;
@@ -401,7 +430,8 @@ function lineIntersect(px, pz, dx, dz, qx, qz, ex, ez) {
   if (Math.abs(den) < 1e-6) return null;
   const t = ((qx - px) * ez - (qz - pz) * ex) / den;
   if (t < -0.5 || t > 60) return null;
-  return { x: px + dx * t, z: pz + dz * t };
+  const u = ((qx - px) * dz - (qz - pz) * dx) / den;   // parameter along the second line
+  return { x: px + dx * t, z: pz + dz * t, t, u };
 }
 
 // ---------------------------------------------------------------------------
