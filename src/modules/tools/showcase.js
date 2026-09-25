@@ -13,7 +13,7 @@ const LODGE_TARGET = [-50, -60];
 const GATE_TARGET = [-225, -80];
 const HABITAT_TARGET = [110, 110];
 const HABITAT_RADIUS = 48;
-const ANIMAL_SPOTS = [[95, 95], [125, 118], [112, 106]]; // inside the painted habitat above ((105,135) was refused: only 2 released, critic r4)
+const ANIMAL_SPOTS = [[105, 135], [125, 118], [112, 106]]; // inside the painted habitat; (95,95) falls on a NO_BUILD cell and was refused (critic r4: only 2 released)
 
 export const presets = {
   overview: {

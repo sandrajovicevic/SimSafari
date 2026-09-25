@@ -212,8 +212,10 @@ calls and a few hundred triangles, well inside any reasonable per-module soft ca
 - **Road preview has no length/cost readout, no straight mode and no water-crossing warning** (the spec
   asks for a cost preview and straight/curve modes). The ribbon now follows the terrain under each edge
   (2026-09-25) instead of a flat cross-section, but still draws with depth test on.
-- **Selection marker**: sized from the building footprint and drawn without depth test (2026-09-25:
-  the fixed 4 m ring was hidden under the lodge); it follows walking animals every frame.
+- **Selection marker**: sized from the building footprint (half-diagonal + 1.5 m) with a thin band for
+  large radii (2026-09-25: the fixed 4 m ring sat hidden under the lodge); it follows walking animals
+  every frame. Large rings are draped over the terrain; the ring is depth-tested, so the building hides
+  the far arc of its own ring.
 
 * **Terrain stroke amount is now frame-count-capped, not truly continuous-real-time.** A raise/lower
   stroke stops accumulating height once it has moved 14 m total (`MAX_STROKE_RISE` in

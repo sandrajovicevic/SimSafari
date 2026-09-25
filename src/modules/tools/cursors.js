@@ -60,7 +60,20 @@ export class RingCursor {
     this.mesh.position.set(0, 0, 0);
   }
 
-  dispose() { this.geo.dispose(); this.mat.dispose(); }
+  /** Drape the thin ring over the terrain around (pos, radius). Call when the selection changes; a flat
+   *  ring at the building's centre height was buried wherever the ground rose (critic r4 follow-up). */
+  drape(world, pos, radius) {
+    if (!pos || radius <= 6) return;
+    const a = this.thinGeo.attributes.position, b = this._thinBase;
+    for (let i = 0; i < a.count; i++) {
+      const ux = b[i * 3], uz = b[i * 3 + 2];
+      a.array[i * 3 + 1] = world.getHeight(pos.x + ux * radius, pos.z + uz * radius) - pos.y + 0.25;
+    }
+    a.needsUpdate = true;
+    this.thinGeo.computeBoundingSphere();
+  }
+
+  dispose() { this.geo.dispose(); this.thinGeo.dispose(); this.mat.dispose(); }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -231,8 +244,11 @@ export class SelectionMarker {
   constructor() {
     const geo = new THREE.RingGeometry(1, 1.25, 32);
     geo.rotateX(-Math.PI / 2);
-    // depthTest off: a building's marker ring lies under its own walls/roof and was fully hidden (critic r4)
-    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false, depthTest: false, side: THREE.DoubleSide, toneMapped: false });
+    // large selections (buildings, radius > 6 m) use a thin band: 25 % of a 25 m radius is a 6 m stripe
+    this.thinGeo = new THREE.RingGeometry(1, 1.035, 96);
+    this.thinGeo.rotateX(-Math.PI / 2);
+    this._thinBase = Float32Array.from(this.thinGeo.attributes.position.array);   // flat unit ring
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.name = 'tools-selection-marker';
     this.mesh.frustumCulled = false;
@@ -247,9 +263,25 @@ export class SelectionMarker {
     this._t += dt;
     const pulse = 1 + Math.sin(this._t * 4) * 0.08;
     this.mesh.position.set(pos.x, pos.y + 0.15, pos.z);
-    this.mesh.scale.setScalar(radius * pulse);
+    const thin = radius > 6;
+    // thin rings are draped over the terrain (see drape()), so their local y is metres: don't scale y
+    this.mesh.scale.set(radius * pulse, thin ? 1 : radius * pulse, radius * pulse);
+    this.mesh.geometry = thin ? this.thinGeo : this.geo;
     this.mesh.visible = true;
   }
 
-  dispose() { this.geo.dispose(); this.mat.dispose(); }
+  /** Drape the thin ring over the terrain around (pos, radius). Call when the selection changes; a flat
+   *  ring at the building's centre height was buried wherever the ground rose (critic r4 follow-up). */
+  drape(world, pos, radius) {
+    if (!pos || radius <= 6) return;
+    const a = this.thinGeo.attributes.position, b = this._thinBase;
+    for (let i = 0; i < a.count; i++) {
+      const ux = b[i * 3], uz = b[i * 3 + 2];
+      a.array[i * 3 + 1] = world.getHeight(pos.x + ux * radius, pos.z + uz * radius) - pos.y + 0.25;
+    }
+    a.needsUpdate = true;
+    this.thinGeo.computeBoundingSphere();
+  }
+
+  dispose() { this.geo.dispose(); this.thinGeo.dispose(); this.mat.dispose(); }
 }

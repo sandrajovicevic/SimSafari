@@ -182,6 +182,7 @@ function updateMarker(dt) {
     // ring sized from the footprint (a fixed 4 m ring sat hidden under a 30 m lodge)
     const radius = b ? Math.hypot(b.w || 8, b.d || 8) * 0.5 + 1.5 : sel.kind === 'habitat' ? 6 : 2;
     markerTarget = { kind: sel.kind, id: sel.id, pos: pos ? { x: pos.x, y: pos.y, z: pos.z } : null, radius };
+    S.marker.drape(ctx.world, markerTarget.pos, radius);
   }
   if (sel.kind === 'animal' && markerTarget.pos) {
     // animals walk: follow the live record (written into the cached object, no allocation)
