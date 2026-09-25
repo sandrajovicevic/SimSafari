@@ -159,8 +159,8 @@
     "roads": {
       "wave": 1,
       "domain": "built",
-      "round": 3,
-      "score": 7.5,
+      "round": 4,
+      "score": 7.0,
       "status": "fail",
       "errors": 0,
       "drawCalls": 67,
@@ -172,24 +172,41 @@
         "junction 17",
         "bridge 9",
         "night 21.5",
-        "paved-closer (extra)",
-        "stats() readback (extra)"
+        "paved-close 6.5 (extra)",
+        "junction-top 12 (extra)",
+        "night 3 + water-span/stats eval (extra)"
       ],
       "issues": [
         {
-          "sev": "minor",
-          "text": "Asphalt macro-texture reads as a swirled/brushed pattern (sand-blasted concrete or fabric weave) rather than fine aggregate speckle -- visible at paved, junction, and an extra close-in angle, not a distance artifact."
+          "sev": "major",
+          "text": "3-way junction patch is geometrically broken from above: flat untextured grey slab, folded triangle flap at the node, wedge past the road edge, edge-line stubs, dashes stop, hard seam to the dirt branch (roads-critic4-junction-top-12.png)."
+        },
+        {
+          "sev": "major",
+          "text": "Showcase network lays gravel/dirt edges lengthwise along the river on 45-80 m \"bridges\" (measured wet runs 80/73/45 m vs ~30-40 m channel) - overview and the bridge hero shot showcase a lengthwise causeway, not a crossing."
         },
         {
           "sev": "minor",
-          "text": "sampleEdge(edgeId, s, out) allocates only when out is falsy and throws on a plain {x,z}-shaped object -- honestly documented but a real API sharp edge for traffic."
+          "text": "Asphalt swirl fixed, but tar is now featureless at 10 h (no repair patches despite preset description) and the crack normal web reads as dense wormy relief under grazing dawn sun."
         },
         {
           "sev": "minor",
-          "text": "Showcase network uses fixed control-point coordinates rather than deriving from terrain.getFeatures() -- works today via dynamic bridge retargeting but is seed-fragile in principle (disclosed)."
+          "text": "Dirt surface micro-pattern reads as wind-rippled/combed sand rather than dry dirt with pebbles (close preset)."
+        },
+        {
+          "sev": "minor",
+          "text": "README says a rebuild takes a few ms; stats().build.ms measured 1601.7 ms (incl. terrain conform) - a hitch per road edit or a wrong claim."
+        },
+        {
+          "sev": "minor",
+          "text": "Bridge decks (timber and concrete) read pale/near-white and flat at distance."
+        },
+        {
+          "sev": "minor",
+          "text": "Carried: sampleEdge out-object footgun and two-lane-only getLanes() (disclosed)."
         }
       ],
-      "good": "Timber bridge is the standout asset -- correct deck, railings, arch, clean water integration. Dirt two-track at close range is convincing (ruts, dust-blended shoulders, no visible mesh boundary). Night lighting is the best-executed night scene of any module reviewed so far (self-contained reflective paint + lamp glow). Junction blending shows no z-fighting. Own-module budget independently verified via stats() (9 drawables, 44,753 triangles for a 12-edge network) comfortably inside the <=40 draws / <=200k triangle spec. API matches README, dispose() thorough."
+      "good": "Round-3 asphalt swirl verified fixed (10 h preset and 12 m grazing 6.5 h extra). Dirt ruts + shoulder dust blending convincing, no visible ribbon edge. Timber bridge asset well built. Night still the best in the project (21.5 h and 3 h). 0 errors on 9 captures, lint ok, no per-frame allocs, dispose complete, road-owned 9 draws / 44,753 tris."
     },
     "ui": {
       "wave": 1,
@@ -1032,6 +1049,12 @@
       "score": 6.0,
       "by": "independent-critic-agent",
       "date": "2026-09-24"
+    },
+    {
+      "module": "roads",
+      "round": 4,
+      "score": 7.0,
+      "date": "2026-09-25"
     }
   ]
 }
