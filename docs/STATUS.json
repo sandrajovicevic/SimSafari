@@ -357,33 +357,56 @@
     "effects": {
       "wave": 1,
       "domain": "nature",
-      "round": 3,
-      "score": 8.5,
-      "status": "pass",
+      "round": 4,
+      "score": 6.0,
+      "status": "fail",
       "errors": 0,
       "drawCalls": 213,
       "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
         "overview 17.5",
         "close 17",
+        "close 17 --slow",
         "heat 13",
         "night 22",
         "off 17.5",
-        "measure() (extra)",
-        "getHazeStrength()/stats() (extra)",
-        "getGrade() (extra)"
+        "overview/off 960x540 A/B + nograde/nobloom/noao/bare/pipeoff isolation (eval)",
+        "measure()/tiers/smaa/unreal (eval)",
+        "heat getHazeStrength (eval)",
+        "game overview/close/low x 8/14/21.5",
+        "game low 14 + 21.5 pipeline-off / particles-off (eval)"
       ],
       "issues": [
         {
-          "sev": "minor",
-          "text": "overview establishing shot reads visually flat against the AAA reference bar -- the effect is deliberately subtle (confirmed by the numbers), best appreciated at close range or via the off A/B, not on its own."
+          "sev": "blocker",
+          "text": "README A/B claim does not reproduce (capped at 6): at 960x540 overview vs off mean abs diff 25.8 (claimed 12.7), frame +34%, centre +44% brighter (claimed 3% darker), corners 2.5% darker (claimed 11%). Bare chain with every optional pass off is still +39% vs direct at golden hour; in game the chain is neutral at 14h but darkens night by ~30%. The shared chain is not exposure-neutral. Fix: grey-card byte diff direct vs bare chain at 8/17.5/21.5h, then rewrite the A/B."
+        },
+        {
+          "sev": "major",
+          "text": "Mip-chain bloom halos are square/boxy (night lamp heads, game-night lights). Use a 13-tap Karis downsample + tent upsample with 4-5 levels."
+        },
+        {
+          "sev": "major",
+          "text": "Night grade reads sepia/brown instead of cool moonlit (game 21.5h shots). Needs a Purkinje-style low-luminance blue/desaturation shift; coordinate with environment."
         },
         {
           "sev": "minor",
-          "text": "Ambient dust/smoke particles are only faintly visible even at close range (one rim-lit wisp) -- confirmed active via stats() (117 spawned) but easy to miss visually without the API readout."
+          "text": "Heat haze barely perceptible (strength 0.875 confirmed, but only a faint horizon wobble in stills)."
+        },
+        {
+          "sev": "minor",
+          "text": "stats().particles.alive is never updated (always 0 while a dense dust trail is on screen)."
+        },
+        {
+          "sev": "minor",
+          "text": "Per-frame object literal in update(): pipeline.setFrame({...}) at index.js:150."
+        },
+        {
+          "sev": "minor",
+          "text": "Showcase framing: overview shows the world-plane edge/void; identical wrinkle bump on all spheres; close fast-settle shows one dust blob (trail only visible with --slow)."
         }
       ],
-      "good": "Every quantitative README claim reproduced exactly under independent verification: pipeline measure() returns exactly 12/12 extra draw calls (spec ceiling), matching triangle counts per preset, haze strength 0.875 (active, non-zero) at the heat preset, grade parameters (bloom 0.18, grain 0.02) within spec ceilings. GTAO contact shadows genuinely convincing at close range. Night bloom well-tuned (soft lamp halos, not blown out). Module's own draw-call attribution analysis (pipeline vs showcase-yard vs CSM cascade cost) is rigorous and correct. dispose() restores direct rendering and cleans up fully; update() allocation-free."
+      "good": "All draw-call claims reproduce exactly: extra 12 (high/medium), 5 (low), 14 SMAA, 20 unreal. Haze 0.875 at heat, grade values within spec, zero errors in 26 captures, update <=0.18 ms. GTAO grounding and soft-particle dust trail (--slow) convincing. Chain is clean and neutral in the real game at midday. dispose() correct."
     },
     "zoning": {
       "wave": 2,
@@ -1237,6 +1260,12 @@
     },
     {
       "module": "buildings",
+      "round": 4,
+      "score": 6.0,
+      "date": "2026-09-25"
+    },
+    {
+      "module": "effects",
       "round": 4,
       "score": 6.0,
       "date": "2026-09-25"
