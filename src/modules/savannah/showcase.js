@@ -34,7 +34,7 @@ export const presets = {
   },
   kopje: {
     camera: { target: [0, 0], distance: 74, pitch: 17, yaw: 300 }, tod: 17.8,
-    description: 'The pride at the kopje\'s foot in golden-hour light: the lens sits just beyond the male on the sun-facing flank, looking away from the low sun, so he is three-quarter front-lit at ~8 m — mane and modelled flank against the boulder backdrop, lionesses resting in the grass around him (camera, light and a props-free sightline are re-derived from the male\'s real spawn each seed).',
+    description: 'The pride at the kopje\'s foot in golden-hour light: the male three-quarter front-lit at ~8-12 m against the boulder backdrop, the rest of the pride clustered around him (camera, light and a props-free sightline are re-derived from the male\'s real spawn each seed). Honest asset note: the authored lion model is a single maned male — no mane-less model exists on the asset source (searched 2026-09-25, see animals README) — so every cat reads male, and the static meshes stand rather than lie.',
   },
   herd: {
     camera: { target: [0, 0], distance: 34, pitch: 9, yaw: 220 }, tod: 16,
@@ -45,12 +45,12 @@ export const presets = {
     description: 'Riverine gallery forest along the water in soft morning light.',
   },
   storm: {
-    camera: { target: [0, 0], distance: 330, pitch: 22, yaw: 205 }, tod: 15,
-    description: 'A storm gathering over the grassland: dark sky, rain approaching, the dirt track leading toward it.',
+    camera: { target: [0, 0], distance: 330, pitch: 6, yaw: 205 }, tod: 15,
+    description: 'A storm gathering over the grassland: the grey leading cloud deck and rain shafts in frame above the plains, the dirt track running toward it.',
   },
   night: {
-    camera: { target: [0, 0], distance: 44, pitch: 15, yaw: 110 }, tod: 22,
-    description: 'Moonlit hippos at the waterhole, the herd asleep on the plain beyond.',
+    camera: { target: [0, 0], distance: 26, pitch: 14, yaw: 110 }, tod: 22,
+    description: 'Moonlit hippo pod half-submerged at the waterhole\'s edge, giraffe and zebra along the shores, the kopje against the stars.',
   },
   dawn: {
     camera: { target: [0, 0], distance: 120, pitch: 9, yaw: 130 }, tod: 6.3,
@@ -371,28 +371,28 @@ export async function stage(ctx, presetName) {
   // 5. Animals — one persistent cast: lion pride on the kopje, elephants/giraffes/zebra at the
   //    waterhole, a zebra/wildebeest/impala herd on the grassland, hippos at the waterhole for night.
   //    (prideBrg lives at stage scope: the kopje preset's camera is staged off the male's position.)
-  //    Radii > 1.0: the pride stands on the grass at the kopje's foot — inside the boulder mass the
-  //    cats end up occluded by the very rocks they're standing on (verified seed 1, kopje-17.8).
-  //    All five share ONE bearing (the old ring spread them ~344° around the rock, so at most one
-  //    lion could ever share a frame): the male sits closest to the lens in the head-high 'alert'
-  //    sentry pose (anim.js raises neck/head/ears on _alertW), two lionesses stand behind him and
-  //    two lie in the grass deeper in — a pride at rest with its sentry, all inside one frame.
-  //
+  //    Radii: the pride stands on the grass at the kopje's foot — inside the boulder mass the cats
+  //    end up occluded by the very rocks they're standing on (verified seed 1, kopje-17.8). Since the
+  //    animals glTF swap (2026-09-25) the pride is the ONE authored maned-male mesh: no mane-less
+  //    model exists on the asset source and no rest pose exists for the static pool, so the staged
+  //    truth is a standing all-male-looking pride (README wording matches — searched, not silent).
+  //    The five spots cluster AROUND the male (±0.2 rad, 1.38-1.55 r) instead of the old ring-in-a-
+  //    row: a pride is a contact group, and the kopje camera frames the male at 8-12 m with 2-3
+  //    cats behind him. All share ONE bearing family (the old ring spread them ~344° around the
+  //    rock, so at most one lion could ever share a frame) seeded off the sun.
   //    WHICH flank comes from the LIGHT, not the rock. At the preset's 17.8 h the sun sits WNW and
   //    only ~2° up (environment/atmosphere.js celestialDirection with the dry-season declination).
-  //    The old east-flank staging (prideBrg 0.9) put the lens on the sun side looking back INTO
-  //    that low sun: the male was unoccluded and in frame (kopje-fix-a/-b/-c) but backlit into a
-  //    pale flat box nobody reads as a lion. Staging the pride on the SUN-FACING flank with the
-  //    lens just beyond the male on the same bearing line means the camera looks straight AWAY
-  //    from the sun: he is front-lit warm and the sun itself stays behind the lens, never in
-  //    frame. The bearing is seeded 0.35 rad (~20°) off the sun so the light rakes across him at
-  //    a three-quarter angle — dead-centre front light is what flattened him into a pale box
+  //    The lens parks just beyond the male on the same bearing line and looks straight AWAY from
+  //    the sun: he is front-lit warm and the sun itself stays behind the lens, never in frame.
+  //    The bearing is seeded 0.35 rad (~20°) off the sun so the light rakes across him at a
+  //    three-quarter angle — dead-centre front light is what flattened him into a pale box
   //    (sav-kopje-baseline). The formula is environment's own sun geometry evaluated at the
   //    preset hour (same numbers as celestialDirection).
-  //    The spot itself must be DRY and FLAT: a cat planted on a >0.14 slope ends up heel-deep
-  //    behind his own ledge (verified sav-kopje-baseline — legs occluded by a lip at the kopje
-  //    foot). If the seeded spot fails, walk the bearing around the rock until one passes both
-  //    tests; 1.18 r sits on the flattened skirt just outside the boulder crest.
+  //    The spots must be DRY and FLAT: a cat planted on a >0.14 slope ends up heel-deep behind his
+  //    own ledge (verified sav-kopje-baseline). If the seeded spot fails, walk the bearing around
+  //    the rock until one passes; the outer radii sit on the flattened skirt beyond the boulder
+  //    crest so the 8 m lens line stays on open grass (the old 1.05-1.18 r row forced the camera
+  //    march out to 30-40 m — critic savannah-round7 #3).
   const Hs = (presets.kopje.tod - 12) * 15 * DEG, dcl = 17 * DEG, lat = -2.3 * DEG;
   const sunAz = Math.atan2(
     -Math.cos(dcl) * Math.sin(Hs),
@@ -404,14 +404,16 @@ export async function stage(ctx, presetName) {
     if (terrain?.isWaterAt?.(x, z) || ctx.world.getHeight(x, z) <= wl + 1.2) return false;
     return ctx.world.getSlope(x, z) < 0.14;
   };
+  let nightAnchor = null; // night preset: the camera anchors on the staged hippo group (set below)
   const seedBrg = sunAz + 0.35;
   let prideBrg = seedBrg;
   for (const off of [0, 0.3, -0.3, 0.6, -0.6, 1.0, -1.0, Math.PI]) {
-    if (spotOK(seedBrg + off, 1.18)) { prideBrg = seedBrg + off; break; }
+    if (spotOK(seedBrg + off, 1.38)) { prideBrg = seedBrg + off; break; }
   }
   // spots are [radiusMultiple, bearingOffset] in the yaw convention (x = sin, z = cos), so the
-  // camera block below can reuse prideBrg directly; smaller radii sit deeper, toward the rock.
-  const lionSpots = [[1.18, 0], [1.12, 0.09], [1.14, -0.09], [1.07, 0.18], [1.05, -0.2]];
+  // camera block below can reuse prideBrg directly. A contact-cluster around the male: he sits
+  // nearest the lens, the others in a loose crescent behind/beside (2-4 m gaps at this scale).
+  const lionSpots = [[1.38, 0], [1.40, 0.07], [1.39, -0.08], [1.46, 0.13], [1.44, -0.15]];
   if (animals) {
     animals.clear();
     const hold = 1e6;
@@ -451,13 +453,70 @@ export async function stage(ctx, presetName) {
     animals.spawn('impala', gx - 30, gz - 40, 9, { state: 'graze', hold, spread: 9 });
     animals.spawn('ostrich', gx + 40, gz + 30, 3, { state: 'graze', hold, spread: 6 });
 
-    // -- night: hippos at the waterhole
+    // -- night: hippos AT the pan, on the lens-side shore (round-7 fix: they used to scatter on
+    //    arbitrary bearings and the only legible one ended up at a frame edge in the grass).
+    //    The camera looks from yaw 110 at the pan (section 6 aims at water.x + 0.4r): march three
+    //    bearings toward the LENS until each leaves the water, and stand a hippo half-submerged at
+    //    that waterline, broadside to the lens, so their silhouettes read against the moonlit pan
+    //    surface behind them. Two more idle on the far shore for the pod. props.clear keeps the
+    //    near shore's grass out of the sightline.
     if (presetName === 'night') {
-      const out = (ang, d, st) => {
-        const x = water.x + Math.cos(ang) * (water.r + d), z = water.z + Math.sin(ang) * (water.r + d);
-        animals.spawn('hippo', x, z, 1, { heading: towards(water.x, water.z, x, z), state: st, hold });
+      const P0 = presets.night.camera;
+      const horiz = P0.distance * Math.cos(P0.pitch * DEG);
+      const camX = water.x + water.r * 0.4 + Math.sin(P0.yaw * DEG) * horiz;
+      const camZ = water.z + Math.cos(P0.yaw * DEG) * horiz;
+      const brgC = towards(water.x, water.z, camX, camZ);
+      const isWater = (x, z) => (terrain?.isWaterAt ? terrain.isWaterAt(x, z) : true);
+      const shoreD = (brg) => {
+        let d = water.r * 0.35;
+        while (d < water.r * 1.6 && isWater(water.x + Math.sin(brg) * d, water.z + Math.cos(brg) * d)) d += 0.8;
+        return d;
       };
-      out(-0.4, 1.5, 'walk'); out(0.1, 4, 'walk'); out(0.5, 2, 'idle'); out(-0.9, -2.5, 'graze'); out(0.85, -3.5, 'idle');
+      let firstShore = null;
+      for (const [off, st] of [[-0.24, 'idle'], [0, 'idle'], [0.24, 'idle']]) {
+        const brg = brgC + off;
+        const d = shoreD(brg) - 0.6; // just inside the waterline: legs submerged, back above water
+        const x = water.x + Math.sin(brg) * d, z = water.z + Math.cos(brg) * d;
+        if (!isWater(x, z)) continue;
+        // broadside to the shore so each reads as a body, not a head-on blob; scale 1.2 (~1.8 m)
+        // keeps them at the top of the real hippo range so the moonlit silhouette carries 26 m.
+        animals.spawn('hippo', x, z, 1, { heading: brg + Math.PI / 2 + off * 2, state: st, hold, scale: 1.2 });
+        if (firstShore === null) firstShore = { x, z, d, brg };
+      }
+      // two more idle on the far shore for the pod (silhouettes against the lit far bank)
+      for (const off of [1.9, -2.3]) {
+        const brg = brgC + off;
+        const d = shoreD(brg) - 0.6;
+        const x = water.x + Math.sin(brg) * d, z = water.z + Math.cos(brg) * d;
+        if (isWater(x, z)) animals.spawn('hippo', x, z, 1, { heading: brg + Math.PI / 2, state: 'idle', hold });
+      }
+      // the night subject is the hippo pod: the nearest drinking ELEPHANT shares this shore and,
+      // at 3x hippo size, upstaged the trio into illegibility (verified fix-sav-night-v1/-v2).
+      // Pull the closest elephant (bearing within 0.7 rad of the lens line) off the pan for this
+      // preset only — the other two stay at the far shores.
+      let worst = null, worstDelta = 1e9;
+      for (const a of ctx.world.animals.values()) {
+        if (a.species !== 'elephant') continue;
+        const ba = towards(water.x, water.z, a.x, a.z);
+        const dEl = Math.atan2(Math.sin(ba - brgC), Math.cos(ba - brgC));
+        if (Math.abs(dEl) < worstDelta) { worstDelta = Math.abs(dEl); worst = a; }
+      }
+      if (worst && worstDelta < 0.7) animals.remove(worst.id);
+      // the night camera anchors ON the hippo group (not the pan centre) so the trio is the
+      // centre-frame subject; section 6 applies this via nightAnchor.
+      if (firstShore) {
+        nightAnchor = { x: water.x + Math.sin(firstShore.brg) * (firstShore.d + 2), z: water.z + Math.cos(firstShore.brg) * (firstShore.d + 2) };
+      }
+      // sightline: camera to near shore, a lane ±3 m plus a shore patch, so no grass Tuft lane or
+      // shrub silhouette occludes the subjects (the r7 pink frame-edge blob was grass-adjacent).
+      if (props?.clear && firstShore) {
+        const lx = camX - firstShore.x, lz = camZ - firstShore.z, L = Math.hypot(lx, lz) || 1;
+        for (let s = 0; s <= L; s += 4) {
+          const x = firstShore.x + (lx / L) * s, z = firstShore.z + (lz / L) * s;
+          props.clear({ x0: x - 3, z0: z - 3, x1: x + 3, z1: z + 3 });
+        }
+        props.clear({ x0: firstShore.x - water.r * 0.35, z0: firstShore.z - water.r * 0.35, x1: firstShore.x + water.r * 0.35, z1: firstShore.z + water.r * 0.35 });
+      }
     }
   }
 
@@ -508,7 +567,9 @@ export async function stage(ctx, presetName) {
         }
         return true;
       };
-      for (const d of [8, 11, 15, 21, 30]) {
+      // 11 m first: at 8 m only the male fits the frame; 11-12 m keeps him dominant AND brings the
+      // second/third cat into the shot (verified fix-sav-kopje-v1: 8 m = hero alone).
+      for (const d of [11, 9, 15, 21, 30]) {
         const cp = Math.cos(P.camera.pitch * DEG), sp = Math.sin(P.camera.pitch * DEG);
         const px = hero.x + Math.sin(P.camera.yaw * DEG) * cp * d, pz = hero.z + Math.cos(P.camera.yaw * DEG) * cp * d;
         let py = world.getHeight(hero.x, hero.z) + sp * d;
@@ -551,7 +612,21 @@ export async function stage(ctx, presetName) {
   }
   aim(presets.storm, gx - 40, gz - 20);
   presets.storm.camera.yaw = degOf(gx - kopje.x, gz - kopje.z) + 20;
-  aim(presets.night, water.x + water.r * 0.4, water.z);
+  // round-7 fix: at pitch 22 / 330 m the top of frame sat ~0.5° above the horizon — the storm deck
+  // (the description's lead claim, uncaptured two rounds running) was not in frame at all. Pitch 6
+  // puts ~16° of sky above the horizon line (45° vertical FOV) while the camera stays high enough
+  // (34 m) to keep the track and the plains readable below the front.
+  presets.storm.camera.pitch = 6;
+  if (nightAnchor) {
+    // moonlit hippos are the subject: aim at the trio from 26 m / 14° — high enough that the
+    // moonlit near-shore grass (which a low lens wades through, verified fix-sav-night-v4) stays
+    // below the subjects and the hippos silhouette against the reflective pan surface.
+    aim(presets.night, nightAnchor.x, nightAnchor.z);
+    presets.night.camera.distance = 26;
+    presets.night.camera.pitch = 14;
+  } else {
+    aim(presets.night, water.x + water.r * 0.4, water.z);
+  }
   const dawnP = f?.pointOnRiver ? f.pointOnRiver(0.6) : riverMid;
   aim(presets.dawn, dawnP.x + dawnP.nx * (dawnP.hw + 8), dawnP.z + dawnP.nz * (dawnP.hw + 8));
   presets.dawn.camera.yaw = degOf(dawnP.nx, dawnP.nz) + 160;

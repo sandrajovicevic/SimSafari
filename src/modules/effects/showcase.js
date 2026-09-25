@@ -28,13 +28,20 @@ export const presets = {
     camera: { target: [0, 0], distance: 240, pitch: 26, yaw: 35 }, tod: 17.5,
     description: 'Same view and time as overview with the whole pipeline bypassed (direct MSAA render, no particles) for A/B comparison.',
   },
+  calibrate: {
+    // Near top-down, 14 m up: the 80x80 m neutral grey card below fills every pixel of the frame, so
+    // any mean-luminance difference between pipeline-on and bypass is chain gain, not scene content.
+    // Used by measure.mjs (this folder), not a look preset.
+    camera: { target: [0, 0], distance: 14, pitch: 85, yaw: 0 }, tod: 12,
+    description: 'Exposure calibration: a large neutral grey card (0.5 sRGB lambert, roughness 1) fills the frame; measure.mjs shoots it through the chain and the bypass at many hours and reports the on/off luminance ratio. The rest of the yard is hidden for the measurement.',
+  },
 };
 
 const ST = {
   built: false, group: null, preset: null, api: null,
   dome: null, domeU: null, mats: [], geos: [], lights: [],
   smoke: null, splash: null, trackAngle: 0, puffAcc: 0, vehicleDir: { x: 0, z: 0 },
-  hourCache: -1,
+  hourCache: -1, calibCard: null,
 };
 
 const SKY_VERT = /* glsl */ `
@@ -313,6 +320,24 @@ function build(ctx, api, parent) {
 export async function stage(ctx, presetName, api, group) {
   ST.preset = presetName; ST.api = api;
   if (!ST.built) build(ctx, api, group || ctx.scene);
+  // Calibration prop (see the 'calibrate' preset): a big neutral grey card, everything else hidden.
+  // One uniform lambert surface filling the frame makes the pipeline's on/off A/B a pure gain
+  // measurement. Visibility is restored when any other preset stages into the same session.
+  if (ST.calibCard) {
+    ST.calibCard.removeFromParent();
+    ST.calibCard = null;
+    for (const ch of ST.group.children) ch.visible = true;
+  }
+  if (presetName === 'calibrate') {
+    for (const ch of ST.group.children) ch.visible = false;
+    const geo = track(tileUv(new THREE.PlaneGeometry(80, 80, 1, 1), 1));
+    geo.rotateX(-Math.PI / 2);
+    const mat = track(new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 1 })); // 0.5 sRGB ≈ 0.216 linear albedo
+    ST.calibCard = new THREE.Mesh(geo, mat);
+    ST.calibCard.name = 'effects-calib-card';
+    ST.calibCard.position.y = 0.02; // above the yard ground so it wins the depth test
+    ST.group.add(ST.calibCard);
+  }
   // The environment module owns renderer.toneMappingExposure. In this standalone showcase it is
   // normally absent, and nobody else sets it — so exposure stays at the renderer default of 1.0 and
   // the whole yard blows out to white, making the passes impossible to judge. Take ownership of
@@ -381,5 +406,5 @@ export function disposeStage(ctx) {
     for (const s of [':height', ':albedo', ':orm', ':normal']) ctx?.textures.dispose(k + s);
   }
   ST.mats.length = 0; ST.geos.length = 0; ST.lights.length = 0;
-  ST.built = false; ST.group = null; ST.dome = null; ST.domeU = null; ST.smoke = ST.splash = null;
+  ST.built = false; ST.group = null; ST.dome = null; ST.domeU = null; ST.smoke = ST.splash = null; ST.calibCard = null;
 }

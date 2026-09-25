@@ -38,8 +38,13 @@ const GRASS_BIOME = [
 ];
 
 // linear-RGB. Authored dark: ACES tone mapping lifts and desaturates on the way to the screen.
-const DRY = [0.2250, 0.1620, 0.0480];   // golden dry-season grass
-const GREEN = [0.0680, 0.0880, 0.0300]; // damp riverine sward — olive, not blue-green
+// Round 4 re-solve against terrain's photo ground layers (terrain/textures.js GRASS / DRY_GRASS
+// albedo means: dry sward ≈ 0.30/0.20/0.075, moist sward ≈ 0.10/0.11/0.045, both linear): the old
+// values were solved against the pre-photo procedural ground and ran ~25-35% darker, so every tuft
+// — and its baked ground mat especially — read as a dark polygon on the new ground (critic
+// props-round4 majors 1+2). Re-verified at grass/close range against real-GPU captures.
+const DRY = [0.2920, 0.2110, 0.0680];   // golden dry-season grass
+const GREEN = [0.0890, 0.1140, 0.0390]; // damp riverine sward — olive, not blue-green
 
 const S = {
   ctx: null, world: null, group: null, terrain: null, env: null,
@@ -863,7 +868,9 @@ const api = {
       grassCounts: S.grass ? S.grass.counts.slice() : [0, 0, 0],
       grassChunks: S.grass ? S.grass.near.size + S.grass.far.size : 0,
       instancedMeshesDrawn: S.stats.drawGroups,
-      packMs: +S._packMs.toFixed(2), grassRebuildMs: +(S.grass?.lastRebuildMs || 0).toFixed(2),
+      packMs: +S._packMs.toFixed(2), grassRebuildMs: +(S.grass?.lastUpdateMs || 0).toFixed(2),
+      grassPackMs: +(S.grass?.lastPackMs || 0).toFixed(2),
+      grassPendingChunks: S.grass ? S.grass._genQueue.length : 0,
     };
   },
 
@@ -947,7 +954,7 @@ export default {
     const gx = tgt ? cam.position.x * 0.45 + tgt.x * 0.55 : cam.position.x;
     const gz = tgt ? cam.position.z * 0.45 + tgt.z * 0.55 : cam.position.z;
     const g0 = performance.now();
-    S.grass?.update(gx, gz, 14);
+    S.grass?.update(gx, gz, 14, S.ctx.isShowcase);
     S._grassMs = performance.now() - g0;
 
     const dx = cam.position.x - S.camX, dz = cam.position.z - S.camZ;

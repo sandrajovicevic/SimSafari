@@ -171,18 +171,25 @@ in the showcase.
 
 | preset | draw calls (scene) | triangles (scene) | console errors | `updateMs` |
 |---|---|---|---|---|
-| `overview` | 165 | 3,906,599 | 0 | 2.73 |
-| `close` (6.5 h) | 156 | 3,940,309 | 0 | 2.88 |
-| `overlay` | 173 | 3,882,110 | 0 | 1.93 |
-| `night` | 169 | 4,156,589 | 0 | 2.45 |
+| `overview` | 167 | 3,872,613 | 0 | 0.004 (peak 0.10) |
+| `close` (16.5 h) | 178 | 3,844,305 | 0 | 0.004 (peak 0.10) |
+| `overlay` | 178 | 3,879,916 | 0 | 0.004 (peak 0.10) |
+| `night` | *(see note — module page did not finish under this session's CPU contention; 2026-09-25 run measured 169 draws / 4,156,589 tris / 0 errors)* | | | |
+
+Re-measured 2026-09-25 (SwiftShader software GL, 1280×720, seed 1, via `__SIM__.capture(false)` in headless
+Chrome rather than `tools/screenshot.mjs`, whose PNG capture is broken in this environment). Whole-scene draw
+calls move by ±5 % (and a little more on `close`/`overlay`) between runs with camera frustum and time-of-day —
+critic round 6 measured 163/152/171/167 on the same code; zoning's own contribution is constant at 4 draws.
 
 `fps`/`frameMs` are not reported here — under SwiftShader they are not representative (see CLAUDE.md) and
 were ~0.1–0.2 fps / 300–560 ms per frame across all four, dominated by `props`' grass field rebuild
 (150–480 ms of the `props.update()` cost per shot), not by zoning.
 
-`updateMs` (2026-09-25): still 1.9–2.9 ms against the ≤1.5 ms per-module guide, **not meaningfully lower**
-than round 6's 2.1–2.3 ms despite fixing the throttle below — see "Known gaps" for why the throttle
-fix (which is real and correct) doesn't show up much in a short screenshot capture.
+`updateMs` (2026-09-25, steady-state): **0.004 ms mean, 0.10 ms worst frame** once the EMA settles (~2 s after
+ready) — well under the 1.5 ms per-module guide. Captures that read `updateMs` within the first second after
+`stage()` still show 1.9–2.9 ms, which is the slow EMA (`Perf.recordModule`, α=0.05) tail of the **one-time
+boundary-ribbon rebuild** (`updateOverlay`'s `rebuildLines()`, ~20 ms once) — see "Known gaps" for why that is
+an edit-time cost, not the per-frame steady state, and why the r6 throttle/cheap-refresh fix is still correct.
 
 ## Known gaps (honest)
 

@@ -116,7 +116,8 @@ export class RoadRibbon {
     this.markers.count = 0;
     this.markers.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
-    // snap indicator: a bright ring shown at the point the live cursor snapped to
+    // snap indicator: a bright ring shown at the point the live cursor snapped to — and at the
+    // committed point the path is pinned to when that snapped (see RoadTool._committedSnap)
     const snapGeo = new THREE.RingGeometry(0.9, 1.3, 24);
     snapGeo.rotateX(-Math.PI / 2);
     this.snapMat = new THREE.MeshBasicMaterial({ color: 0x66e0ff, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });

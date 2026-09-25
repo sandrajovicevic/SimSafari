@@ -91,15 +91,45 @@ SwiftShader software GL (fps is not representative; draws/tris/errors are real).
 
 ## Known gaps (honest)
 
-* **Night cloud flecks at higher coverage:** the cumulus rescale fixed the dashes at the showcase's
-  low night coverage (0.08), but presets with more cloud (e.g. `traffic-night-21_5.png`) still show
-  rows of small moonlit flecks. Open.
-* **Cumulus scale (2026-09-25).** The "stars smeared into horizontal dashes" several critics reported
-  at night were the cumulus layer, not the stars: with clouds toggled off (`setDebug({clouds:false})`)
-  the dashes vanish and the stars are points. At fair-weather coverage only noise peaks pass the
-  threshold, and at the old sample scale (0.00021/m) those were ~150 m flecks that foreshorten into
-  rows of dashes, by day too. Scale is now 0.00009/m: fewer, larger puffs (`env-after-overview.png`,
-  `env-after-golden.png`), night sky mostly points (`env-after2-night.png`).
+* **Night sky speckle wall + moonlit-cloud response, fixed 2026-09-25 (round-8 builder).** The round-8
+  critic correctly failed the module for its own claim: on the shipped `night` preset the upper sky was
+  a dense bright grey-white speckle/static wall instead of "mostly points" (`tools/shots/seb-before-env-night-22.png`
+  reproduces it). **Root cause was NOT the cumulus layer** (as the round-8 toggle diagnostic concluded —
+  that check ran on SwiftShader, which filters this texture differently): on the real GPU the wall is the
+  baked night-sky texture itself. `NIGHT_TEX_GLSL`'s `starLayer` used star Gaussians with sigma
+  0.0035/0.0026 rad ≈ 1 texel of the 2048×1024 bake, so every star baked as a ~4-texel soft blob, and the
+  dome's linear magnification blew each one up into a 10-20 px grey blob — ~9000 layer-1 stars merged
+  into a wall. Proven by a live toggle on the real GPU: zeroing the sky material's `uNightAmount`
+  removes the wall with clouds ON (`tools/shots/seb-diag2-skystars0.png`) and `setDebug({clouds:false})`
+  alone keeps it (`tools/shots/seb-diag1-clouds0.png`) — the exact opposite of the SwiftShader result.
+  Fixed by sub-texel star sigmas (0.0008/0.0006 rad: each star bakes to a single texel that magnifies
+  back to a ~2-4 px point) plus density/brightness cuts (0.75→0.35, 0.55→0.22). After:
+  `tools/shots/seb-after3-env-night-22.png` / `seb-after3-env-night-3.png` — star field of discrete
+  points + Milky Way band, star field dominates. Two cloud-side changes shipped in the same pass:
+  (a) the moonlit-branch boost ×25 → ×4 (at exposure 12 the old value put cloud bodies at ~150 sRGB
+  against a ~25 sRGB sky — near-day brightness; ×4 keeps them faint moonlit silhouettes scaling with
+  the moon's illuminated fraction), and (b) the cumulus coverage field now has a ~4 km banking octave
+  plus a night thinning gate and a sub-overcast horizon thinning, so low-coverage fields cluster into
+  banks with clear sky between instead of tiling uniformly (the round-8 dusk issue: after
+  `tools/shots/seb-before-env-dusk-187.png` — an edge-to-edge high-contrast speckle wall — dusk now
+  reads as afterglow over the horizon + first stars + sparse dark cloud silhouettes,
+  `tools/shots/seb-after3-env-dusk-187.png`). Residuals, honest: at `night`'s cloud 0.08 the moonlit
+  puffs are so faint they are hard to pick out from the star field (structure reads only at higher
+  in-game coverages); the dusk cloud wisps are still smaller/more scattered than real twilight
+  altocumulus banks. Day presets re-verified unchanged: overview 14 / dawn 6.3 / golden 17.6 /
+  overcast 13 / storm 15 / close 17 (`tools/shots/seb-after3-env-*.png`); draw calls and triangle
+  counts identical to round 8 (44/60,218 worst case — no new passes; the banking octave reuses one
+  extra texture fetch inside the existing cloud pass).
+
+* **Cumulus scale (2026-09-25).** At fair-weather coverage only noise peaks pass the threshold, and at
+  the old sample scale (0.00021/m) those were ~150 m flecks that foreshortened into rows of grey
+  confetti in the *daytime* sky. (This entry originally also claimed the critics' night "star dashes"
+  were this layer, based on a SwiftShader clouds-off toggle; that diagnosis was wrong — see the
+  round-8 entry: on a real GPU the night wall was the star bake.) Scale is now 0.00009/m: fewer, larger puffs (`env-after-overview.png`,
+  `env-after-golden.png`). The "night sky mostly points" claim attached to `env-after2-night.png` was
+  incomplete — that capture was SwiftShader; on a real GPU the dense grey-white wall still present at
+  night was the star bake, not this layer (see the round-8 entry above for the real root cause and fix;
+  `seb-after3-env-night-22.png` is the verified real-GPU night now).
 
 * **Cumulus flat-mid-grey and hollow sun-disc ring, fixed 2026-09-25** (iter-3 builder). Both were
   measured before touching anything (`tools/shots/environment-overview-14.png`, pre-fix, cloud

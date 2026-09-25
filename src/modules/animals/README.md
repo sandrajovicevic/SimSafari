@@ -43,6 +43,46 @@ every skin is baked from GLSL, every motion is evaluated procedurally each frame
   machine picks graze/walk-to-water/drink/rest/socialise/flee/hunt; herds use boids-style
   cohesion/separation/alignment behind a wandering leader; predators stalk and chase when hungry, prey
   flee inside the alert radius; diurnal species sleep at night. Fully deterministic through `ctx.rng`.
+* **Authored species models** (`gltfpool.js`, 2026-09-25) — 9 of the 12 species load a rigged or
+  static glTF through `ctx.assets` (ARCHITECTURE §8) instead of the procedural builder:
+  hippo/rhino (Gobkit, CC0, rigged idle/walk), zebra (Poly Pizza / Poly by Google, CC-BY 3.0 —
+  static mesh **with the real stripe texture and UVs**: the Quaternius Horse_White stand-in it
+  replaces had no UVs, so stripes were impossible and the animal read as a white horse — critic
+  round 6 major 1. The pack's actual rigged Zebra was evaluated and rejected: it is flat-shaded
+  white/black materials with no UVs either, so it would have traded the markings away for
+  articulation; §8 asks for silhouettes AND markings), buffalo + wildebeest (both Quaternius Bull,
+  CC0 — one file, two runtime tints), impala (Quaternius Deer, CC0), giraffe/elephant/lion
+  (Poly Pizza / Poly by Google, CC-BY 3.0 — **static meshes**: no rig exists for them on that
+  source, so `loadModel()` synthesises a one-bone identity rig and they translate/turn but do not
+  articulate — no walk cycle, no graze pose; legs slide while the animal moves).
+  Every clip is baked once at load into skinning matrices (30 fps), so per-frame cost is one array
+  copy per visible animal — no AnimationMixer. The Quaternius meshes are honest stand-ins
+  (horse/bull/deer) recoloured toward the target species at load (`tint` in ASSET_SPECIES, linear
+  albedo). Any load failure falls back to the procedural species (log warn, never throws).
+  Register rows: `docs/requests/assets-species-rows.md`.
+  **Elephant skin detail (2026-09-25, critic round 6 major 3).** The close-preset regression was
+  not a lost texture: the Poly elephant's shipped "BaseColor" PNG is itself a near-featureless
+  dark grey bake (verified by extracting the image from the GLB — the other Poly elephants on the
+  source are flat colour swatches, so this is the best of them). Two mitigations, gated per
+  species via `skinDetail` in ASSET_SPECIES: the map's albedo is lifted to the hide albedo the
+  module authors anyway (`gain`), and a procedural wrinkle-grain (two stretched value-noise
+  octaves at the non-harmonic ×2.618 ratio plus a fine grain, evaluated in UV space) modulates it
+  in the fragment shader — the same construction the procedural elephant hide uses. Documented
+  under Custom shaders below. Residual: the mesh is low-poly and the facets remain visible at
+  12 m; no painted elephant texture was found on the approved source.
+  **Per-variant models and the lioness search (2026-09-25).** `ASSET_VARIANTS` loads models keyed
+  `species:variant` (getPool looks up `lion:female` before `lion`), so a mane-less female lion
+  would stage prides automatically — every lion on poly.pizza was checked (3 results) and all are
+  maned males; two alternates were downloaded and rendered (one flat-swatch maned male, one
+  cartoon with an orange mane), and a derived mane-less variant built by removing the mane
+  triangles of the textured lion (a permitted CC-BY modification) either kept a visible mane or
+  chewed the head/neck at three tuning settings (verified `fix-lioness-v4/-v5/-v6` crops). The
+  map ships empty and the pride stays all-maned-male: a fact the savannah composer's README
+  states rather than hides.
+  Loading detail: the gobkit files store position/normal/uv/joints/weights as ONE interleaved vertex
+  record; `loadModel()` de-interleaves attributes before use (reading `.array` of an interleaved
+  attribute silently mixes neighbouring data and skinned the hippo/rhino into NaN — invisible
+  animals, found and fixed 2026-09-25, `tools/shots/species-hippo-fixed.png`).
 * **Rendering** — one *pool* per `(species, variant)`. A pool owns the near geometry, the far LOD, the
   baked skin set, a `FloatType` bone texture (one row per animal, `texelFetch`ed by `aSlot`) and two
   `InstancedMesh`es, so **every animal of a species is one draw call**. Instanced skinning is injected
@@ -115,7 +155,12 @@ reproduced on a real GPU.
 * `skin.js / injectSkinning()` — `onBeforeCompile` on `MeshStandardMaterial` and on a
   `MeshDepthMaterial`, replacing `<skinbase_vertex>` / `<skinnormal_vertex>` / `<skinning_vertex>` with a
   two-influence skin read from a shared float bone texture indexed by the per-instance `aSlot` attribute.
-  `customProgramCacheKey` is `'animals-instanced-skin-v1'`.
+  `customProgramCacheKey` is `'animals-instanced-skin-v2'`.
+* `gltfpool.js / injectSkinDetail()` — a second `onBeforeCompile` chained AFTER the skinning one
+  (ordering matters: `injectSkinning` assigns `onBeforeCompile` directly, so a wrapper applied
+  first would be overwritten) on the elephant's material only. It multiplies the glTF map's albedo
+  by a per-species gain and by stretched hash value-noise evaluated in `vMapUv` (no sampler, no
+  allocation). `customProgramCacheKey` composes to `'animals-instanced-skin-v2+skindetail'`.
 
 ## Presets (`showcase.js`)
 
@@ -124,9 +169,10 @@ reproduced on a real GPU.
 | `overview` | 16 | mixed herds across the plains — all 12 species, ~140 animals |
 | `herd` | 16.5 | zebra + wildebeest walking across frame at eye level, impala grazing behind |
 | `waterhole` | 8 | three elephants and a giraffe drinking at a pool, zebra at the shore, impala/warthog behind |
-| `predators` | 17.5 | lion pride resting/sleeping, a cheetah walking past, prey herds at distance |
+| `predators` | 17.5 | lion pride standing at rest, a cheetah walking past, prey herds at distance (the authored lions are static meshes: they hold the staged states but cannot lie down or sleep on camera) |
 | `close` | 15 | one elephant at 12 m |
 | `night` | 21.5 | hippos leaving the water, zebra and giraffe asleep, lions moving |
+| `species` | 15 | the 9 authored-model species in a row at ~30 m (asset verification lineup) |
 
 `stage()` works with or without `terrain`: `waterhole`/`night` look for real water within 45 m of the
 requested spot (was up to 260 m, which could adopt water far outside the preset camera's frame whenever
@@ -156,6 +202,39 @@ and is not reported.
 
 Draw calls and triangles are geometry-driven and unaffected by the lighting fixes below; re-measured
 after them anyway to confirm nothing regressed. All six still zero console errors.
+
+**2026-09-25 asset pass (real-GPU D3D11, 1920×1080 — different backend, do NOT compare against the
+SwiftShader table above).** With 9 of 12 species on authored glTF models (see "Authored species
+models" above), whole-frame numbers at `quality=high`, `seed=1`, zero console errors everywhere:
+
+| preset | draw calls | triangles | errors | shot |
+|---|---|---|---|---|
+| `close` | 55 | 3 149 174 | 0 | `tools/shots/species-final-close.png` |
+| `herd` | 138 | 3 593 086 | 0 | `tools/shots/species-final-herd.png` |
+| `waterhole` | 123 | 3 425 420 | 0 | `tools/shots/species-final-waterhole.png` |
+| `predators` | 117 | 3 462 099 | 0 | `tools/shots/species-final-predators.png` |
+| `species` (9 authored species) | 185 | 3 282 147 | 0 | `tools/shots/species-final-lineup.png` |
+| `overview` | 168 | 4 019 908 | 0 | `tools/shots/species-overview-16.png` |
+
+Animals' own `updateMs` with the asset species: 1.65 ms mean at `overview` (budget 3 ms). Frame
+triangle totals include the props module's grass sharing the showcase frame.
+
+**2026-09-25 second asset pass — zebra swap + elephant skin (real-GPU D3D11, same conditions,
+zero console errors everywhere).** Supersedes the table above for the current code: the zebra is
+now the striped Poly by Google mesh (static) and the elephant carries the skinDetail material
+(gain + wrinkle grain). Verified reads: `herd` shows unmistakably striped zebras among the
+wildebeest; `close` shows the elephant's skin texture at 12 m; `species` shows all 9 authored
+species with the striped zebra.
+
+| preset | draw calls | triangles | errors | shot |
+|---|---|---|---|---|
+| `close` | 55 | 3 149 341 | 0 | `tools/shots/final-animals-close-15.png` |
+| `herd` | 142 | 3 521 609 | 0 | `tools/shots/final-animals-herd-16.5.png` |
+| `waterhole` | 127 | 3 401 319 | 0 | `tools/shots/final-animals-waterhole-8.png` |
+| `predators` | 97 | 3 408 455 | 0 | `tools/shots/final-animals-predators-17.5.png` |
+| `species` (9 authored species) | 161 | 3 276 204 | 0 | `tools/shots/final-animals-species-15.png` |
+| `overview` | 177 | 3 921 061 | 0 | `tools/shots/final-animals-overview-16.png` |
+| `night` | 69 | 3 223 320 | 0 | `tools/shots/final-animals-night-21.5.png` |
 
 Round 3 (elephant skin rework, `wrinkles()`): shader-only — draw calls and triangles are bit-identical
 to the round-2 numbers above (before/after `close` both 53 / 3 286 900). Frame totals are now higher
@@ -218,6 +297,14 @@ Budget position: draw calls are far inside the ≤1500 total / 200 per-module bu
    a gallop, not in walk or graze).
 8. **Feet do not conform to slope.** The body pitches and rolls with the ground plane, but individual
    hooves/pads are not IK-planted, so on ground steeper than ~20° a foot can hover or sink.
+9. **The authored zebra is a static mesh (2026-09-25 swap).** The stripe texture required a Poly by
+   Google model, and none of those ships a rig: the zebra translates and turns with the herd but its
+   legs slide while it walks (the same limitation the giraffe/elephant/lion carry). The only rigged
+   zebra found (Quaternius, CC0) has no UVs and flat white/black materials — markings beat
+   articulation for §8, and the trade-off is recorded in `docs/requests/assets-species-rows.md`.
+10. **The elephant's shipped texture is a grey bake.** Verified by extracting the PNG from the GLB;
+    `skinDetail` (gain + procedural wrinkle-grain) restores skin texture at close range, but the
+    low-poly silhouette's facets still read at 12 m, and the map carries no painted detail of its own.
 9. **`world.getHeight` is sampled per animal per frame** for the contact shadow (up to 9 taps) on top of
    the behaviour sampling. Fine at the ~200-animal budget; would want caching well beyond that.
 10. **No juveniles, no death animation, no carcasses.** Predation removes the prey record immediately and

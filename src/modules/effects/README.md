@@ -66,13 +66,6 @@ depth test instead of the soft-particle depth texture.
 (medium and high add the same *passes* as each other — only sample counts/MSAA/AO render-scale differ
 internally — so their extra-draw-call count is identical; the saving is GPU time per pass, not pass count.)
 
-## Presets
-
-`overview`, `close`, `heat`, `night`, `off` (spec minimum `overview`/`close`/`night` plus the two the
-spec calls out). All five build the same stand-alone effects yard (`showcase.js`) once, then move the
-camera/time/preset flags; see the description string on each preset in `showcase.js` for what it's
-meant to show.
-
 ## Measured cost — round 2 (the round-1 "204 draw calls" finding, resolved)
 
 Round 1 flagged 204 draw calls at `overview` against the spec's "≤12 extra draw calls for the
@@ -108,7 +101,75 @@ individual meshes, and doing the same for the 9 unique displaced-icosahedron roc
 this module is actually scored on and was not done this round to avoid spending effort outside what's
 visible.
 
-## `off` vs `overview` A/B — calibration (rewritten 2026-09-25, round 5 fix)
+## Presets
+
+`overview`, `close`, `heat`, `night`, `off`, `calibrate` (spec minimum `overview`/`close`/`night` plus
+the two the spec calls out; `calibrate` is a measurement target, not a look — a neutral grey card fills
+the frame for `measure.mjs`, the rest of the yard is hidden). All six build the same stand-alone effects
+yard (`showcase.js`) once, then move the camera/time/preset flags; see the description string on each
+preset in `showcase.js` for what it's meant to show.
+
+## Exposure neutrality — grey-card series (`measure.mjs`, 2026-09-25 round 6)
+
+`node src/modules/effects/measure.mjs --tag <name>` stages `calibrate` (a lambert 0.5-sRGB grey card
+filling every pixel, see `showcase.js`) and shoots it at tods 9, 12, 14, 17, 17.6, 19, 21.5 with (a) the
+full default chain, (b) a bare chain (every optional pass off) and (c) the bypass — toggled in the same
+live page, one page load per tod, so both sides of every ratio use the same renderer by construction.
+Runs on the real GPU through ANGLE D3D11 (`--swift` falls back to SwiftShader). Output:
+`tools/shots/fxcal-<tag>.json` plus per-shot PNGs. `--game` runs the same A/B on the live park's `low`
+camera at 14/21.5 h; `--decompose` peels grade sub-terms (vignette/grain → warmth/saturation →
+contrast) off one by one; `--measure-probe` records `api.measure()`.
+
+Round-4's blocker ("the chain re-exposes every frame: +39 % at golden hour, −30 % at night vs bypass")
+re-measured here on D3D11 after the round-5 fog/pivot fixes: the **bare chain was already pixel-neutral
+(ratio 0.999–1.000 at every tod)** — the remaining TOD-varying gain lived entirely inside two
+`GradePass` terms, both fixed this round:
+
+1. **Night scotopic shift re-exposed night frames (−5.4 % to −7.1 %).** The Purkinje target colour
+   `(0.70, 0.90, 1.55)` has rec709 luminance 0.904, so every shifted pixel lost ~6 % linear luminance
+   exactly when `uNight` was on. Fixed by luma-normalising the target to `(0.774, 0.995, 1.714)`: the
+   shift re-colours dim pixels without touching their luminance, at any hour.
+2. **Contrast crushed the low-mid band (−1.2 % to −3.2 %).** The toe protection only faded the 1.06
+   curve in below lp 0.04 (~4.6 stops under middle grey), so any frame whose level sat between ~60 and
+   ~100/255 — dusk exactly — ate the full pull-down. The fade-in now spans lp 0.25–0.7: deep blacks
+   keep full protection, midtones/highlights keep the full 1.06 punch, the band between fades.
+
+Measured after the fix (960×540, seed 1, `high`, real GPU "ANGLE (AMD, AMD Radeon RX 5700 XT D3D11)",
+frame mean over rec709-weighted bytes; card series `tools/shots/fxcal-before-card.json` /
+`fxcal-after-card.json`, game series `fxcal-before-game.json` / `fxcal-after-game.json`, pre-fix preset
+shots `pre-*.png`, post-fix `post-*.png`):
+
+| scene | tod | before: full/off | after: full/off | after: bare/off |
+|---|---|---|---|---|
+| calibrate card | 9 | 0.994 | 0.994 | 1.000 |
+| calibrate card | 12 | 0.999 | 0.999 | 1.000 |
+| calibrate card | 14 | 0.997 | 0.997 | 1.000 |
+| calibrate card | 17 | 0.975 | 0.975 | 1.000 |
+| calibrate card | 17.6 | 0.957 | 0.967 | 1.000 |
+| calibrate card | 19 | 0.893 | 0.966 | 0.999 |
+| calibrate card | 21.5 | 0.902 | 0.980 | 1.000 |
+| game `low` | 14 | 0.988 | 0.989 | 1.012 |
+| game `low` | 21.5 | 0.891 | 0.960 | 1.019 |
+
+(A SwiftShader re-run of the before series agrees within ~0.5 % per tod — `fxcal-before-swift.json`.
+Quote the D3D11 tables, not the older software-GL numbers, in future rounds.)
+
+**Residuals, honestly** (`tools/shots/fxcal-decomp-after.json`): the intentional vignette + grain still
+costs −1.5 % to −3.1 % of frame mean (that is what the vignette is for; tod-independent in kind, though
+its byte-share grows on very dark frames); the night shift retains a second-order −0.3 % to −1.8 %
+through ACES' per-channel curve (worst on the darkest 19 h card, mean 15/255, where one 8-bit count is
+±0.5 %); contrast keeps ≤1.7 % inside its toe fade at 17.6 h; warmth/saturation measured ≤0.2 %. The
+game bare-chain ratio of 1.012–1.019 is MSAA coverage filtering on grass/sky detail (the chain resolves
+4× MSAA into HalfFloat, the bypass uses the default framebuffer) — present before this fix, not a gain
+term. Worst full-chain deviation from 1.0 anywhere in the series is now 4.0 % (game night), roughly
+half of it the vignette; the discretionary tonal terms move a frame by ≤1.8 % worst-case across the
+whole day.
+
+Draw budget: `measure()` at `overview` 17.5 h reports direct 192 → chain 205, **extra 13** at `high`
+(inside the 14 the round-5 bloom kernel was budgeted at; this round changed one fragment shader and
+added no passes or render targets). Zero console errors in every capture.
+
+## `off` vs `overview` A/B — calibration history (rounds 4–5)
 
 The round-1/2 numbers that used to be here (mean abs diff 12.7, "exposure unaffected") did not reproduce:
 the critic measured the bare chain (every optional pass off) at **+39 %** frame mean over direct rendering at

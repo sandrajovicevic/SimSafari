@@ -322,10 +322,34 @@ vec4 shade(vec2 uv){
 // structure — pebbles, cracks, withered blades — without shifting the art-directed palette or the
 // biome colour balance. Height (alpha, drives height-blending) is the scan's luminance, contrast-
 // stretched; AO is a gentle cavity term from it. Missing files leave the procedural layer in place.
+// Since 2026-09-25 the sets are the Poly Haven 1k originals (colour + OpenGL normal + roughness as
+// three separate files); the packed surface map is composed from them at load. The 2026-09-24
+// half-res habitta packs stay wired as a fallback in case the originals ever go missing.
 export const PHOTO_LAYERS = [
-  { layer: LAYER.DRY_GRASS, color: 'textures/polyhaven-via-habitta/grass-color.jpg', surface: 'textures/polyhaven-via-habitta/grass-surface.jpg' },
-  { layer: LAYER.DIRT, color: 'textures/polyhaven-via-habitta/earth-color.jpg', surface: 'textures/polyhaven-via-habitta/earth-surface.jpg' },
-  { layer: LAYER.ROCK, color: 'textures/polyhaven-via-habitta/rock-color.jpg', surface: 'textures/polyhaven-via-habitta/rock-surface.jpg' },
+  {
+    layer: LAYER.DRY_GRASS,
+    color: 'textures/polyhaven/withered_grass/withered_grass_diff_1k.jpg',
+    normal: 'textures/polyhaven/withered_grass/withered_grass_nor_gl_1k.jpg',
+    rough: 'textures/polyhaven/withered_grass/withered_grass_rough_1k.jpg',
+    colorFallback: 'textures/polyhaven-via-habitta/grass-color.jpg',
+    surfaceFallback: 'textures/polyhaven-via-habitta/grass-surface.jpg',
+  },
+  {
+    layer: LAYER.DIRT,
+    color: 'textures/polyhaven/dry_ground_rocks/dry_ground_rocks_diff_1k.jpg',
+    normal: 'textures/polyhaven/dry_ground_rocks/dry_ground_rocks_nor_gl_1k.jpg',
+    rough: 'textures/polyhaven/dry_ground_rocks/dry_ground_rocks_rough_1k.jpg',
+    colorFallback: 'textures/polyhaven-via-habitta/earth-color.jpg',
+    surfaceFallback: 'textures/polyhaven-via-habitta/earth-surface.jpg',
+  },
+  {
+    layer: LAYER.ROCK,
+    color: 'textures/polyhaven/rock_boulder_dry/rock_boulder_dry_diff_1k.jpg',
+    normal: 'textures/polyhaven/rock_boulder_dry/rock_boulder_dry_nor_gl_1k.jpg',
+    rough: 'textures/polyhaven/rock_boulder_dry/rock_boulder_dry_rough_1k.jpg',
+    colorFallback: 'textures/polyhaven-via-habitta/rock-color.jpg',
+    surfaceFallback: 'textures/polyhaven-via-habitta/rock-surface.jpg',
+  },
 ];
 
 const s2l = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
@@ -340,6 +364,42 @@ function imagePixels(img, size) {
   return g.getImageData(0, 0, size, size).data;
 }
 
+/**
+ * Load one photo set as { c, s }: colour pixels and a surface pack (normal XY in r/g, roughness in b).
+ * Prefers the Poly Haven originals (colour + OpenGL normal + roughness as separate maps, packed here
+ * so the splat shader keeps its 2-sampler layout); falls back to the legacy pre-packed pair
+ * (2026-09-24 habitta files). Resolves null when neither is available → procedural layer kept.
+ * All maps go through the same imagePixels flip, so the normal Y sign stays consistent with the
+ * pre-packed path.
+ */
+async function loadLayerSet(ctx, set, size) {
+  if (set.color && set.normal && set.rough) {
+    const [col, nrm, rgh] = await Promise.all([
+      ctx.assets.texture(set.color, { srgb: true }),
+      ctx.assets.texture(set.normal),
+      ctx.assets.texture(set.rough),
+    ]);
+    if (col?.image && nrm?.image && rgh?.image) {
+      const c = imagePixels(col.image, size);
+      const n = imagePixels(nrm.image, size);
+      const r = imagePixels(rgh.image, size);
+      const s = new Uint8ClampedArray(size * size * 4);
+      for (let i = 0; i < size * size; i++) {
+        s[i * 4] = n[i * 4]; s[i * 4 + 1] = n[i * 4 + 1]; s[i * 4 + 2] = r[i * 4]; s[i * 4 + 3] = 255;
+      }
+      return { c, s };
+    }
+  }
+  if (set.colorFallback && set.surfaceFallback) {
+    const [col, surf] = await Promise.all([
+      ctx.assets.texture(set.colorFallback, { srgb: true }),
+      ctx.assets.texture(set.surfaceFallback),
+    ]);
+    if (col?.image && surf?.image) return { c: imagePixels(col.image, size), s: imagePixels(surf.image, size) };
+  }
+  return null;
+}
+
 /** Overwrite procedural layers in S.layers with photo sets. Resolves the list of layers replaced. */
 export async function applyPhotoLayers(ctx, layers, sets = PHOTO_LAYERS) {
   const { size, tAlb, tNrm } = layers;
@@ -347,9 +407,9 @@ export async function applyPhotoLayers(ctx, layers, sets = PHOTO_LAYERS) {
   const px = size * size;
   const done = [];
   await Promise.all(sets.map(async (set) => {
-    const [col, surf] = await Promise.all([ctx.assets.texture(set.color, { srgb: true }), ctx.assets.texture(set.surface)]);
-    if (!col?.image || !surf?.image) return;
-    const c = imagePixels(col.image, size), s = imagePixels(surf.image, size);
+    const pix = await loadLayerSet(ctx, set, size);
+    if (!pix) return;
+    const { c, s } = pix;
     const base = set.layer * px * 4;
     // procedural and photo means (linear)
     const pm = [0, 0, 0], fm = [0, 0, 0];

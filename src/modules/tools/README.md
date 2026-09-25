@@ -159,6 +159,7 @@ a bug — it is reliable and cheap, and degrades gracefully (never throws) when 
 | `economy:updated` | emits (via `simulation.spend`) | `{cash, income, expenses, day, spend, reason}` — after every `spend()` |
 | `input:down` / `input:up` | consumes | core's raw pointer events (`{button, ground}`) |
 | `input:key` | consumes | core's raw key events (`{code, key, shift, ctrl}`) — Escape / Delete / Ctrl+Z / Ctrl+Y handled centrally, then forwarded to the active tool |
+| `tool:request` | consumes | `{tool, options}` from `ui` (toolbar cards, sidepanel Demolish/Sell/Remove) — ui's dotted names are translated to `activate()`: `terrain.raise` → `('terrain',{mode:'raise'})`, `road.gravel` → `('road',{kind:'gravel'})`, `zone.habitat`/`zone.erase` → `('zone', …)`, `building.place` → `('building', options)`, `animal.place` → `('animal', options)`, `bulldoze`/`animal.sell` with `options.id` → delete that entity (panel buttons skip the second confirm; no id → road-bulldoze mode), `select`/`null` → `deactivate()` (wired 2026-09-25 — before that nothing subscribed and every ui button was dead, critic tools round 4) |
 
 ## Presets (`showcase.js`)
 
@@ -173,28 +174,34 @@ zebras inside the painted habitat. Then each preset leaves a different tool live
 | preset | tod | what it shows |
 |---|---|---|
 | `overview` | 15 | wide shot after the scripted session: the curving gravel road and its bridge, the gate, the lodge, and the painted habitat. The three scripted terrain raises are single clicks (~8 cm each) — they exercise the tool and undo stack but are not visible at 640 m |
-| `road` | 16 | road tool **live**: a new paved path snapped onto the end of the committed gravel road (node-snap), with the preview ribbon, per-segment grade colouring, and the cyan snap-indicator ring |
+| `road` | 16 | road tool **live**: a new paved path whose start point node-snaps onto the end of the committed gravel road, with the preview ribbon, per-segment grade colouring, and the cyan snap-indicator ring on that snapped start point (2026-09-25: the ring also marks the committed point the path is pinned to — before, it only tracked the live cursor, which never snaps in this preset, so `snap.visible` was false) |
 | `terrain` | 16.5 | terrain tool **live**: the ring cursor over a mound raised by a bounded, deterministic number of applications (see Known gaps for why the drag is frame-bounded, not wall-clock-bounded) |
 | `building` | 17 | building tool **live**: the real placed lodge, plus a ghost preview nudged onto it — red (invalid: `occupied`) — demonstrating `canPlace()` validity colouring |
 | `close` | 16.5 | select tool: the lodge picked (`tools.select('building', id)`), the pulsing selection-marker ring visible |
 | `night` | 21.5 | the same park after dark, lodge still selected |
 
-## Measured (SwiftShader software GL, 1280×720, `--settle 15`, seed 1)
+## Measured (SwiftShader software GL, 1280×720, seed 1, re-measured 2026-09-25)
 
-This session's environment ran several other builder agents' own headless Chrome captures
-concurrently, which under SwiftShader's software rasterizer made `elapsedMs`/`fps` wildly
-unrepresentative from run to run (correctly: `CLAUDE.md`/`ARCHITECTURE.md` both call out that fps
-under SwiftShader is not the budget metric). `errors`/`drawCalls`/`triangles` were stable and 0 errors
-across every successful capture.
+Re-measured via `__SIM__.capture(false)` in headless Chrome (`tools/screenshot.mjs`'s PNG capture is broken in
+this environment — `dataUrl` comes back null — but the stats path is the same). This session's environment ran
+several other builder agents' own headless Chrome captures concurrently, which under SwiftShader's software
+rasterizer makes `elapsedMs`/`fps` wildly unrepresentative from run to run (correctly: `CLAUDE.md`/
+`ARCHITECTURE.md` both call out that fps under SwiftShader is not the budget metric). `errors`/`drawCalls`/
+`triangles` were stable and 0 errors across every capture.
 
-| preset | draw calls | triangles | console errors |
-|---|---|---|---|
-| overview | 87 | 3,651,757 | 0 |
-| terrain | *(see Known gaps — capture pending re-run after the stroke-cap fix)* | | 0 |
-| road | *(pending)* | | |
-| building | *(pending)* | | |
-| close | *(pending)* | | |
-| night | *(pending)* | | |
+| preset | draw calls | triangles | console errors | tools `updateMs` |
+|---|---|---|---|---|
+| `overview` | 107 | 3,556,096 | 0 | 0.008 |
+| `road` | 140 | 3,654,537 | 0 | 0.022 |
+| `terrain` | 120 | 3,197,319 | 0 | 288.7 during the held stroke (peak 671.8) — the known-gap terrain cost, see below |
+| `building` | 96 | 3,244,605 | 0 | 0.091 |
+| `close` | 121 | 3,100,958 | 0 | 0.000 |
+| `night` | 108 | 3,510,374 | 0 | 0.000 |
+
+Outside the `terrain` preset's deliberately held stroke, the steady-state `tools.update()` cost is ≤0.1 ms
+(the marker/ring/ribbon updates are typed-array writes and a handful of reused scratch vectors). The `terrain`
+EMA is the documented stroke cost: every held frame calls `terrain.raise()`, which runs terrain's full
+`afterEdit()` — see Known gaps.
 
 These totals are the **whole frame**: `tools` auto-loads every optional module that exists in this
 repo (`terrain`, `roads`, `zoning`, `buildings`, `animals`, `simulation`, plus `environment`/`props`

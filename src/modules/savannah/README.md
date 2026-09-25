@@ -25,15 +25,23 @@ showcase preset, so there is no cross-preset state), in this order:
    straight line samples dry ground — when it clips the pan the leg is dropped so the waterhole stays
    wild (a road bridge through the drinking scene was a verified defect on seed 1). One
    `traffic.spawn('safari', …)` parks a vehicle on the track.
-5. **The cast** — `animals.clear()`, then: a 5-lion pride (one male, rest-state mix, held) on the
-   kopje's sun-facing lower flank — the male's spot must be dry AND flat (slope < 0.14) so no rock
-   lip swallows his legs, and the whole bearing is seeded 20° off the sun so the preset camera
-   (parked just beyond him on the same line) looks away from the low sun with the light raking
-   three-quarter across him; elephants + giraffes drinking at real `shorePoints` marched out from the
-   water's edge; zebra + warthog at the shore; a walking zebra/wildebeest herd with `target`s across
-   the grassland plus impala and ostrich; hippos join the waterhole for the `night` preset only.
+5. **The cast** — `animals.clear()`, then: a 5-lion pride clustered on the kopje's sun-facing lower
+   flank (radii 1.38-1.50 r in a contact-group crescent around the male, each spot dry AND flat —
+   slope < 0.14 — so no rock lip swallows legs; the whole bearing is seeded 20° off the sun so the
+   preset camera parked just beyond the male looks away from the low sun with the light raking
+   three-quarter across him); elephants + giraffes drinking at real `shorePoints` marched out from
+   the water's edge; zebra + warthog at the shore; a walking zebra/wildebeest herd with `target`s
+   across the grassland plus impala and ostrich. `night` adds a hippo pod: three stand
+   half-submerged at the waterline on the LENS-side shore (found by marching the bearings toward
+   the camera until each leaves the water), broadside to the lens at 1.2x scale, two more idle on
+   the far shore, and the nearest drinking elephant is pulled off that shore for the preset — at
+   3x hippo size it upstaged the trio into illegibility (verified `fix-sav-night-v1/-v2`). The
+   night camera anchors on the hippo group itself (26 m, pitch 14°), not the pan centre.
    All staged animals use `hold: 1e6` so a still frame shows the composed state (they cannot wander
-   during the screenshot settle — held animals never change state or steer).
+   during the screenshot settle — held animals never change state or steer). **Asset fact:** the
+   authored lion model is a single maned male mesh — no mane-less model exists on the asset source
+   (searched 2026-09-25, animals README) and the static pool has no rest pose, so the pride reads
+   as standing males and the kopje row says exactly that.
 6. **Camera anchors** — every preset's `camera.target` is re-aimed onto the real feature positions
    for the active seed (mutating the exported `presets` object in place, which core applies after
    `stage()` resolves), and all views are registered as `savannah-<name>` rig presets so the full
@@ -72,31 +80,34 @@ degrades the scene, never fails the stage.
 | `close` | 16 | foreground grass and an acacia trunk at eye level, kopje softening into haze |
 | `hero` | 17.4 | the flagship golden-hour shot: the herd crossing the middle distance in raking side light, sun out of frame, acacia line and escarpment in warm haze behind |
 | `waterhole` | 8 | elephants and giraffes drinking in low morning light, zebra at the shore |
-| `kopje` | 17.8 | the pride at the kopje's foot in golden hour — the male three-quarter front-lit at ~8 m against the boulder backdrop, lionesses resting around him (see CG list for the residual model tell) |
+| `kopje` | 17.8 | the pride at the kopje's foot in golden hour — the male three-quarter front-lit at ~8-12 m against the boulder backdrop, the rest of the pride clustered around him; every cat reads male (single maned-male asset, searched — see step 5) and the static meshes stand rather than lie |
 | `herd` | 16 | zebra and wildebeest crossing open grassland at eye level |
 | `river` | 9.5 | the riverine gallery from on the water, looking down the channel |
-| `storm` | 15 | dark sky, rain approaching, the track leading into it |
-| `night` | 22 | moonlit hippos at the waterhole, moon glitter path, the herd asleep beyond |
+| `storm` | 15 | the storm deck in frame (pitch 6° from 330 m): grey cloud, rain shafts, the plains and track below |
+| `night` | 22 | moonlit hippo pod half-submerged at the waterhole's lens-side shore (also staged at 3 h), the pan's sky reflection behind them |
 | `dawn` | 6.3 | heavy dawn mist, the sun breaking over the escarpment |
 
 ## Measured
 
-SwiftShader software GL (fps not representative; draws/tris/errors real). Seed 1, 1920×1080. All
-0 console errors. Draw calls include every loaded module's scene content (the composer adds none of
-its own); the whole scene sits far inside the ≤1500 draw / ≤6 M tri budget at every preset.
+Real GPU (`tools/gpu-check.mjs`, `--use-angle=d3d11`, ANGLE AMD Radeon RX 5700 XT D3D11), 1920×1080,
+`quality=high`, seed 1, 2026-09-25 asset-swap/fix pass (props grass re-tint + animals zebra/elephant
+swap are in every frame). All 0 console errors. Draw calls include every loaded module's scene
+content (the composer adds none of its own); the whole scene sits far inside the ≤1500 draw /
+≤6 M tri budget at every preset.
 
-| preset | draws | triangles |
-|---|---|---|
-| overview | 165 | 3,575,101 |
-| close | 211 | 4,850,921 |
-| hero | 206 | 4,803,954 |
-| waterhole | 200 | 3,963,856 |
-| kopje | 185 | 3,709,866 |
-| herd | 212 | 4,879,278 |
-| river | 188 | 4,564,596 |
-| storm | 174 | 4,069,273 |
-| night | 204 | 4,002,272 |
-| dawn | 228 | 5,148,585 |
+| preset | draws | triangles | errors | shot |
+|---|---|---|---|---|
+| overview | 186 | 3,515,486 | 0 | `tools/shots/final-sav-overview-16.5.png` |
+| close | 201 | 3,346,508 | 0 | `tools/shots/final-sav-close-16.png` |
+| hero | 274 | 4,215,566 | 0 | `tools/shots/final-sav-hero-17.4.png` |
+| waterhole | 212 | 3,717,638 | 0 | `tools/shots/final-sav-waterhole-8.png` |
+| kopje | 219 | 3,432,804 | 0 | `tools/shots/fix-sav-kopje-v2.png` |
+| herd | 277 | 4,161,278 | 0 | `tools/shots/final-sav-herd-16.png` |
+| river | 207 | 4,532,876 | 0 | `tools/shots/final-sav-river-9.5.png` |
+| storm | 115 | 2,948,838 | 0 | `tools/shots/fix-sav-storm-v1.png` |
+| night (22 h) | 215 | 3,659,679 | 0 | `tools/shots/fix-sav-night-v6.png` |
+| night (3 h, extra) | 214 | 3,626,911 | 0 | `tools/shots/fix-sav-night-v6-3h.png` |
+| dawn | 306 | 4,453,351 | 0 | `tools/shots/final-sav-dawn-6.3.png` |
 
 ## What still reads as CG versus photography (honest)
 
@@ -105,20 +116,22 @@ its own); the whole scene sits far inside the ≤1500 draw / ≤6 M tri budget a
   bright gold from pure diffuse response (roughness is 1.0 — there is no specular left to remove),
   which is close to how backlit grass photographs, but the uniformity of the glow across the whole
   sward is the single biggest remaining CG tell (park-lodge golden hour shows it at its strongest).
-* **The `kopje` subject is now staged, not hoped for** (round-3 fix, verified sav-kopje-fix-d/-e):
-  the pride sits on the sun-facing flank at 1.18 r on a slope-checked flat spot, the preset camera
-  is marched from 8 m outward along the male's bearing until the terrain LOS is clear, and
+* **The `kopje` subject is staged around the actual asset** (re-done 2026-09-25 after the animals
+  glTF swap): the pride sits in a contact cluster on the sun-facing flank at 1.38-1.50 r on
+  slope-checked flat spots, the camera march starts at 11 m along the male's bearing, and
   `props.clear` carves the corridor/podium/fore-court described in stage step 6 — the male reads
-  unmistakably (dark mane, legs on the ground) in both verification captures. Residuals below.
+  unmistakably with two more cats flanking him (`tools/shots/fix-sav-kopje-v2.png`). Residuals:
+  every lion is the one maned-male mesh (asset source has no mane-less model — searched), and the
+  static meshes stand rather than lie, so "resting/sleeping pride" is not claimable.
 * **Foliage silhouettes against glare** (dawn) are dark alpha cutouts — real backlit canopy glows
   through; there is no leaf translucency term.
 * **Animal faces at conversational distance** (waterhole elephants at 40 m) are convincingly
   sculpted but the trunk-tip/ear articulation is stiffer than film reference; skin wrinkles read
   slightly regular on the elephant.
-* **The male lion up close is a low-poly box-and-cylinder cat** — at the kopje preset's 8 m the
-  silhouette, mane, legs and tail tuft all read, but the body has no muscle relief or fur, and the
-  front-lit flank values run pale against the darker rock; photography at this distance would show
-  whiskers, fly twitch and behavioural story (interaction, cubs) that no staged still can.
+* **The lions are low-poly stylised cats** — at the kopje preset's ~11 m the silhouette, painted
+  mane and texture read, but the mesh has no muscle relief or fur, every cat is male, and none can
+  lie down; photography at this distance would show whiskers, fly twitch and behavioural story
+  (interaction, cubs) that no staged still can.
 * **Water**: the tannin-dark rivers and pans with a tight sun glint read photographically at a
   distance; at close range the shore blend is a painted gradient, not wet-sand geometry.
 * **Clouds** are a two-layer analytic sheet — convincing at hero/storm distances, but a storm front's

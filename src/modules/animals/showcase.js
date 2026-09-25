@@ -11,6 +11,7 @@ export const presets = {
   predators: { camera: { target: [0, 0], distance: 26, pitch: 13, yaw: 235 }, tod: 17.5, description: 'Lion pride resting, cheetah walking past' },
   close:     { camera: { target: [0, 0], distance: 12, pitch: 9, yaw: 200 }, tod: 15, description: 'One elephant at 12 m' },
   night:     { camera: { target: [0, 0], distance: 40, pitch: 14, yaw: 300 }, tod: 21.5, description: 'Night: hippos leaving the water, zebra and giraffe asleep' },
+  species:   { camera: { target: [0, 0], distance: 30, pitch: 12, yaw: 225 }, tod: 15, description: 'Asset roster lineup: the 9 authored-model species in a row at ~30 m' },
 };
 
 /** Camera-facing heading helper: preset yaw → heading that faces the camera, plus an offset. */
@@ -201,6 +202,23 @@ export async function stage(ctx, preset) {
       api.spawn('hippo', -110, -100, 4, { state: 'graze', hold, spread: 8 });
       api.spawn('zebra', -30, 110, 10, { state: 'graze', hold, spread: 12 });
       api.spawn('impala', 120, 100, 12, { state: 'graze', hold, spread: 12 });
+      break;
+    }
+    case 'species': {
+      // All 9 authored-model species in one near-camera lineup (asset verification: load, scale,
+      // silhouette in one shot). One row on z=0, all idle+hold so they stay in frame.
+      const hd = facing(yaw, 0);
+      const row = [
+        ['giraffe', -14], ['elephant', 14], ['buffalo', -10.5], ['hippo', 10.5], ['rhino', 7],
+        ['zebra', -7], ['wildebeest', -3.5], ['impala', 3.5], ['lion', 0],
+      ];
+      // hippo/rhino get an explicit target on their spot: their herd intent otherwise wanders them
+      // out of frame during the fast-settle simulation window (observed 2026-09-25).
+      for (const [sp, x] of row) {
+        api.spawn(sp, x, 0, 1, sp === 'hippo' || sp === 'rhino'
+          ? { heading: hd, state: 'walk', hold, target: [x, 0], arrive: 'graze' }
+          : { heading: hd, state: 'idle', hold });
+      }
       break;
     }
   }

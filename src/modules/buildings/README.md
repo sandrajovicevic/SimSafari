@@ -160,6 +160,13 @@ The buildings-only row comes from `ctx.modules.get('buildings').stats()`.
 vertex *positions*, it adds no geometry, so their draw-call/triangle counts are unaffected; not re-verified
 by a fresh screenshot this pass.
 
+Re-verified 2026-09-25 on the real GPU (ANGLE D3D11, 1280×720, seed 1, `tools/gpu-check.mjs`):
+`lodge` (yaw 12) 264 draws / 3.89 M tris — the frame shows the terrace side: veranda poles, deck
+railings, plunge pool as blue water in the stone paving, no stray rails; `overview` 291 draws /
+4.53 M tris — the complex from the south with the lodge's terrace facing the camera
+(`tools/shots/buildings-lodge-17_5-gpu.png`, `buildings-overview-16-gpu.png`; both 0 console errors,
+whole-frame numbers, not buildings-only).
+
 **Buildings-only** (`api.stats()` at the `overview` site, 25 buildings across all 16 types):
 **34 draw calls, 131,730 triangles** — well inside the spec's ≤ 60 draw calls / ≤ 400 k triangles
 budget for the complex. The ~260–300 draw calls and ~3.7–4.3 M triangles above are the **whole

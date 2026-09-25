@@ -119,7 +119,7 @@ function makeSky() {
       uNoise: { value: R.cloudNoise }, uSunDir: { value: st.sunDir },
       uSunLight: { value: new THREE.Vector3() }, uSunHigh: { value: new THREE.Vector3() }, uAmbient: { value: new THREE.Vector3() }, uHorizon: { value: new THREE.Vector3() },
       uCoverage: { value: 0.2 }, uCirrus: { value: 0.3 }, uStorm: { value: 0 }, uTime: { value: 0 }, uWind: { value: new THREE.Vector2(1, 0.2) },
-      uCamHeight: { value: 100 }, uMoonBoost: { value: 0 },
+      uCamHeight: { value: 100 }, uMoonBoost: { value: 0 }, uNight: { value: 0 },
     },
   });
   R.clouds = new THREE.Mesh(geo, R.cloudMat);
@@ -399,12 +399,21 @@ function computeLighting() {
   cu.uAmbient.value.set(st.zenith.r, st.zenith.g, st.zenith.b).multiplyScalar(1.3);
   cu.uHorizon.value.set(st.horizon.r, st.horizon.g, st.horizon.b);
   if (st.isMoonKey || st.sunEl < -6 * DEG) {
-    // moonlit clouds: add the moon as the cloud light (blue-grey)
-    cu.uSunLight.value.set(moonT[0] * 0.78, moonT[1] * 0.86, moonT[2]).multiplyScalar(0.7 * ATMOS.moonRatio * Math.pow(st.illum, 1.5) * (st.moonDir.y > 0 ? 1 : 0) * 25);
+    // moonlit clouds: add the moon as the cloud light (blue-grey). The old x25 boost lit the sparse
+    // night fleck field to ~day screen brightness — exposure 12 x moonT x 25 lands around 150 sRGB
+    // against a ~25 sRGB night sky, i.e. a bright speckle wall (round-8 major; the critic attributed
+    // the wall to this layer, but the real-GPU toggle diagnostic showed the wall was the aliased
+    // star bake — this boost still made any actual cloud read as pale grey at night). x4 puts a
+    // full-moon cloud body ~10-20 sRGB points above the sky: faint moonlit silhouettes, structure
+    // legible moonward via the silver-lining term, stars dominant. Scales down with the moon's
+    // illuminated fraction, so new-moon clouds go fully dark (star-occluding silhouettes).
+    cu.uSunLight.value.set(moonT[0] * 0.78, moonT[1] * 0.86, moonT[2]).multiplyScalar(0.7 * ATMOS.moonRatio * Math.pow(st.illum, 1.5) * (st.moonDir.y > 0 ? 1 : 0) * 4);
   }
   cu.uCoverage.value = W.cloud;
   cu.uCirrus.value = clamp(0.12 + W.cloud * 0.7 - W.rain * 0.4, 0, 0.55) * (1 - Math.pow(W.cloud, 4));
   cu.uStorm.value = clamp(W.rain * 1.2, 0, 1);
+  // drives the cloud shader's night presentation gate (bank clustering strength + field thinning)
+  cu.uNight.value = st.night;
 
   // stars
   R.starMat.uniforms.uAmount.value = su.uNightAmount.value;

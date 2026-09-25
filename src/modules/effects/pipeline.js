@@ -256,19 +256,26 @@ void main() {
   // contrast about middle grey AS DISPLAYED: this pass runs before OutputPass applies
   // renderer.toneMappingExposure (4 by day, up to 12 at night), so the pivot is 0.18 / exposure.
   // A fixed 0.18 pivot crushed the whole night frame (linear ~0.015 before exposure) by ~15 %.
-  // Toe-protected: the curve fades to identity ~4 stops below the pivot, so deep shadows (most of a
-  // night frame) are not pulled down; contrast acts on the midtones and highlights where it reads.
+  // Toe-protected: the curve fades in from lp 0.25 (display-linear ~0.045, ~60/255) to full strength
+  // at lp 0.7 (~100/255). The old fade-in from lp 0.04 left the whole low-mid band exposed to the
+  // full 1.06 pull-down, which measured as a -1..-3 % global dip on any frame sitting between
+  // ~60 and ~100/255 (dusk; measured grey-card series, see measure.mjs) - a re-exposure that grew
+  // as the sun fell. Deep blacks were already protected; now the low mids are too.
   float lp = dot(c, vec3(0.2126, 0.7152, 0.0722)) / uPivot;
-  float k = mix(1.0, uContrast, smoothstep(0.04, 0.5, lp));
+  float k = mix(1.0, uContrast, smoothstep(0.25, 0.7, lp));
   c = uPivot * pow(c / uPivot, vec3(k));
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
   c = mix(vec3(l), c, uSaturation);
   // Night: Purkinje-style scotopic shift. Dim areas lose colour and drift blue-grey (rod vision);
   // lamps, fires and anything bright keep their warm colour. Driven by displayed luminance.
+  // The target is luma-normalised (rec709 weights): the shift re-colours dim pixels without
+  // re-exposing them. An earlier non-normalised target (0.70, 0.90, 1.55; luma 0.904) darkened
+  // every shifted pixel by ~6 % linear, which measured as -5..-7 % frame mean at night while the
+  // bypass path stayed put - the single largest time-of-day gain in the chain.
   if (uNight > 0.0) {
     float le = dot(c, vec3(0.2126, 0.7152, 0.0722)) / uPivot * 0.18;
     float s = uNight * (1.0 - smoothstep(0.03, 0.45, le));
-    c = mix(c, vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))) * vec3(0.70, 0.90, 1.55), s * 0.6);
+    c = mix(c, vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))) * vec3(0.774, 0.995, 1.714), s * 0.6);
   }
   c += uLift;
   // elliptical vignette, gentle
