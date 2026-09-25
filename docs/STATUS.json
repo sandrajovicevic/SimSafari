@@ -309,34 +309,50 @@
     "audio": {
       "wave": 1,
       "domain": "sim",
-      "round": 3,
-      "score": 8,
-      "status": "fail",
+      "round": 4,
+      "score": 8.5,
+      "status": "pass",
       "errors": 0,
-      "drawCalls": 0,
+      "drawCalls": 81,
       "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
-        "overview 15 (via screenshot.mjs eval workaround)",
-        "night 22",
-        "storm 15",
-        "selfTest() direct call",
-        "shot.mjs run twice (failed both times)"
+        "overview 15 (shot.mjs)",
+        "close 16.5 (shot.mjs)",
+        "night 22 (shot.mjs)",
+        "storm 17 (shot.mjs)",
+        "overview 12 core tool --dom --gesture --eval (hour sweep, crossfade, pan, distance probe)"
       ],
       "issues": [
         {
           "sev": "major",
-          "text": "The module's own verification tool src/modules/audio/shot.mjs is broken: page.screenshot() hits the default 30s timeout on the first preset, reproduced twice. Root cause: same rAF-compositor-busy issue the core tools/screenshot.mjs was specifically hardened against (extended timeout/retry) -- shot.mjs never got that fix. Worked around via tools/screenshot.mjs --dom --gesture --eval instead, which confirmed the underlying audio engine is fine."
+          "text": "README public API drifted from code: selfTest() documented as returning per-bus peaks (actually offline-renders each sound -> {sound: rmsDb}); lastSelfTest() undocumented; getLevels/getLayers are Float32Arrays (not objects) and there are 7 layers not 4; preset tod table 12/17/22/15 vs code 15/16.5/22/17; shot.mjs not mentioned."
         },
         {
           "sev": "minor",
-          "text": "vehicles/animals buses read -inf dB in a still capture between scheduled sounds -- disclosed capture-timing artifact, consistent with what was observed (the event log shows real triggers even while the instantaneous meter reads -inf)."
+          "text": "Equal-power panner: dry source at 90 deg fully absent from far ear (-240 dB), no front/back cue (front == behind -25.6 dB). Use HRTF for near sources or add crossfeed."
         },
         {
           "sev": "minor",
-          "text": "Synth calls are impressionistic, not species-accurate transcriptions -- disclosed, unavoidable without reference recordings."
+          "text": "shot.mjs hardening incomplete: no retry, screenshot failure does not affect OK/exit code; bus levels sampled right after the 100-122 s blocking selfTest so animals reads -180 dB in every JSON (panel PNG shows -20.7 dB on close)."
+        },
+        {
+          "sev": "minor",
+          "text": "getLayers() reports the end-of-lookahead value (lookahead up to 20 s on software GL), so hour changes appear to crossfade instantly in the panel/API while the audible ramp lags."
+        },
+        {
+          "sev": "minor",
+          "text": "Debug panel: environment line overflows the 616 px canvas (gust/lookahead cut off); bus names overlap gain labels."
+        },
+        {
+          "sev": "minor",
+          "text": "Wind bed has no diurnal cycle (0.41 from 02 h to 22 h at constant weather)."
+        },
+        {
+          "sev": "minor",
+          "text": "Disclosed: impressionistic synth calls, one generic engine loop, no music; optional dep on animals participates in a [core] dependency-cycle warning."
         }
       ],
-      "good": "Debug panel is genuinely informative: live bus meters, populated 40Hz-16kHz spectrum, per-layer ambience gains, event log with real positions/distances. selfTest() covers the full 30-sound catalogue with plausible differentiated levels, no silent entries. Distance falloff measured directly (lion@10m -23.3dB vs @400m -46.9dB). Night/storm layer mixes matched the README's specific historical numbers closely, independently reproduced. dispose() genuinely closes the AudioContext and tears down every voice/engine loop."
+      "good": "Round-3 blocker fixed: src/modules/audio/shot.mjs runs all 4 presets to EXIT 0, 0 errors. Measured: inverse distance law (-24.2 dB flat to 25 m ref, then ~-5.8 dB/doubling to -52.8 dB at 800 m) + air absorption; correct L/R; hour sweep gives dawn chorus 0.92 at 07h, midday lull 0.38, insects fading in 18-20h; storm ducks birds, frogs water-gated; night mix reproduces README exactly (insects 1, frogs 1, birds 0.15, wind 0.41). selfTest 30/30 deterministic, unclipped. dispose() closes the AudioContext."
     },
     "effects": {
       "wave": 1,
@@ -1118,6 +1134,12 @@
       "module": "simulation",
       "round": 6,
       "score": 6.0,
+      "date": "2026-09-25"
+    },
+    {
+      "module": "audio",
+      "round": 4,
+      "score": 8.5,
       "date": "2026-09-25"
     }
   ]
