@@ -3,6 +3,7 @@
   "wave": 3,
   "passThreshold": 8.5,
   "notes": [
+    "2026-09-25 IDEAS PHASE ACTIVATED — see docs/ideas-roadmap.md (agenda P1 food web -> P6 field guide) and docs/specs/p1-food-web.md (P1 contract). Entry gate 1: PR #3 (iteration 3, 2277f8d) merged with the Z Code wave reconciled; the 9 modules still at status fail (terrain, roads, ui, effects, buildings, props, traffic, tools, park) carry an explicit per-module `deferral` record (open majors/minors counted, the P-wave that reopens the module); no blockers open. PREREQUISITES pulled forward into P2's entry criteria (not deferred): terrain edit path must stop re-uploading full control/height textures and rebuilding chunks per edit (P2 writes burn state every tick), and the tools held-stroke cost (14 ms mean after PR #3) must fall under budget before the firebreak verb ships. Entry gate 2: gameplay baseline re-measured on the merged state — every fidelity scenario matches main exactly ($15 break-even +$433.13/d, determinism identical, 89/89 tests, lint, build green); visual baseline = blind round 7 on SwiftShader (independent critic session; comparable with round 5, NOT with round 6's real-GPU D3D11 — ideas-phase waves run in SwiftShader cloud sessions, so they are measured against round 7). Game.blindVisual keeps the round-6 D3D11 figure; round 7 is recorded as game.blindVisualSwiftShader.",
     "2026-09-25 iteration wave (orchestrated agentic session): asset wave shipped — 9 authored glTF species wired via ASSET_SPECIES (incl. a genuinely striped Poly by Google zebra; lioness honestly not found, variant mechanism shipped empty), Poly Haven 1k terrain photo layers (habitta kept as fallback tier), exposure-neutral effects GradePass fix (scotopic luma-normalised, night ratio 0.89->0.97+), night stars fixed at the bake — the round-8 speckle wall was the BAKED STAR TEXTURE, not cumulus (the SwiftShader clouds-off diagnostic was misleading; always cross-check diagnostics on the render backend being judged). Three independent critics re-scored all 15 modules on real-GPU D3D11 captures; two fix-builders then closed every blocker/major that was fixable same-day (all verified with captures read by the orchestrator). Scores: simulation 6->8.5 PASS, zoning 6->8.5 PASS, terrain 6->8.0, effects 6->8.0, park 6->8.0, buildings 6->7.5, animals 7->8.0, environment 6->7.5, savannah 6->7.5, props 7.0 held, tools 5.5->7.0, traffic 5->7.0, ui 7.0 held (credits panel added, closes the CC-BY obligation). Round-6 blind test 6.8->7.5. Fidelity: all scenarios pass, $15 break-even +$433.13/d exact, determinism identical, 89/89 tests, lint ok, build green. Protocol notes: gpu-check.mjs does NOT auto-pin &speed=0 (screenshot.mjs does); the capture backend is now real-GPU D3D11 — never byte-compare against SwiftShader-era baselines; poaching/disease per-run counts are high-variance, quote multi-seed means. Top remaining defects for the next wave: wild-night self-shadowed foregrounds, close-range grass squiggle (D3D11-confirmed), golden-hour hero shading, tools terrain-stroke 157 ms/frame (needs a terrain batching API), roads night paint glow, props overview tris over the 3 M spec line. Authored-asset obligations are met: every file registered in docs/ASSETS.md, >1 MB binaries on LFS, CC-BY credited in the in-game settings panel.",
     "2026-09-25 overnight: visual fixes (water Fresnel sky reflection + lit silt line, leaf albedo, props photo-rock ReferenceError fix) and tools' missing tool:request bridge (toolbar/panel buttons did nothing). Critic pass on 9 modules: audio 8.5 PASS; roads 7.0, ui 7.0, zoning 6.0, simulation 6.0 (claims cap, engine ~8.5), buildings 6.0 (cap), effects 6.0 (cap, ~8.0 visually), tools 5.5 (cap), traffic 5.0 (preset shows empty road). Most drops vs round 3 are stricter claim-checking of unchanged code, not regressions. Highest-value follow-ups: (1) effects: post chain shifts brightness with time of day (+39% golden hour, -30% night) — calibrate against a grey card, affects every module's look; (2) cheap claim-cap removals: README/preset mismatches in traffic, buildings (lodge preset shoots the back), simulation (boom numbers), zoning (MAX_PULL text), tools (4 claims); (3) zoning habitat fragments (no min size), traffic hero truck spawned driving, ui facts grid CSS + 720p overlap, roads junction/bridge staging. Screenshot tool now pins --game clock (speed=0) by default.",
     "2026-09-24 night — asset-policy switch + visual overhaul (critic pass PAUSED after savannah r6; park r5 was stopped mid-run, no files). DONE: fast-settle screenshots (~2 min vs ~7 min per 960x540 shot); ctx.assets (core/Assets.js); animals GltfPool (rigged glTF species with baked clips, procedural fallback; proven with the Khronos Fox test fixture via ?animalModel=elephant:fox — ASSET_SPECIES is still EMPTY, no real species yet); terrain photo layers (Poly Haven CC0 withered grass / dry ground rocks / rock boulder dry via a GitHub mirror, 512 px); props boulders capped at the angle of repose (no more popcorn boulders on cliffs) + rock scan; two-view tree imposters (trees no longer read as dashes from above); softer grass ring. MORNING (after the user opens network access): 1) re-check reachability (poly.pizza, quaternius.com, itch.io/gobkit.com, polyhaven.com); 2) Gobkit hippo+rhino, Quaternius horse->zebra / bull->buffalo,wildebeest / deer,stag->impala, Poly Pizza for giraffe/elephant/lion; fill animals/gltfpool.js ASSET_SPECIES + docs/ASSETS.md rows; 3) swap the habitta 512 px textures for Poly Haven 1k/2k originals, add bark/leaf/ground sets; 4) resume the critic pass with modules whose look is not changing (roads, zoning, ui, simulation, audio, traffic, tools, buildings, effects); animals/props/terrain/environment/savannah/park after assets land. Known open: water is a flat opaque plane with no reflections + a bright night shoreline ring (critic savannah r6); tree canopies very dark; park fidelity numbers stale since the plains siting change.",
@@ -79,7 +80,18 @@
           "text": "Night ground near-black in the darkest fields (readback 12,8,5) — shared environment-owned ambient issue, improved by NIGHT_LIFT but still darker than moonlit reference."
         }
       ],
-      "good": "Round-4 blockers verified fixed with own captures + pixel readback: night water dark (water ~ground brightness at 21.5/3h), escarpment jagged and variably fluted at all distances/sun angles. Poly Haven 1k photo layers on disk and visible with palette intact. Convincing dry-season savannah at every distance; 0 errors in 15 shots; well inside all budgets."
+      "good": "Round-4 blockers verified fixed with own captures + pixel readback: night water dark (water ~ground brightness at 21.5/3h), escarpment jagged and variably fluted at all distances/sun angles. Poly Haven 1k photo layers on disk and visible with palette intact. Convincing dry-season savannah at every distance; 0 errors in 15 shots; well inside all budgets.",
+      "deferral": {
+        "date": "2026-09-25",
+        "decision": "open visual/polish items explicitly deferred so the ideas phase can start (docs/ideas-roadmap.md entry gate 1); they are fixed when a P-wave next opens this module, as part of that wave's exit, unless listed under prerequisites",
+        "reopenedBy": "P2 (burn state + regrowth)",
+        "openCounts": {
+          "blocker": 0,
+          "major": 0,
+          "minor": 4
+        },
+        "pr3Note": "escarpment fluted motif — addressed in PR #3 (domain-warped grooves, strata, talus); pending critic re-check"
+      }
     },
     "environment": {
       "wave": 1,
@@ -228,7 +240,18 @@
           "text": "Carried: sampleEdge out-object footgun and two-lane-only getLanes() (disclosed)."
         }
       ],
-      "good": "Round-3 asphalt swirl verified fixed (10 h preset and 12 m grazing 6.5 h extra). Dirt ruts + shoulder dust blending convincing, no visible ribbon edge. Timber bridge asset well built. Night still the best in the project (21.5 h and 3 h). 0 errors on 9 captures, lint ok, no per-frame allocs, dispose complete, road-owned 9 draws / 44,753 tris."
+      "good": "Round-3 asphalt swirl verified fixed (10 h preset and 12 m grazing 6.5 h extra). Dirt ruts + shoulder dust blending convincing, no visible ribbon edge. Timber bridge asset well built. Night still the best in the project (21.5 h and 3 h). 0 errors on 9 captures, lint ok, no per-frame allocs, dispose complete, road-owned 9 draws / 44,753 tris.",
+      "deferral": {
+        "date": "2026-09-25",
+        "decision": "open visual/polish items explicitly deferred so the ideas phase can start (docs/ideas-roadmap.md entry gate 1); they are fixed when a P-wave next opens this module, as part of that wave's exit, unless listed under prerequisites",
+        "reopenedBy": "none scheduled (standalone polish)",
+        "openCounts": {
+          "blocker": 0,
+          "major": 2,
+          "minor": 5
+        },
+        "pr3Note": "3-way junction patch torn/folded — addressed in PR #3 (2277f8d, ribbon.js fillet corners/arcs/mid ring); pending critic re-check"
+      }
     },
     "ui": {
       "wave": 1,
@@ -278,7 +301,17 @@
           "text": "Disclosed gaps still open: empty notification container can appear; graph panel is a stub. ui updateMs 2.1-2.8 ms (software GL), above the 1.5 ms guide: watch item."
         }
       ],
-      "good": "Both round-4 majors verified fixed at the root cause: the toolbar pill DOM readback has no stray \"null\" node, and the panel shows 68% Content consistent with its need bars. Visual language is close to CS2; the report modal is rich; night legibility is excellent. 0 console errors on 7 captures, lint clean, API matches the README, dispose() is thorough."
+      "good": "Both round-4 majors verified fixed at the root cause: the toolbar pill DOM readback has no stray \"null\" node, and the panel shows 68% Content consistent with its need bars. Visual language is close to CS2; the report modal is rich; night legibility is excellent. 0 console errors on 7 captures, lint clean, API matches the README, dispose() is thorough.",
+      "deferral": {
+        "date": "2026-09-25",
+        "decision": "open visual/polish items explicitly deferred so the ideas phase can start (docs/ideas-roadmap.md entry gate 1); they are fixed when a P-wave next opens this module, as part of that wave's exit, unless listed under prerequisites",
+        "reopenedBy": "P3/P4/P6 (objectives, advisors, field guide)",
+        "openCounts": {
+          "blocker": 0,
+          "major": 3,
+          "minor": 4
+        }
+      }
     },
     "simulation": {
       "wave": 1,
@@ -412,7 +445,17 @@
           "text": "toneMapped:false materials still tone-mapped by OutputPass (animals decals, tools overlays differ slightly chain-on/off) — disclosed, not visible in shots."
         }
       ],
-      "good": "Round-4 blocker dead under independent re-measurement: in-page A/B gives full/bypass 0.985 (17.5h) and 1.008 (13h); bare-chain lamp-free night patch +2.3% — the night frame-mean 1.16 is bloom's lamp halos, not re-exposure. Round bloom halos verified round; Purkinje night grade verified cool. All quantitative claims reproduce to the digit (measure extra=14, haze 0.875, draw/tri tables, particles.alive now live). Chain holds character at untested tods (dawn, deep night, noon). 0 errors in 18 captures."
+      "good": "Round-4 blocker dead under independent re-measurement: in-page A/B gives full/bypass 0.985 (17.5h) and 1.008 (13h); bare-chain lamp-free night patch +2.3% — the night frame-mean 1.16 is bloom's lamp halos, not re-exposure. Round bloom halos verified round; Purkinje night grade verified cool. All quantitative claims reproduce to the digit (measure extra=14, haze 0.875, draw/tri tables, particles.alive now live). Chain holds character at untested tods (dawn, deep night, noon). 0 errors in 18 captures.",
+      "deferral": {
+        "date": "2026-09-25",
+        "decision": "open visual/polish items explicitly deferred so the ideas phase can start (docs/ideas-roadmap.md entry gate 1); they are fixed when a P-wave next opens this module, as part of that wave's exit, unless listed under prerequisites",
+        "reopenedBy": "P2 (fire/smoke) and P5 (locusts)",
+        "openCounts": {
+          "blocker": 0,
+          "major": 0,
+          "minor": 5
+        }
+      }
     },
     "zoning": {
       "wave": 2,
@@ -499,7 +542,17 @@
           "text": "No LOD beyond 300 m (disclosed); 2 showcase placements forced past too-steep (disclosed, reproduced); fence gate/feeder/toilets/parking have no detail shot"
         }
       ],
-      "good": "r4 blocker dead: lodge preset (yaw 12) frames the terrace side with veranda, deck railings and blue plunge pool, day and night. Stray rail geometry gone in all 8 real-GPU captures and the hide's rafter spears are gone too (same kit.beam root cause); dev beam assert silent across all 16 types. Own budget 34 draws / 131.8k tris for 25 buildings across 16 types (spec <=60/<=400k). README measured numbers reproduce exactly (291/4.53M overview, 264/3.89M lodge, gate/close/hide all render clean). 0 console errors, lint ok, night lantern glow atmospheric."
+      "good": "r4 blocker dead: lodge preset (yaw 12) frames the terrace side with veranda, deck railings and blue plunge pool, day and night. Stray rail geometry gone in all 8 real-GPU captures and the hide's rafter spears are gone too (same kit.beam root cause); dev beam assert silent across all 16 types. Own budget 34 draws / 131.8k tris for 25 buildings across 16 types (spec <=60/<=400k). README measured numbers reproduce exactly (291/4.53M overview, 264/3.89M lodge, gate/close/hide all render clean). 0 console errors, lint ok, night lantern glow atmospheric.",
+      "deferral": {
+        "date": "2026-09-25",
+        "decision": "open visual/polish items explicitly deferred so the ideas phase can start (docs/ideas-roadmap.md entry gate 1); they are fixed when a P-wave next opens this module, as part of that wave's exit, unless listed under prerequisites",
+        "reopenedBy": "P2 (burnt-building rebuild state)",
+        "openCounts": {
+          "blocker": 0,
+          "major": 1,
+          "minor": 4
+        }
+      }
     },
     "props": {
       "wave": 2,
@@ -545,7 +598,17 @@
           "text": "Carried: log bark reads as noise up close; 'thorn scrub rooted in the cracks' reads only at boulder bases; kopje frame still cedes half its composition to the escarpment."
         }
       ],
-      "good": "Round-3 blocker verified fixed: settled update() 0.0 ms on all nine captures (was 132-263 ms on every preset), amortised chunk queue implemented as described. Photo-scanned granite boulders with the angle-of-repose cap genuinely upgrade kopjes (real talus, no popcorn). Two-view imposters kill the dash-from-above tell — crowns read as umbrellas from altitude. Canopies no longer near-black. overview and riverine remain the project's best images. 121-154 draw calls for ~5.5k props + ~180k grass instances; zero console errors; lint ok; API/dispose match the README."
+      "good": "Round-3 blocker verified fixed: settled update() 0.0 ms on all nine captures (was 132-263 ms on every preset), amortised chunk queue implemented as described. Photo-scanned granite boulders with the angle-of-repose cap genuinely upgrade kopjes (real talus, no popcorn). Two-view imposters kill the dash-from-above tell — crowns read as umbrellas from altitude. Canopies no longer near-black. overview and riverine remain the project's best images. 121-154 draw calls for ~5.5k props + ~180k grass instances; zero console errors; lint ok; API/dispose match the README.",
+      "deferral": {
+        "date": "2026-09-25",
+        "decision": "open visual/polish items explicitly deferred so the ideas phase can start (docs/ideas-roadmap.md entry gate 1); they are fixed when a P-wave next opens this module, as part of that wave's exit, unless listed under prerequisites",
+        "reopenedBy": "P1 (plant layer) and P5 (salt licks)",
+        "openCounts": {
+          "blocker": 0,
+          "major": 0,
+          "minor": 4
+        }
+      }
     },
     "traffic": {
       "wave": 2,
@@ -587,7 +650,18 @@
           "text": "Behaviour gaps (disclosed): ambient vehicles never sight-stop, no animal avoidance, single engine loop, no post-rain dust settling"
         }
       ],
-      "good": "r4 blocker dead: close/night hero trucks pinned and in frame at default settle (plus dusk/noon extras); red taillights clearly visible at night and dusk with a convincing headlight pool; README presets table now matches the code and its measured GPU numbers reproduce exactly (close 108/3.19M, night 130/3.06M, 0 errors); graphBackend 'roads'; sighting staging robust at 17.5h and 12h; 0.04-0.2 ms update, allocation-free; lint ok."
+      "good": "r4 blocker dead: close/night hero trucks pinned and in frame at default settle (plus dusk/noon extras); red taillights clearly visible at night and dusk with a convincing headlight pool; README presets table now matches the code and its measured GPU numbers reproduce exactly (close 108/3.19M, night 130/3.06M, 0 errors); graphBackend 'roads'; sighting staging robust at 17.5h and 12h; 0.04-0.2 ms update, allocation-free; lint ok.",
+      "deferral": {
+        "date": "2026-09-25",
+        "decision": "open visual/polish items explicitly deferred so the ideas phase can start (docs/ideas-roadmap.md entry gate 1); they are fixed when a P-wave next opens this module, as part of that wave's exit, unless listed under prerequisites",
+        "reopenedBy": "P5 (sighting hotspots)",
+        "openCounts": {
+          "blocker": 0,
+          "major": 1,
+          "minor": 4
+        },
+        "pr3Note": "close-range vehicle model — partly addressed in PR #3 (glass/bull bar/hubs/hats/taillight wings); body paint still reads brown-speckled"
+      }
     },
     "tools": {
       "wave": 2,
@@ -635,7 +709,18 @@
           "text": "Undo/redo of road/building/animal actions mints new entity ids (documented; positions/kinds restore correctly)"
         }
       ],
-      "good": "r4 blocker cleared: tool:request bridge verified live in showcase AND full game with the full ui vocabulary; selection marker footprint-sized, draped, visible day and night; snap ring live-verified marking the committed snapped node; 3 zebras released (r4: 2); full undo/redo round trip exact with selection cleared the moment a selected entity is removed; preview paths allocation-free; ribbon conforms to terrain; bounded strokes; 0 console errors in 8 real-GPU captures; ~5 own draw calls."
+      "good": "r4 blocker cleared: tool:request bridge verified live in showcase AND full game with the full ui vocabulary; selection marker footprint-sized, draped, visible day and night; snap ring live-verified marking the committed snapped node; 3 zebras released (r4: 2); full undo/redo round trip exact with selection cleared the moment a selected entity is removed; preview paths allocation-free; ribbon conforms to terrain; bounded strokes; 0 console errors in 8 real-GPU captures; ~5 own draw calls.",
+      "deferral": {
+        "date": "2026-09-25",
+        "decision": "open visual/polish items explicitly deferred so the ideas phase can start (docs/ideas-roadmap.md entry gate 1); they are fixed when a P-wave next opens this module, as part of that wave's exit, unless listed under prerequisites",
+        "reopenedBy": "P2 (firebreak/water-ring verbs)",
+        "openCounts": {
+          "blocker": 0,
+          "major": 2,
+          "minor": 4
+        },
+        "pr3Note": "held terrain stroke cost — reduced in PR #3 (packControlRect: tools updateMs 83 -> 14 ms mean in the orchestrator profile); still over budget"
+      }
     },
     "savannah": {
       "wave": 3,
@@ -737,7 +822,17 @@
           "text": "Disclosed and verified: two tents intrude on close's foreground corners at both tested tods."
         }
       ],
-      "good": "Both round-4 wrong-scene majors verified fixed at two tods each: habitat now shows the re-sited plains habitat with its mixed herd (no river), close frames the lodge terrace with the pool visible. gate/lodge/night deliver exactly as described; night is the best-lit frame in the project; the whole-park overview is a coherent composite built entirely through the other modules' APIs. Zero console errors on all 9 captures, worst 422 draws / 5.02 M tris, update ~0 ms; README's disclosed gaps (extra tour vehicle, tents in close, seed-generality) all verified accurate. Gameplay economy numbers and the 2026-09-25 fidelity re-run were not audited this round (out of scope for the visual pass)."
+      "good": "Both round-4 wrong-scene majors verified fixed at two tods each: habitat now shows the re-sited plains habitat with its mixed herd (no river), close frames the lodge terrace with the pool visible. gate/lodge/night deliver exactly as described; night is the best-lit frame in the project; the whole-park overview is a coherent composite built entirely through the other modules' APIs. Zero console errors on all 9 captures, worst 422 draws / 5.02 M tris, update ~0 ms; README's disclosed gaps (extra tour vehicle, tents in close, seed-generality) all verified accurate. Gameplay economy numbers and the 2026-09-25 fidelity re-run were not audited this round (out of scope for the visual pass).",
+      "deferral": {
+        "date": "2026-09-25",
+        "decision": "open visual/polish items explicitly deferred so the ideas phase can start (docs/ideas-roadmap.md entry gate 1); they are fixed when a P-wave next opens this module, as part of that wave's exit, unless listed under prerequisites",
+        "reopenedBy": "P1 (demo planting), P3 (missions), P4 (camp tiers)",
+        "openCounts": {
+          "blocker": 0,
+          "major": 1,
+          "minor": 5
+        }
+      }
     }
   },
   "game": {
