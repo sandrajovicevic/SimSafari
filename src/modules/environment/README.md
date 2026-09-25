@@ -91,6 +91,9 @@ SwiftShader software GL (fps is not representative; draws/tris/errors are real).
 
 ## Known gaps (honest)
 
+* **Night cloud flecks at higher coverage:** the cumulus rescale fixed the dashes at the showcase's
+  low night coverage (0.08), but presets with more cloud (e.g. `traffic-night-21_5.png`) still show
+  rows of small moonlit flecks. Open.
 * **Cumulus scale (2026-09-25).** The "stars smeared into horizontal dashes" several critics reported
   at night were the cumulus layer, not the stars: with clouds toggled off (`setDebug({clouds:false})`)
   the dashes vanish and the stars are points. At fair-weather coverage only noise peaks pass the
