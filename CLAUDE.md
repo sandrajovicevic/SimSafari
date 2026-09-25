@@ -60,4 +60,5 @@ node tools/lint.mjs src/modules/terrain
 ```
 Captures fast-settle by default (simulation advanced without rendering, then 4 real frames): ~2 min instead of
 ~7 min per 960×540 shot on a 4-core container. Pass `--slow` to render every settle frame (old behaviour).
+Full-game captures (`--game`) pin the clock with `&speed=0` automatically; pass `--live` to let it run.
 `tools/shots/*.json` has `errors`, `drawCalls`, `triangles`, `fps` (software GL — not representative), `modules` status.

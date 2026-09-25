@@ -6,7 +6,8 @@
 //   node tools/screenshot.mjs --game [--preset overview --tod 14]   full game
 //   node tools/screenshot.mjs --game --all-presets      game at overview/close/low × 8h/14h/21.5h
 //   node tools/screenshot.mjs --url http://127.0.0.1:5173 --probe   list modules + presets as JSON
-// Flags: --dom        full-page screenshot (canvas + DOM UI) instead of canvas-only capture; suffix -dom
+// Flags: --live       full game: do NOT pin the clock (default adds &speed=0)
+//        --dom        full-page screenshot (canvas + DOM UI) instead of canvas-only capture; suffix -dom
 //        --gesture    synthetic click after ready (unlocks AudioContext), --gestureWait ms (1500)
 //        --eval "js"  evaluate JS in the page after ready; result stored as evalResult in the JSON
 //        --settle N   frames to settle after ready (40): all but --renderFrames (4) are simulated
@@ -65,6 +66,9 @@ async function shoot(browser, { module: mod, preset, tod, seed, quality, name, e
   if (tod !== undefined && tod !== null && tod !== '') q.set('tod', String(tod));
   q.set('seed', String(seed ?? 1));
   q.set('quality', quality || 'high');
+  // Full-game captures pin the clock (speed=0) unless the caller sets a speed: at speed 1 the settle
+  // frames advance ~4 game hours, so a "14 h" shot rendered at ~18.4 h dusk (critic zoning r6, 2026-09-25).
+  if (!mod && !/[?&]speed=/.test(extra) && !args.live) q.set('speed', '0');
   const url = `${URL_BASE}/?${q.toString()}${extra}`;
   const t0 = Date.now();
   let ready = false, stats = null, fatal = null;
