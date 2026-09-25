@@ -904,10 +904,10 @@ export default {
       buildMaterials();
       // scanned granite over the procedural one (awaited: boulders must not pop on frame 1)
       try {
-        const rock = await TEX.photoSet(ctx, 'textures/polyhaven-via-habitta/rock-color.jpg', 'textures/polyhaven-via-habitta/rock-surface.jpg', [0.165, 0.148, 0.130]);
+        const rock = await TEX.photoSet(ctx, 'textures/polyhaven-via-habitta/rock-color.jpg', 'textures/polyhaven-via-habitta/rock-surface.jpg', [0.150, 0.128, 0.104]);
         if (rock) {
-          Object.assign(M.rock, { map: rock.map, normalMap: rock.normalMap, roughnessMap: rock.roughnessMap, aoMap: null, metalnessMap: null, roughness: 1 });
-          M.rock.needsUpdate = true;
+          Object.assign(S.mats.rock, { map: rock.map, normalMap: rock.normalMap, roughnessMap: rock.roughnessMap, aoMap: null, metalnessMap: null, roughness: 1 });
+          S.mats.rock.needsUpdate = true;
         }
       } catch (err) { ctx.log.warn('[props] photo rock unavailable; procedural granite kept', err); }
       buildSpecies();
