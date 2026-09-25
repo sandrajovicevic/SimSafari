@@ -147,8 +147,13 @@ export const CSS = `
 .sf .satbar i { display: block; height: 100%; border-radius: 3px; background: var(--good); }
 
 /* ---------- toolbar ---------- */
-.sf .toolbar { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.sf .tb-items { width: max-content; max-width: 1180px; padding: 10px 10px 10px; animation: sf-rise 0.16s ease-out; }
+/* left/right (not left:50%+transform) so the whole toolbar — cats bar and item panel alike — stays
+ * clear of the minimap (216px wide + 12px inset) and, via :has(), the side panel (344px + inset)
+ * whenever it's open, instead of centring on the full viewport and running under either. */
+.sf .toolbar { position: absolute; left: 236px; right: 12px; bottom: 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.sf:has(.side:not([hidden])) .toolbar { right: 368px; }
+.sf .tb-items { width: max-content; max-width: min(1180px, 100%); padding: 10px 10px 10px; animation: sf-rise 0.16s ease-out; }
+.sf .tb-cats { max-width: 100%; }
 .sf .tb-items-h { display: flex; align-items: center; gap: 8px; padding: 0 4px 8px; }
 .sf .tb-items-h .title { font-weight: 650; font-size: 13px; display: flex; align-items: center; gap: 8px; }
 .sf .tb-items-h .title .ic { color: var(--accent); }
@@ -226,8 +231,8 @@ export const CSS = `
 .sf .fact { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: rgba(255,255,255,0.04); border-radius: var(--r-s); min-width: 0; }
 .sf .fact .ic { color: var(--muted); width: 16px; height: 16px; }
 .sf .fact .k { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.1; }
-.sf .fact .v { font-size: 12.5px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sf .fact .col { min-width: 0; }
+.sf .fact .v { display: block; font-size: 12.5px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sf .fact .col { display: flex; flex-direction: column; min-width: 0; }
 .sf .desc { font-size: 12px; color: var(--muted); line-height: 1.45; }
 .sf .actions { display: flex; gap: 6px; padding-top: 10px; }
 .sf .actions .btn { flex: 1; justify-content: center; }

@@ -105,26 +105,41 @@ export function populateMockWorld(ctx, preset) {
     w.time.day = Math.max(w.time.day, 34);
     e.cash = 312450; e.income = 18640; e.expenses = 14210; e.ticketPrice = 35; e.loans = 50000;
     e.history.length = 0;
-    let cash = 148000;
+    // Build the day-by-day deltas first (today, i=0, pinned to e.income/e.expenses so the sparkline's
+    // last-day delta agrees with the report header's "Profit"), then pick a starting cash so the
+    // running total lands exactly on e.cash — no post-hoc overwrite, so no jump at the last point.
+    const days = [];
     for (let i = 29; i >= 0; i--) {
       const day = w.time.day - i;
       const trend = 1 - i / 29;
-      const visitors = Math.round(520 + 720 * trend + rng.gaussian(0, 60) + (day % 7 === 0 ? 180 : 0));
-      const income = Math.round(visitors * 12.5 + 3800 + 2600 * trend + rng.gaussian(0, 500));
-      const expenses = Math.round(11200 + 3200 * trend + rng.gaussian(0, 350) + (i === 9 ? 22000 : 0));
-      cash += income - expenses;
-      if (i === 17) cash += 50000; // loan taken
-      e.history.push({ day, cash, income, expenses, visitors });
+      let visitors, income, expenses;
+      if (i === 0) { visitors = 1240; income = e.income; expenses = e.expenses; }
+      else {
+        visitors = Math.round(520 + 720 * trend + rng.gaussian(0, 60) + (day % 7 === 0 ? 180 : 0));
+        income = Math.round(visitors * 12.5 + 3800 + 2600 * trend + rng.gaussian(0, 500));
+        expenses = Math.round(11200 + 3200 * trend + rng.gaussian(0, 350) + (i === 9 ? 22000 : 0));
+      }
+      days.push({ day, income, expenses, visitors, loan: i === 17 ? 50000 : 0 });
     }
-    e.history[e.history.length - 1].cash = e.cash;
+    const totalNet = days.reduce((sum, d) => sum + (d.income - d.expenses) + d.loan, 0);
+    let cash = e.cash - totalNet;
+    for (const d of days) {
+      cash += (d.income - d.expenses) + d.loan;
+      e.history.push({ day: d.day, cash, income: d.income, expenses: d.expenses, visitors: d.visitors });
+    }
     w.visitors.count = 1240; w.visitors.inPark = 386; w.visitors.satisfaction = 0.72;
     w.visitors.seenSpecies = new Map([['zebra', 980], ['wildebeest', 940], ['elephant', 610], ['giraffe', 560], ['impala', 720], ['lion', 210], ['hippo', 330], ['ostrich', 400]]);
   }
 
-  // ---- weather (environment owner)
+  // ---- weather (environment owner). Temperature always follows tod here: environment's own diurnal
+  // model (its tick(), same formula below) converges too slowly to move visibly across the handful of
+  // settle frames a showcase capture runs, so the readout would otherwise sit near its startup default
+  // regardless of the preset's tod. The other fields stay untouched when environment is present.
+  {
+    const h = w.time.hour, diurnal = Math.cos(((h - 15) / 24) * Math.PI * 2) * 0.5 + 0.5;
+    w.weather.temperature = Math.round(17 + diurnal * 16);
+  }
   if (!has('environment')) {
-    const h = w.time.hour;
-    w.weather.temperature = Math.round(19 + 13 * Math.max(0, Math.sin(((h - 7) / 12) * Math.PI)));
     w.weather.cloud = 0.22; w.weather.rain = 0; w.weather.wind = { x: 1, z: 0.3, speed: 3.4 }; w.weather.season = 'dry'; w.weather.haze = 0.3;
   }
   return out;
