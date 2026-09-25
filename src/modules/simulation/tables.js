@@ -105,4 +105,72 @@ export const CONST = Object.freeze({
   sightingK: 0.12,            // P(see species) = 1 - exp(-n * visibility * roadFactor * K)
   seasonLength: 90,           // days per season in the internal fallback calendar (dry, wet alternate)
   historyCap: 400,
+  starveRate: 0.08,          // predators above their prey capacity: deaths/day per excess animal (hunger → deaths)
+  hungerRate: 0.15,          // EMA rate of predators' perceived prey (count + biomass): ~6-day lag to a prey crash
+});
+
+// ---------------------------------------------------------------- food web (Wave P1, docs/specs/p1-food-web.md)
+
+/**
+ * Herbivore food need in plant food units per animal per day (the unit core/Plants.js `food` is
+ * measured in: one hectare at full cover of a plant yields `food` units per day to the species it
+ * attracts). Roughly body mass^0.75 in relative order, but scaled to our small parks (a demo
+ * habitat is 2–4 ha, not 2–4 km²) so a well-stocked grass habitat is space-limited, not food-limited,
+ * while browsers in a sparse woodland feel the tree cover. mass = kg (prey biomass for predators).
+ */
+export const FOOD = Object.freeze({
+  elephant:   { need: 3.5,  mass: 4000 },
+  giraffe:    { need: 1.2,  mass: 900 },
+  hippo:      { need: 2.2,  mass: 1500 },
+  rhino:      { need: 2.0,  mass: 1600 },
+  buffalo:    { need: 1.6,  mass: 600 },
+  zebra:      { need: 1.1,  mass: 250 },
+  wildebeest: { need: 0.9,  mass: 200 },
+  ostrich:    { need: 0.45, mass: 100 },
+  warthog:    { need: 0.35, mass: 70 },
+  impala:     { need: 0.3,  mass: 50 },
+});
+
+/**
+ * Predator diet: prey species in reach (same habitat), daily meat need (kg/animal/day). Capacity follows
+ * the LAGGED prey biomass (hunger): capacity = preyKg × PREY_YIELD / needKg, where preyKg is an EMA of the
+ * live prey biomass with rate CONST.hungerRate — removing prey starves predators after a lag, not at once.
+ * No insectivores among our 12 species, so there is no "insects come free with grass" rule this wave.
+ */
+export const DIET = Object.freeze({
+  lion:    { prey: ['zebra', 'wildebeest', 'buffalo', 'impala', 'warthog'], needKg: 7 },
+  cheetah: { prey: ['impala', 'warthog', 'ostrich'], needKg: 3 },
+});
+
+/** Share of prey biomass a habitat yields to its predators per day (sustainable offtake). */
+export const PREY_YIELD = 0.05;
+
+/**
+ * Plant site suitability 0..1 per terrain BIOME (core/World.js order: GRASS, DRY_GRASS, DIRT, ROCK,
+ * SAND, WETLAND, RIVERBED, ROAD_DUST) per plant (core/Plants.js order). A cell's cover ceiling is
+ * maxCover × rainfallFit × site. Planting raises the site to at least PLANT_SITE (prepared ground).
+ */
+export const SITE = Object.freeze({
+  //            red_oat couch lovegr sedge aloe sourpl umbrel knob  marula baobab
+  0: Object.freeze([1.00, 0.60, 0.30, 0.10, 0.20, 0.50, 0.60, 0.60, 0.50, 0.20]), // GRASS
+  1: Object.freeze([0.45, 0.80, 0.80, 0.00, 0.50, 0.35, 0.80, 0.30, 0.40, 0.50]), // DRY_GRASS
+  2: Object.freeze([0.15, 0.35, 0.45, 0.00, 0.60, 0.15, 0.40, 0.10, 0.15, 0.40]), // DIRT
+  3: Object.freeze([0.00, 0.05, 0.20, 0.00, 0.70, 0.05, 0.15, 0.00, 0.05, 0.50]), // ROCK
+  4: Object.freeze([0.00, 0.10, 0.25, 0.00, 0.20, 0.00, 0.05, 0.00, 0.00, 0.10]), // SAND
+  5: Object.freeze([0.30, 0.30, 0.05, 1.00, 0.00, 0.30, 0.10, 0.30, 0.20, 0.00]), // WETLAND
+  6: Object.freeze([0.00, 0.15, 0.00, 0.60, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00]), // RIVERBED
+  7: Object.freeze([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),                               // ROAD_DUST
+});
+
+/** Vegetation dynamics constants. */
+export const VEG = Object.freeze({
+  plantSite: 0.8,          // planting prepares the ground: site ≥ this in planted cells
+  neighbourSeed: 0.5,      // share of the 4-neighbour mean cover that seeds a cell (× spread × fit)
+  grazeDamp: 0.5,          // at pressure P ≤ 1 regrowth is scaled by (1 − grazeDamp × P)
+  // overgrazing: at P > 1 the herd bites into the standing stock, cover × (1 − overgraze[form] × (P − 1))
+  overgraze: Object.freeze({ grass: 0.10, shrub: 0.05, tree: 0.02 }),
+  maxLoss: 0.5,            // at most half a cell's cover of one plant eaten per day
+  treeDensity: 0.6,        // seeding: P(tree/shrub present in a cell) = site × treeDensity (cover then 50–100 % of its ceiling)
+  rainDry: 0.4, rainWet: 0.8, droughtRain: 0.35, weatherRain: 0.2,
+  emitThreshold: 0.02,     // a cell counts as changed for vegetation:changed when a cover moved this much
 });

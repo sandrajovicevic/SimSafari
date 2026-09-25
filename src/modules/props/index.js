@@ -12,6 +12,7 @@ import { buildTreeVariant } from './trees.js';
 import { buildBoulder, buildTermiteMound, buildLog, buildShrub } from './rocks.js';
 import { GrassField } from './grass.js';
 import { bakeImposter, imposterMaterial, imposterGeometry } from './imposter.js';
+import { buildPlantAssets, VegetationLayer } from './plants.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -48,7 +49,7 @@ const GREEN = [0.0890, 0.1140, 0.0390]; // damp riverine sward — olive, not bl
 
 const S = {
   ctx: null, world: null, group: null, terrain: null, env: null,
-  mats: {}, species: new Map(), grass: null,
+  mats: {}, species: new Map(), grass: null, plants: null,
   items: new Map(), byKind: new Map(), nextId: 1,
   cover: null, graze: null, grazed: new Set(), macro: null, macroRes: 0, macroCell: 8,
   camX: 1e9, camZ: 1e9, dirty: true, ready: false, scattered: false,
@@ -871,6 +872,8 @@ const api = {
       packMs: +S._packMs.toFixed(2), grassRebuildMs: +(S.grass?.lastUpdateMs || 0).toFixed(2),
       grassPackMs: +(S.grass?.lastPackMs || 0).toFixed(2),
       grassPendingChunks: S.grass ? S.grass._genQueue.length : 0,
+      plantsCells: S.plants ? S.plants.cells.size : 0,
+      plantsRepackMs: +(S.plants?.lastRepackMs || 0).toFixed(2),
     };
   },
 
@@ -920,6 +923,11 @@ export default {
       buildSpecies();
       buildImposters();
       S.grass = new GrassField(ctx, S.group, grassSample);
+      try {
+        const { assets, ownedGeo, ownedMat } = buildPlantAssets(ctx, S.mats, S.species);
+        S.plants = new VegetationLayer(ctx, S.group, assets);
+        S.plants._ownedGeo = ownedGeo; S.plants._ownedMat = ownedMat;
+      } catch (err) { ctx.log.error('[props] vegetation layer init failed', err); }
       S.ready = true;
     } catch (err) {
       ctx.log.error('[props] init failed', err);
@@ -936,12 +944,20 @@ export default {
     ctx.events.on('road:added', (p) => onRoadAdded(p));
     ctx.events.on('road:changed', (p) => onRoadAdded(p));
     ctx.events.on('building:placed', (p) => onBuildingPlaced(p));
+    // props never writes world.vegetation — only reads it, on the initial state and on every
+    // simulation-driven change (docs/specs/p1-food-web.md §props.3).
+    ctx.events.on('vegetation:changed', (p) => {
+      if (p) S.plants?.rebuildRect(p.x0, p.z0, p.x1, p.z1);
+    });
 
     // In the full game the terrain is generated during its own init(), i.e. before ours, so the
     // terrain:ready above has already fired. Scatter now.
     if (!ctx.isShowcase && S.terrain) {
       try { scatter({}); } catch (err) { ctx.log.error('[props] initial scatter failed', err); }
     }
+    // pick up whatever world.vegetation already holds (all-zero until the simulation builder's
+    // seeding lands; showcase presets stage their own test cover in showcase.js).
+    if (S.plants) { try { S.plants.rebuildRect(-S.world.half, -S.world.half, S.world.half, S.world.half); } catch (err) { ctx.log.error('[props] initial vegetation rebuild failed', err); } }
   },
 
   update(dt, t) {
@@ -963,6 +979,7 @@ export default {
       S.dirty = false;
       pack(S.camX, S.camZ);
     }
+    S.plants?.update(dt);
   },
 
   tick(simDt) {
@@ -987,6 +1004,7 @@ export default {
 
   dispose() {
     S.grass?.dispose(); S.grass = null;
+    S.plants?.dispose(); S.plants = null;
     for (const sp of S.species.values()) {
       for (const v of sp.variants) {
         for (const g of v.groups) g?.dispose();

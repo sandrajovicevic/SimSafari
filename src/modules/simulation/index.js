@@ -94,6 +94,13 @@ const api = {
   /** Force a seeded event now through the normal event paths: 'drought' | 'disease' | 'poachers'
    * (debug / fidelity harness). opts: {species, n, strength, duration}. */
   injectEvent: (type, opts) => (sim ? sim.injectEvent(type, opts) : null),
+  /** Plant a core/Plants.js plant in a disc: charges cost × ha via spend(…, 'plant'), writes
+   * world.vegetation, emits vegetation:changed. → {ok, cost, cells, ha} (docs/specs/p1-food-web.md §5). */
+  plant: (type, x, z, radius, cover = 0.25) => sim?.plant(type, x, z, radius, cover) ?? { ok: false, cost: 0, cells: 0 },
+  /** { [plantId]: cover 0..1 } of the 16 m vegetation cell at world (x, z). */
+  getVegetation: (x, z) => sim?.getVegetation(x, z) ?? null,
+  /** Per species in a habitat: { n, food, need, perAnimal, capacity, foodCapacity, spaceCapacity }. */
+  getFoodReport: (habitatId) => sim?.getFoodReport(habitatId) ?? null,
   hire: (role, n = 1) => sim?.hire(role, n) ?? 0,
   fire: (role, n = 1) => sim?.fire(role, n) ?? 0,
   setWage: (role, wage) => sim?.setWage(role, wage) ?? 0,
@@ -130,6 +137,15 @@ export default {
       sim.markStart();
       const inval = () => { if (sim) sim.habitatStats.clear(); };
       ctx.events.on('visitor:sighting', (p) => { if (p?.species) sightings.set(p.species, (sightings.get(p.species) || 0) + 1); });
+      // vegetation is seeded from the terrain biomes: reseed once the terrain exists (it may generate after
+      // this init — terrain is not a declared dependency) and after a whole-world regeneration
+      ctx.events.on('terrain:ready', () => sim?.seedVegetation());
+      ctx.events.on('terrain:modified', (r) => {
+        const W = ctx.world;
+        if (sim && r && r.x0 <= -W.half && r.z0 <= -W.half && r.x1 >= W.half && r.z1 >= W.half) sim.seedVegetation();
+      });
+      ctx.events.on('habitat:changed', () => sim?.veg.invalidateHabitats());
+      ctx.events.on('zone:changed', () => sim?.veg.invalidateHabitats());
       for (const ev of ['habitat:changed', 'zone:changed', 'road:added', 'road:removed', 'road:changed', 'building:placed', 'building:removed', 'terrain:modified']) ctx.events.on(ev, inval);
       ctx.events.on('building:placed', () => sim?.invalidateCaches());
       ctx.log.info('simulation ready (headless)');
