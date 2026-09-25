@@ -345,30 +345,49 @@
     "zoning": {
       "wave": 2,
       "domain": "built",
-      "round": 5,
-      "score": 6,
+      "round": 6,
+      "score": 6.0,
       "status": "fail",
       "errors": 0,
-      "drawCalls": 158,
+      "drawCalls": 171,
       "reviewedBy": "independent-critic-agent",
       "presetsSeen": [
         "overview 15",
         "close 16.5",
         "overlay 13",
         "night 21.5",
-        "overview 10 (extra)"
+        "close 6.5 (extra)",
+        "boardwalk close-up 10 via eval (extra)",
+        "boardwalk close-up 21.5 via eval (extra)",
+        "game overview 14 + listHabitats eval (extra)"
       ],
       "issues": [
         {
           "sev": "major",
-          "text": "Boundary-smoothing pipeline's headline claim (\"never as the 4m cell staircase\") is directly contradicted by the visitor-zone boardwalk path, which renders as an unmistakable right-angle staircase at the exact grid pitch in four separate screenshots across three times of day. Habitat-region boundaries elsewhere in the same frames do show genuine Chaikin/Taubin rounding, so this specifically affects narrow 1-2-cell-wide corridors, plausibly an edge case where the Taubin filter has no teeth left to melt without erasing the path."
+          "text": "Boardwalk (VISITOR) fill is still cell-quantised: by day it is effectively invisible (the fill alpha 0.30*smoothstep(0.42,0.9,field) barely engages on a 2-cell corridor), and at night it shows as hard 4 m cell squares in stepped bands that spill past the now-smooth boundary line. The planks run in a fixed world direction, not across the path. Fix: clip the fill to a distance field of the smoothed contour, floor the alpha for thin corridors, and orient the planks along the path."
+        },
+        {
+          "sev": "major",
+          "text": "Overlay fill is unlit with a fixed colour: the habitats glow near-white mint at night (brightest thing in the frame) and show neon mint over orange grass at dawn. Fix: scale by a scene-luminance/exposure uniform and desaturate/lower the alpha at night."
+        },
+        {
+          "sev": "major",
+          "text": "Habitat fragmentation: floodComponents is a pure 4-connected flood with no minimum area. The demo game yields 12 habitats (4 named + 8 fragments, including five 1-3-cell slivers of 16-48 m2, each scored, listed and fenced). This is the cause of the park harness reporting 11 regions. Fix: fold components under ~10 cells into NONE or into the adjacent habitat; consider 8-connectivity."
         },
         {
           "sev": "minor",
-          "text": "updateMs (0.9-4.1ms) exceeds the general 1.5ms/module budget in 3 of 4 presets -- plausibly a SwiftShader wall-clock-cadence artifact (rebuildHabitats' 1.2s throttle firing every real frame), but rebuildHabitats is genuinely non-trivial work and deserves a frame-count-based throttle instead."
+          "text": "README claims a <=2 m smoothing clamp (and <=2 m fence/line divergence) but boardwalk-fix code has MAX_PULL = 3.2, and the in-code comment still says half a cell. The claim does not reproduce, so the score is capped at 6. The Measured draw-call table is also stale (150-158 listed vs 152-171 measured)."
+        },
+        {
+          "sev": "minor",
+          "text": "updateMs 2.1-2.3 ms in all presets (>1.5 ms guide): species-only refresh triggers a full rebuildHabitats (flood + fences) on a wall-clock throttle. Needs a species-only path and a frame-count throttle."
+        },
+        {
+          "sev": "minor",
+          "text": "At night the boundary contour renders as a solid glowing white line instead of marching ants."
         }
       ],
-      "good": "Habitat-region fill and boundary rendering (away from the boardwalk case) is genuinely good -- correct tinting, soft feathered edges, organic region shapes. Fence detail at close range is convincing and terrain-conforming. Own-module draw-call budget (4, vs <=20 spec ceiling) exact and confirmed. Zero console errors across every preset. API matches README; dispose() clean."
+      "good": "The round-5 blocker is fixed for the line: the MAX_PULL 3.2 m boardwalk contour is smooth at pixel level (verified at 45 m by day and night). Fences are clean and terrain-conforming. The module stays at 4 draw calls with 0 errors, lint ok, and API/dispose match the README."
     },
     "buildings": {
       "wave": 2,
@@ -1054,6 +1073,12 @@
       "module": "roads",
       "round": 4,
       "score": 7.0,
+      "date": "2026-09-25"
+    },
+    {
+      "module": "zoning",
+      "round": 6,
+      "score": 6.0,
       "date": "2026-09-25"
     }
   ]
