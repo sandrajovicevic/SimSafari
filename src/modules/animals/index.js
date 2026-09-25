@@ -10,7 +10,7 @@ import { bakeSkin, makeMaterials, skinSize } from './skin.js';
 import { evalPose } from './anim.js';
 import { Behaviour, STEP, STATES, wantsSleep } from './behaviour.js';
 import { presets, stage } from './showcase.js';
-import { GltfPool, loadModel, ASSET_SPECIES, FIXTURES } from './gltfpool.js';
+import { GltfPool, loadModel, ASSET_SPECIES, ASSET_VARIANTS, FIXTURES } from './gltfpool.js';
 
 const LOD_FAR = 250;      // beyond: half-detail rigid-pose instances, no shadow
 const CULL_DIST = 1400;
@@ -243,8 +243,9 @@ class Pool {
 }
 
 function getPool(spec, variant) {
-  const model = models.get(spec.id);
-  const key = model ? `${spec.id}:gltf` : `${spec.id}:${variant}`;
+  // variant-specific model first (e.g. a future lion:female entry), species-wide model second
+  const model = models.get(`${spec.id}:${variant}`) || models.get(spec.id);
+  const key = model ? `${spec.id}:${variant}:gltf` : `${spec.id}:${variant}`;
   let p = pools.get(key);
   if (!p && model) {
     try {
@@ -253,25 +254,29 @@ function getPool(spec, variant) {
       const probe = buildAnimal(spec, { detail: 0.25, variant });
       probe.geometry.dispose();
       p = new GltfPool({ ctx, group, spec, dims: probe.dims, capacity: START_CAPACITY }, model, key);
-    } catch (err) { ctx.log.error(`[animals] ${spec.id}: authored pool failed, procedural fallback`, err); models.delete(spec.id); return getPool(spec, variant); }
+    } catch (err) { ctx.log.error(`[animals] ${spec.id}: authored pool failed, procedural fallback`, err); models.delete(`${spec.id}:${variant}`); models.delete(spec.id); return getPool(spec, variant); }
     pools.set(key, p);
   }
   if (!p) { p = new Pool(spec, variant); pools.set(key, p); }
   return p;
 }
 
-/** Load every authored species (ASSET_SPECIES) plus any test mapping from ?animalModel=species:fixture,…
+/** Load every authored species (ASSET_SPECIES), every per-variant model (ASSET_VARIANTS, keyed
+ * `species:variant`) plus any test mapping from ?animalModel=species:fixture,…
  * Failures just leave the species procedural. */
 async function loadModels() {
   const map = { ...ASSET_SPECIES };
+  for (const [sp, variants] of Object.entries(ASSET_VARIANTS)) {
+    for (const [v, def] of Object.entries(variants)) map[`${sp}:${v}`] = def;
+  }
   const test = String(ctx.params?.animalModel || '');
   for (const pair of test.split(',').filter(Boolean)) {
     const [sp, fx] = pair.split(':');
     if (SPECIES[sp] && FIXTURES[fx]) map[sp] = FIXTURES[fx];
   }
-  await Promise.all(Object.entries(map).map(async ([sp, def]) => {
+  await Promise.all(Object.entries(map).map(async ([key, def]) => {
     const m = await loadModel(ctx, def);
-    if (m) { models.set(sp, m); ctx.log.info(`[animals] ${sp}: authored model ${def.path} (${m.triangles | 0} tris, ${Object.keys(m.clips).length} clips)`); }
+    if (m) { models.set(key, m); ctx.log.info(`[animals] ${key}: authored model ${def.path} (${m.triangles | 0} tris, ${Object.keys(m.clips).length} clips)`); }
   }));
 }
 

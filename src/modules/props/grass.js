@@ -40,13 +40,20 @@ function buildTuft(rng, { blades = 5, segments = 4, height = 1, width = 0.030, l
 
   // Ground mat: a flat quad in the grass colour under the blades. Without it the bare terrain shows
   // through between tufts and the field reads as spikes on soil instead of a continuous sward.
+  // Round 4 re-solve: the old uniform 0.86 shade solved the mat DARKER than the blades, and against
+  // terrain's photo ground layers (linear mean ≈ 0.30/0.20/0.075 on the dry sward — see index.js
+  // DRY) every mat announced itself as a hard-edged dark polygon. The mat now carries a per-corner
+  // mottle straddling the blade-base value so it reads as ground, not a decal (critic props-round4
+  // major 1).
   if (mat > 0) {
     const base = 0;
     const ma = rng.range(0, Math.PI);
     const cm = Math.cos(ma) * mat, sm = Math.sin(ma) * mat;
-    const shade = 0.86;
     pos.push(-cm + sm, 0.012, -sm - cm, cm + sm, 0.012, sm - cm, cm - sm, 0.012, sm + cm, -cm - sm, 0.012, -sm + cm);
-    for (let i = 0; i < 4; i++) { nrm.push(0, 1, 0); col.push(shade, shade, shade); }
+    for (let i = 0; i < 4; i++) {
+      const shade = 0.94 + 0.16 * rng.float();
+      nrm.push(0, 1, 0); col.push(shade, shade, shade);
+    }
     uv.push(0, 0, 1, 0, 1, 1, 0, 1);
     idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
@@ -200,8 +207,11 @@ export class GrassField {
     for (let j = 0; j < n; j++) {
       for (let i = 0; i < n; i++) {
         const rx = rnd(), rz = rnd(), ra = rnd(), rh = rnd(), rk = rnd(), rc = rnd();
-        const x = x0 + (i + 0.15 + 0.7 * rx) * step;
-        const z = z0 + (j + 0.15 + 0.7 * rz) * step;
+        // Full-cell jitter (0.04..0.96 of the cell): the old 0.15..0.85 band kept every candidate
+        // near its lattice point, so at close/mid range the sampling grid itself read as diagonal
+        // rows of tufts (critic props-round4 major 2). Seeded hash — deterministic, no Math.random.
+        const x = x0 + (i + 0.04 + 0.92 * rx) * step;
+        const z = z0 + (j + 0.04 + 0.92 * rz) * step;
         const d = s(x, z);
         if (d <= 0) continue;
         if (rnd() > d) continue;

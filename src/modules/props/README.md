@@ -166,6 +166,17 @@ particularly on first load or after a large camera jump (e.g. a showcase preset 
   visible arc where coverage jumps. If you change a LOD's spacing or scale multiplier in
   `grass.js`, you must re-solve the paired `mat` constant in `buildTuft()`'s call sites (see the
   comment on `QUALITY` in `grass.js`).
+* **Tuft mats + placement re-solved against terrain's photo ground (2026-09-25, critic round 4
+  majors 1+2).** Terrain's ground switched to photo-derived layers after the tuft palette was
+  authored, and the stale values announced themselves: every tuft's baked ground mat read as a
+  hard-edged dark-olive polygon on the brighter photo sward, and the sampling lattice read as
+  diagonal rows of tufts at close/mid range. Three levers moved, all verified against real-GPU
+  `grass`/`close` captures (`tools/shots/fix-props-grass-v1.png`, `fix-props-close-v1.png`):
+  the instance palette in `index.js` (`DRY`/`GREEN`, lifted ~30% to the photo layers' linear
+  means), the mat's per-corner shade (uniform 0.86 → 0.94–1.10 mottle straddling the blade-base
+  value, seeded from the same forked `ctx.rng`), and the per-candidate jitter in `_genChunk()`
+  (±35% → ±46% of the cell, still a seeded hash — never `Math.random`). The mat SIZE constants
+  are untouched: the coverage equation above still holds.
 * **No per-sample allocation.** `grassSample()` runs on the order of 10⁵–10⁶ times per grass field
   rebuild; it and everything it calls (`biomeRowAt`, `biomeAtFast`, `cellIndexAt`, `macroAt`) write
   into shared scratch objects/arrays instead of `world.cellAt`/`world.biomeAt` (which both

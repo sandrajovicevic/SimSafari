@@ -28,3 +28,29 @@ Honest notes for the merge:
 - giraffe/elephant/lion are static meshes (no rig exists for these species on poly.pizza — the site's
   Google Poly archive is static-only). `animals/gltfpool.js` loadModel() now synthesises a one-bone
   identity rig for them; they translate/turn but do not articulate. Recorded in the module README.
+
+## 2026-09-25 second asset pass (zebra swap; lioness search closed)
+
+Follow-up rows for the critic-round-6/7 fixes (animals builder). The zebra file below replaces
+`models/quaternius/Horse_White.glb` in `ASSET_SPECIES` — that file stays on disk but is now
+unreferenced by code (kept so its row above remains true; delete it here if the integrator prefers).
+
+| path | source URL | author | licence | added | modifications |
+|---|---|---|---|---|---|
+| `public/assets/models/polypizza/Zebra.glb` | https://poly.pizza/m/4HAP_9VDIl4 (file: https://static.poly.pizza/3e61316c-71d9-4cf5-ae36-ef20f7246871.glb) | Poly by Google | CC-BY 3.0 | 2026-09-25 | renamed to Zebra.glb (mesh/texture untouched); mapped to zebra in ASSET_SPECIES replacing quaternius/Horse_White.glb — this mesh carries the stripe texture + UVs the stand-in lacked; runtime material tint pulls the map's pure white toward zebra off-white |
+
+Honest notes for the merge:
+- The new zebra is a static mesh (no rig exists for it on poly.pizza). It translates/turns but does
+  not articulate — same class of limitation as giraffe/elephant/lion, recorded in the module README.
+  The only rigged zebra found (Quaternius, CC0, 6 clips — https://poly.pizza/m/iclPBR6SBZ, file
+  https://static.poly.pizza/ff99ce31-85dd-4863-b145-24a6646a2b20.glb) has NO UVs and flat
+  white/black materials, so it cannot carry stripes; markings (§8 "silhouettes AND markings") were
+  chosen over articulation. Both candidates verified by download + render, 2026-09-25.
+- **Lioness: not found — search closed.** poly.pizza search "lion"/"lioness" returns exactly 3 lion
+  models, all maned males: 3XAJojWxSWz (current, painted mane), daMBBUnd9c9 (flat-swatch maned male,
+  verified by render), cC_IFclYA4c (jeremy cartoon, orange mane, verified by render). A derived
+  mane-less variant was also built by removing the mane triangles of the textured lion (CC-BY
+  permits modification; three threshold/region tunings rendered) — conservative tuning kept a
+  visible mane, aggressive tuning chewed head/neck (`tools/shots/fix-lioness-v4/-v5/-v6.png`).
+  No lioness row is registered; `ASSET_VARIANTS` ships empty with the search documented in code and
+  README so a future model drops in as `lion: { female: … }`.
