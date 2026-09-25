@@ -105,6 +105,7 @@ export const CONST = Object.freeze({
   sightingK: 0.12,            // P(see species) = 1 - exp(-n * visibility * roadFactor * K)
   seasonLength: 90,           // days per season in the internal fallback calendar (dry, wet alternate)
   historyCap: 400,
+  starveRate: 0.08,          // predators above their prey capacity: deaths/day per excess animal (hunger → deaths)
   hungerRate: 0.15,          // EMA rate of predators' perceived prey (count + biomass): ~6-day lag to a prey crash
 });
 

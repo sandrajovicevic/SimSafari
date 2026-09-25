@@ -921,6 +921,13 @@ export class Simulation {
         if (disease) mort += 0.03 * (1 - 0.5 * Math.min(1, bld.vet)) * (1 - 0.3 * keeperCov);
         if (st && st.drought > 0 && sp.prefs.water > 0.6) mort += 0.004 * st.drought;
         let d = Math.min(r.n, poisson(this.rng, r.n * mort));
+        // starvation: a predator herd above what its (lagged) prey can feed loses the excess — the direct
+        // hunger path; happiness alone can stall at the migration threshold when the animals module's own
+        // happiness is blended in (measured on the live park: lions held at exactly 0.30 with no prey)
+        if (DIET[s] && cap && cap.foodCap !== null && r.n > cap.foodCap) {
+          const starved = Math.min(r.n - d, poisson(this.rng, (r.n - Math.max(0, cap.foodCap)) * CONST.starveRate));
+          if (starved > 0) { d += starved; this._notify('warn', `${starved} ${s} starved in ${info.name}: not enough prey`); }
+        }
         // predation share for prey
         if (killsLeft > 0 && sp.diet !== 'predator' && prey > 0 && (untabled || inDiet.has(s))) {
           const share = Math.min(killsLeft, Math.round(kills * r.n / prey));
