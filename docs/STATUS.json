@@ -542,8 +542,8 @@
     "tools": {
       "wave": 2,
       "domain": "built",
-      "round": 3,
-      "score": 8,
+      "round": 4,
+      "score": 5.5,
       "status": "fail",
       "errors": 0,
       "drawCalls": 106,
@@ -555,19 +555,49 @@
         "building 17",
         "close 16.5",
         "night 21.5",
-        "close selection eval check (extra)"
+        "road close-up 12 (extra)",
+        "road/habitat 9 (extra)",
+        "close + scripted API eval (extra)"
       ],
       "issues": [
         {
-          "sev": "minor",
-          "text": "terrain preset measured 143.7ms for tools' own update() -- wildly out of line with every other preset (0.04-0.94ms). TerrainTool.js's update() has nothing that should cost this much (only a ring-cursor decal position update); tools has no dependency on props (which has a separate, confirmed severe grass-rebuild stall), so this could not be attributed with confidence. Flagged for a second look, not scored as confirmed."
+          "sev": "blocker",
+          "text": "Nothing subscribes to ui's tool:request (spec line 1). Verified live: tool:request {tool:'road.gravel'} and {tool:'road'} both leave current()=select. Every toolbar and sidepanel Demolish/Sell button is dead in the real game. Fix: add a tool:request handler in init() that maps ui names (terrain.raise, road.gravel, zone.erase, building.place, animal.place, bulldoze, null) to activate()."
+        },
+        {
+          "sev": "major",
+          "text": "Selection marker invisible on the close and night presets (README claim not reproduced, so cap 6 applies). updateMarker hard-codes radius 4 for buildings, which puts a 5 m ring under a ~30 m lodge. Size it from the footprint and draw with depthTest off, or outline the selected building."
+        },
+        {
+          "sev": "major",
+          "text": "A terrain drag costs ~130 ms/frame in tools.update() (preset 131 ms; eval EMA 52 after 10 frames), ~85x the 1.5 ms budget. Cause: terrain.raise() runs terrain's full afterEdit (chunk rebuild/water/texture upload) every frame. This is round 3's 'unexplained' spike. Batch/throttle brush flushes."
+        },
+        {
+          "sev": "major",
+          "text": "Road preview below CS2 grade: a flat constant-height slab cut through by terrain and grass; node discs (0.55 m) buried in grass; snap ring never shown in the road preset (snap.visible=false, README claim not reproduced); no warning for water crossings; no cost/length guide or straight mode (spec asks for both, neither is in Known gaps)."
+        },
+        {
+          "sev": "major",
+          "text": "Per-frame allocations in update(): RoadRibbon allocates new Vector3s plus a new CatmullRomCurve3 every frame, RoadTool does points.slice() and allocates a snap object, TerrainTool builds a colors literal. The README/cursors.js 'all pre-allocated' claim is false and the hard rule is broken."
         },
         {
           "sev": "minor",
-          "text": "close preset selection marker not visually legible in the captured screenshot despite genuinely existing (world.selection correctly set to {kind:building,id:b_1}, visible marker child confirmed via direct scene-graph eval check) -- a presentation/contrast issue at this camera angle/time, not a functional defect."
+          "text": "Undoing a placement leaves world.selection pointing at the deleted id (verified: b_2 after gate undo). The README claims it is cleared."
+        },
+        {
+          "sev": "minor",
+          "text": "Selection marker position is cached once, so it does not follow a moving animal (verified: zebra moved 4.31 m and the marker stayed behind)."
+        },
+        {
+          "sev": "minor",
+          "text": "Showcase honesty: 2 zebras released, not 3. The three 'raise' clicks add only 0.083 m each, so the overview shows no raised ground. The README says there is no spend API, but simulation.spend(amount, reason) exists; common.js still writes economy.cash directly and bypasses the spend log."
+        },
+        {
+          "sev": "minor",
+          "text": "(cross-module, buildings) The ghost preview renders as unsorted stacked translucent layers with no outline. Validity colouring reads fine."
         }
       ],
-      "good": "Building ghost preview red/green validity colouring is unambiguous and precise. Terrain ring cursor cleanly conforms to terrain exactly where the scripted stroke says. Road preview ribbon correctly snaps onto the existing committed road (real graph-aware snapping). Night atmosphere (lodge glow, river moonlight reflection, reflective road paint) genuinely strong. dispose() releases ring/ribbon/marker/group; API matches README's documented tool framework."
+      "good": "Undo/redo round-trips exactly (terrain heights to 3 decimals, cash to the dollar, 9/9 ops); Ctrl+Z/Y work via input:key. Two-press Delete confirm works as documented. The terrain ring cursor is clean. canPlace validity colouring is correct. Zero console errors; ≤5 own draw calls."
     },
     "savannah": {
       "wave": 3,
@@ -1168,6 +1198,12 @@
       "module": "traffic",
       "round": 4,
       "score": 5.0,
+      "date": "2026-09-25"
+    },
+    {
+      "module": "tools",
+      "round": 4,
+      "score": 5.5,
       "date": "2026-09-25"
     }
   ]
