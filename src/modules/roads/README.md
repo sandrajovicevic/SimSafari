@@ -124,9 +124,18 @@ the 12-edge / 5-junction / several-bridge overview network this is at most ~10 r
   to dry-reachable nodes. The `junction` preset re-targets onto the nearest real ≥3-way node.
   Verified in `roads-overview-15.png` (4 short crossings, full loop), `roads-bridge-9.png`,
   `roads-junction-17.png`. Remaining: one loop crossing is oblique (~55 m, inside the 60 m rule).
-* **Junction patches are still geometrically poor at close range** (critic r4 #1): flat dark quad with
-  hard seams to the legs, edge-line stubs, and on some nodes a folded triangle — visible in
-  `roads-junction-17.png`. Not yet rebuilt.
+* **Junction patches fixed 2026-09-25** (critic r4 #1: torn/folded patch, grass through the asphalt).
+  Three bugs in `ribbon.js` §3, found by dumping the real boundary of the showcase T (node n_4):
+  (1) fillet corners were taken as the row's ±a ends, but ±a is relative to the EDGE direction, which
+  is reversed for arms at an edge's b end — fillets started from the wrong corner and cut diagonally
+  through the junction; corners are now chosen geometrically across each arm's outward direction.
+  (2) outside-corner arcs always swept in increasing angle and could go the long way round; they now
+  sweep through the gap's bisector. (3) a single fan from the node height let bulging ground poke
+  through; a mid ring lifted above the terrain was added. Inside corners use the edge-intersection
+  bezier only when it lies ahead on both edges; near-straight corners join straight. Verified top-down
+  (`roads-jn-top.png` before → `roads-jn-top5.png` after) and in `roads-junction-17.png`,
+  `roads-overview-15.png`. Remaining nits: a hard seam where a paved apron meets a gravel/dirt leg, and
+  the patch reuses a flat-ish surface (no crown continuation).
 * **A full `rebuild()` is not "a few ms"**: the critic measured `stats().build.ms` at ~1,600 ms on the
   showcase network under SwiftShader (terrain conform dominates). It runs once per edit batch, not per
   frame.
