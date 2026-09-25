@@ -48,7 +48,7 @@ export function createWaterMaterial(ctx, heightTex, normalTex) {
     uSkyMix: { value: 1.0 }, uWaveStr: { value: 1.0 },
     // Beer–Lambert absorption for a silt/tannin-stained savannah river: blue is killed fastest,
     // so the residual colour walks from a warm ochre shallow to a near-black olive at depth.
-    uGlint: { value: 0.6 }, uGlintPow: { value: 3200.0 }, uSheen: { value: 0.0 }, uExposure: { value: 1.0 },
+    uGlint: { value: 0.6 }, uGlintPow: { value: 3200.0 }, uSheen: { value: 0.0 }, uExposure: { value: 1.0 }, uReflI: { value: 1.0 },
     uBed: { value: new THREE.Color(0.155, 0.098, 0.042) },   // wet sand/mud seen through 0 m of water
     uBody: { value: new THREE.Color(0.030, 0.038, 0.024) },  // suspended-sediment body colour (deep asymptote)
     uExt: { value: new THREE.Vector3(1.35, 1.75, 3.10) },    // per-metre extinction, r/g/b
@@ -65,7 +65,7 @@ uniform sampler2D tHeight; uniform sampler2D tWaterN; uniform float uTime;
 uniform float uHalf; uniform float uInvCell; uniform float uInvRes;
 uniform vec3 uSkyZenith; uniform vec3 uSkyHorizon; uniform float uSkyMix; uniform float uWaveStr;
 uniform vec3 uBed; uniform vec3 uBody; uniform vec3 uExt;
-uniform float uGlint; uniform float uGlintPow; uniform float uSheen; uniform float uExposure;
+uniform float uGlint; uniform float uGlintPow; uniform float uSheen; uniform float uExposure; uniform float uReflI;
 varying vec3 vWPos;
 vec3 gWaterN; float gFoam; float gDepth;
 ${GLSL_NOISE}`)
@@ -99,13 +99,23 @@ ${GLSL_NOISE}`)
 {
   vec3 V = normalize(cameraPosition - vWPos);
   float NoV = clamp(dot(gWaterN, V), 0.0, 1.0);
-  // Weak, narrow sky reflection: the blown-out white river was a full-strength Schlick term over a
-  // near-mirror surface. Cap the grazing response and darken the reflected sky.
-  float fres = 0.015 + 0.30 * pow(1.0 - NoV, 5.0);
   vec3 R = reflect(-V, gWaterN);
-  float up = clamp(R.y, 0.0, 1.0);
-  vec3 sky = mix(uSkyHorizon, uSkyZenith, pow(up, 0.45)) * 0.40;
-  outgoingLight += sky * fres * uSkyMix;
+  R.y = abs(R.y); // ripples can tip a grazing reflection below the horizon; mirror it back up
+  // Physically based Fresnel for water (F0 = 0.02): ~2 % head-on, rising to ~all at grazing. The old
+  // path capped it at 0.30 and reflected a dimmed analytic sky, so rivers read as flat opaque paint
+  // (critic savannah-round6). The earlier "white river" came from a full-strength GLOSSY env term on a
+  // rough surface; here the reflection samples the environment's own sky PMREM at low roughness, so
+  // it is exactly as bright as the sky it mirrors, never brighter.
+  float fres = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);
+  fres *= 1.0 - 0.35 * smoothstep(0.35, 0.0, gDepth); // silty shallows: less mirror, more bed
+  vec3 sky;
+  #if defined( USE_ENVMAP ) && defined( ENVMAP_TYPE_CUBE_UV )
+    sky = textureCubeUV( envMap, R, 0.06 ).rgb * uReflI;
+  #else
+    float up = clamp(R.y, 0.0, 1.0);
+    sky = mix(uSkyHorizon, uSkyZenith, pow(up, 0.45)) * uSkyMix;
+  #endif
+  outgoingLight = outgoingLight * (1.0 - fres) + sky * fres;
   // Minimum in-column scatter floor: at near-top-down viewing angles fres collapses toward its
   // 0.015 floor (physically correct — Fresnel reflectance is weakest at normal incidence), so a
   // fully-shadowed patch (direct diffuse zeroed by the shadow map, indirect capped low via the
@@ -142,12 +152,17 @@ ${GLSL_NOISE}`)
     outgoingLight += directionalLights[0].color * (pow(ndh, uGlintPow) * uGlint * glintFade + pow(ndh, 70.0) * uSheen);
   }
   #endif
-  outgoingLight = mix(outgoingLight, vec3(0.115, 0.085, 0.050), gFoam);
+  // Silt line, LIT: the old code mixed in a fixed radiance (0.115, 0.085, 0.05) that ignored the
+  // lighting, so at night — exposure up to 12× — it became a cream ring ~9× brighter than the grass
+  // along every shoreline (critic savannah-round6 #2). Same diffuse irradiance the water body got,
+  // applied to the silt albedo instead.
+  vec3 irr = (reflectedLight.directDiffuse + reflectedLight.indirectDiffuse) / max(diffuseColor.rgb, vec3(1e-3));
+  outgoingLight = mix(outgoingLight, irr * vec3(0.115, 0.085, 0.050), gFoam);
   diffuseColor.a = max(mix(diffuseColor.a, 1.0, fres * 0.8), gFoam * 0.8);
 }
 #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => 'terrain-water-v7';
+  m.customProgramCacheKey = () => 'terrain-water-v8';
   return m;
 }
 
