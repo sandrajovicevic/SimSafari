@@ -10,7 +10,7 @@
 // (cheap, capacity-bounded) GPU repack that turns the live per-cell records into instance buffers
 // is throttled to REBUILD_THROTTLE seconds, batching bursts of `vegetation:changed` events.
 import * as THREE from 'three';
-import { PLANT_INDEX } from '../../core/Plants.js';
+import { PLANTS, PLANT_INDEX } from '../../core/Plants.js';
 import { growCanopy, bakeBark, bakeLeafDisc } from './trees.js';
 import { buildShrub } from './rocks.js';
 import { buildTuft } from './grass.js';
@@ -220,6 +220,11 @@ const _euler = new THREE.Euler();
 
 const KINDS = ['sour_plum', 'umbrella_thorn', 'knobthorn', 'marula', 'baobab'];
 const ALL_KINDS = ['aloe', ...KINDS];
+// The biome scatter (index.js) already draws the seeded natural vegetation; draw only cover above that
+// baseline (planting, spread, regrowth) so the two layers never double up. Cover grazed below the
+// baseline is not shown as thinning (known gap).
+function drawnCover(v, k) { const n = v.natural ? v.natural[k] : 0; const c = v.cover[k] - n; return c > 0 ? c : 0; }
+
 const CAPS = { grass: 8000, aloe: 400, sour_plum: 400, umbrella_thorn: 300, knobthorn: 300, marula: 300, baobab: 150 };
 
 export class VegetationLayer {
@@ -264,12 +269,14 @@ export class VegetationLayer {
   /** Instance count for one cell/plant. A tree's maxCover ceiling (e.g. baobab 0.15) is low enough
    * that a flat cover*maxPerCell would round down to 0 almost everywhere even at that plant's own
    * full cover — any cell with meaningfully non-zero cover gets at least one individual instead. */
-  _densityCount(cover, maxPerCell, rng) {
+  _densityCount(cover, maxPerCell, rng, maxCover = 1) {
     if (cover <= 0.01) return 0;
     const f = cover * maxPerCell;
     let n = Math.floor(f);
     if (rng.float() < f - n) n++;
-    return Math.max(1, n);
+    // guaranteed individual only for a substantial share of the plant's own ceiling (a planted patch);
+    // small growth above the natural baseline stays probabilistic so it does not sprout a tree per cell
+    return cover >= 0.5 * maxCover ? Math.max(1, n) : n;
   }
 
   _emit(list, rng, count, x0, z0, cellSize, yOffset, scaleRange, extra) {
@@ -295,28 +302,28 @@ export class VegetationLayer {
 
     rec.grass = [];
     for (const id of GRASS_IDS) {
-      const cover = v.cover[PLANT_INDEX[id] * res * res + idx];
+      const cover = drawnCover(v, PLANT_INDEX[id] * res * res + idx);
       if (cover <= 0.01) continue;
       anyCover = true;
-      const n = this._densityCount(cover, GRASS_MAX_PER_CELL, rng);
+      const n = this._densityCount(cover, GRASS_MAX_PER_CELL, rng, PLANTS[PLANT_INDEX[id]].maxCover);
       this._emit(rec.grass, rng, n, x0, z0, cellSize, -0.02, [0.78, 1.25], GRASS_TINT[id]);
     }
 
     for (const id of ['aloe', 'sour_plum']) {
-      const cover = v.cover[PLANT_INDEX[id] * res * res + idx];
+      const cover = drawnCover(v, PLANT_INDEX[id] * res * res + idx);
       rec[id] = [];
       if (cover <= 0.01) continue;
       anyCover = true;
-      const n = this._densityCount(cover, SHRUB_MAX_PER_CELL, rng);
+      const n = this._densityCount(cover, SHRUB_MAX_PER_CELL, rng, PLANTS[PLANT_INDEX[id]].maxCover);
       this._emit(rec[id], rng, n, x0, z0, cellSize, -0.04, [0.75, 1.30]);
     }
 
     for (const id of ['umbrella_thorn', 'knobthorn', 'marula', 'baobab']) {
-      const cover = v.cover[PLANT_INDEX[id] * res * res + idx];
+      const cover = drawnCover(v, PLANT_INDEX[id] * res * res + idx);
       rec[id] = [];
       if (cover <= 0.01) continue;
       anyCover = true;
-      const n = this._densityCount(cover, TREE_MAX_PER_CELL, rng);
+      const n = this._densityCount(cover, TREE_MAX_PER_CELL, rng, PLANTS[PLANT_INDEX[id]].maxCover);
       this._emit(rec[id], rng, n, x0, z0, cellSize, -0.12, [0.68, 1.15]);
     }
 

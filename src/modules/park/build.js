@@ -461,6 +461,22 @@ export async function buildPark(ctx, opts = {}) {
     try { simulation.replan?.(); } catch {}
     report.staff = staffed;
   }
+  // ---- 8c. food-web demo planting (P1, docs/specs/p1-food-web.md) --------------------------------------
+  // The woodland gets browse for its elephants/giraffe (aloe understorey + a marula stand) and the
+  // wetland a sedge fringe; bought before markStart() so reset() returns to the planted park.
+  if (simulation?.plant) {
+    const plantAt = (key, type, dx, dz, r, cover) => {
+      const h = habitatDefs.find((d) => d.key === key);
+      if (!h?.habitatId) return;
+      try {
+        const res = simulation.plant(type, h.anchor.x + dx, h.anchor.z + dz, r, cover);
+        if (res?.ok) { report.planted = report.planted || []; report.planted.push({ habitat: h.name, type, cells: res.cells, cost: Math.round(res.cost) }); }
+      } catch (err) { log.warn('[park] plant failed: ' + err.message); }
+    };
+    plantAt('browsers', 'aloe', -20, 10, 28, 0.3);
+    plantAt('browsers', 'marula', 25, -15, 24, 0.25);
+    plantAt('wetland', 'sedge', 0, 0, 30, 0.6);
+  }
   if (sim) { try { sim.markStart(); } catch {} }
 
   // ---- 9. four safari vehicles on tour --------------------------------------------------------------

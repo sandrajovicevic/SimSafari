@@ -16,7 +16,7 @@ export class Vegetation {
     this.seed = seed;
     if (!world.vegetation) {
       const res = 64;
-      world.vegetation = { res, cell: world.size / res, types: PLANT_IDS, cover: new Float32Array(NT * res * res), version: 0 };
+      world.vegetation = { res, cell: world.size / res, types: PLANT_IDS, cover: new Float32Array(NT * res * res), natural: new Float32Array(NT * res * res), version: 0 };
     }
     const v = world.vegetation;
     this.res = v.res;
@@ -87,6 +87,7 @@ export class Vegetation {
       }
     }
     this._emitted.set(cover);
+    if (this.world.vegetation.natural) this.world.vegetation.natural.set(cover);
     this.seeded = true;
     this.world.vegetation.version++;
   }

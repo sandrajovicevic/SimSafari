@@ -41,6 +41,9 @@ export class World {
     this.vegetation = {
       res: vres, cell: size / vres, types: PLANT_IDS,
       cover: new Float32Array(PLANT_IDS.length * vres * vres),
+      // `natural`: the cover simulation seeded from biomes (same layout). props' biome scatter already
+      // draws that baseline, so the plant layer draws only cover above it (planting, spread, regrowth).
+      natural: new Float32Array(PLANT_IDS.length * vres * vres),
       version: 0,
     };
 
