@@ -8,8 +8,26 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 const HALF_PI = Math.PI / 2;
 
+// Real-world-scale UV so a texture's apparent grain stays the same size on a small part (a seat pan)
+// and a big one (the 6 m chassis rail), instead of stretching the same default [0,1] box UV over a
+// much bigger surface — that stretch is what read as "wood grain" in critic round 4 (the `traffic:paint`
+// fleck stretched along the box UVs).
+function scaleBoxUV(geo) {
+  const pos = geo.attributes.position, norm = geo.attributes.normal, uv = geo.attributes.uv;
+  for (let i = 0; i < pos.count; i++) {
+    const nx = Math.abs(norm.getX(i)), ny = Math.abs(norm.getY(i)), nz = Math.abs(norm.getZ(i));
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    let u, v;
+    if (ny >= nx && ny >= nz) { u = x; v = z; }
+    else if (nx >= ny && nx >= nz) { u = z; v = y; }
+    else { u = x; v = y; }
+    uv.setXY(i, u, v);
+  }
+  uv.needsUpdate = true;
+}
 function box(w, h, d, cx, cy, cz, rotY = 0) {
   const g = new THREE.BoxGeometry(Math.max(0.01, w), Math.max(0.01, h), Math.max(0.01, d));
+  scaleBoxUV(g);
   if (rotY) g.rotateY(rotY);
   g.translate(cx, cy, cz);
   return g;
@@ -41,16 +59,28 @@ function tagFlat(geo, v = 1) {
   geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
   return geo;
 }
+/** Flat but non-grey per-vertex tint (e.g. sun-bleached canvas over painted steel) for pieces that
+ * opt out of the roof-to-rocker dust gradient while still sharing the "paint" material group. */
+function tagTint(geo, r, g, b) {
+  const n = geo.attributes.position.count;
+  const arr = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { arr[i * 3] = r; arr[i * 3 + 1] = g; arr[i * 3 + 2] = b; }
+  geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+  return geo;
+}
 
 function mergeBucket(pieces) { return pieces.length ? mergeGeometries(pieces, false) : null; }
 
-/** pieces: { paint:[geo,...], chrome:[geo,...], glass:[geo,...] } → one geometry, 3 groups. */
+/** pieces: { paint:[geo,...], chrome:[geo,...], glass:[geo,...], extra:[geo,...] } → one geometry,
+ * 3 material groups. `extra` merges into the paint group (zero extra draw calls) but skips the dust
+ * gradient — the caller has already vertex-tagged it (e.g. the canopy's canvas tint). */
 function assemble(buckets, roofY) {
   const p = buckets.paint.map((g) => tagDust(g, roofY));
+  const extra = buckets.extra || [];
   const c = buckets.chrome.map((g) => tagFlat(g, 1));
   const gl = buckets.glass.map((g) => tagFlat(g, 1));
   const order = [];
-  const pM = mergeBucket(p); if (pM) order.push(pM);
+  const pM = mergeBucket([...p, ...extra]); if (pM) order.push(pM);
   const cM = mergeBucket(c); if (cM) order.push(cM);
   const glM = mergeBucket(gl); if (glM) order.push(glM);
   const geo = order.length > 1 ? mergeGeometries(order, true) : order[0];
@@ -68,6 +98,26 @@ function addMirrors(paint, chrome, cabFrontZ, halfW, cabRoofY) {
   }
 }
 
+/** Thin frame (top rail, sill, two pillars) around a rectangular glass panel already placed at
+ * (cx,cy,cz) with rotation `rotX` about X — makes the windscreen read as glazing in a frame instead
+ * of a bare transparent box (critic round 4 #3: "no readable windscreen or cab glass"). */
+function windowFrame(paint, w, h, cx, cy, cz, rotX = 0, thick = 0.045) {
+  const half = h / 2 + thick / 2;
+  const parts = [
+    box(w + thick * 2, thick, thick, 0, half, 0),
+    box(w + thick * 2, thick, thick, 0, -half, 0),
+    box(thick, h + thick * 2, thick, -(w / 2 + thick / 2), 0, 0),
+    box(thick, h + thick * 2, thick, (w / 2 + thick / 2), 0, 0),
+  ];
+  for (const p of parts) { if (rotX) p.rotateX(rotX); p.translate(cx, cy, cz); paint.push(p); }
+}
+
+/** Bull bar: a chrome tube rail on two upright posts ahead of the bumper. */
+function addBullbar(chrome, width, y, z) {
+  chrome.push(box(width, 0.06, 0.06, 0, y + 0.32, z));
+  for (const side of [-0.62, 0.62]) chrome.push(cyl(0.03, 0.34, side * width * 0.5, y + 0.16, z, { seg: 6 }));
+}
+
 function buildSafari(d) {
   const paint = [], chrome = [], glass = [];
   const halfW = d.width / 2, halfL = d.length / 2;
@@ -82,15 +132,19 @@ function buildSafari(d) {
   paint.push(box(d.width * 0.98, 0.22, 0.9, 0, floorY + 0.7, cabFrontZ - 0.45)); // hood
   paint.push(box(d.width * 0.94, 0.9, 0.65, 0, floorY + 0.65, cabFrontZ - 1.05)); // cabin box
   paint.push(box(d.width * 0.94, 0.08, d.cabLength, 0, floorY, cabFrontZ - d.cabLength / 2)); // cab floor
-  // windscreen (raked) + side cab windows
-  const wind = box(d.width * 0.86, 0.6, 0.05, 0, floorY + 1.05, cabFrontZ - 0.75);
-  wind.rotateX(-0.18);
+  // windscreen (raked) + side cab windows — a frame around the pane makes it read as glazing
+  const windW = d.width * 0.86, windH = 0.6;
+  const windCx = 0, windCy = floorY + 1.05, windCz = cabFrontZ - 0.75, windRot = -0.18;
+  const wind = box(windW, windH, 0.05, 0, 0, 0);
+  wind.rotateX(windRot); wind.translate(windCx, windCy, windCz);
   glass.push(wind);
+  windowFrame(paint, windW, windH, windCx, windCy, windCz, windRot);
   for (const side of [-1, 1]) glass.push(box(0.04, 0.42, 0.55, side * (halfW - 0.02), floorY + 0.75, cabFrontZ - 1.05));
-  // grille + bumper (chrome)
+  // grille + bumper (chrome) + bull bar
   chrome.push(box(d.width * 0.7, 0.28, 0.06, 0, floorY + 0.45, cabFrontZ + 0.05));
   chrome.push(box(d.width * 0.9, 0.16, 0.14, 0, d.wheelR * 0.7, halfL - 0.03));
   chrome.push(box(d.width * 0.9, 0.14, 0.14, 0, d.wheelR * 0.7, -halfL + 0.03));
+  addBullbar(chrome, d.width * 0.92, d.wheelR * 0.72, halfL - 0.01);
   addMirrors(paint, chrome, cabFrontZ, halfW, cabRoofY);
 
   // open rear deck: floor, low side rails, corner posts + canopy posts, spare-wheel backplate
@@ -120,13 +174,21 @@ function buildSafari(d) {
     }
   }
   // canopy over the deck on 4 corner posts + roof rack — tall enough to clear the tiered rear row's
-  // seated head height (rowY[2] + seat rise + head height), not just the cab roofline.
+  // seated head height (rowY[2] + seat rise + head height), not just the cab roofline. The slab and
+  // its edge trim are canvas-tinted (see `extra` below), not painted steel like the rest of the body.
   const canopyY = floorY + 1.95;
+  const canopyThick = 0.09;
   const postZs = [deckStartZ - 0.15, -halfL + 0.35];
   for (const pz of postZs) for (const side of [-1, 1]) {
     paint.push(cyl(0.03, canopyY - floorY, side * (halfW - 0.08), (canopyY + floorY) / 2, pz, { seg: 6 }));
   }
-  paint.push(box(d.width * 0.98, 0.06, deckLen + 0.5, 0, canopyY, deckMidZ - 0.1));
+  const extra = [];
+  const canopySlab = box(d.width * 0.98, canopyThick, deckLen + 0.5, 0, canopyY, deckMidZ - 0.1);
+  tagTint(canopySlab, 0.95, 0.88, 0.7); // sun-bleached canvas
+  extra.push(canopySlab);
+  const canopyTrim = box(d.width * 1.01, 0.03, deckLen + 0.54, 0, canopyY - canopyThick / 2 - 0.02, deckMidZ - 0.1);
+  tagTint(canopyTrim, 0.3, 0.28, 0.25); // dark edge binding
+  extra.push(canopyTrim);
   if (d.hasRoofRack) {
     const rackY = canopyY + 0.14;
     for (const side of [-1, 1]) chrome.push(box(0.035, 0.1, deckLen + 0.3, side * (halfW - 0.14), rackY, deckMidZ - 0.1));
@@ -135,7 +197,7 @@ function buildSafari(d) {
   // spare wheel backplate (the wheel itself is a shared instanced part, non-spinning)
   paint.push(box(0.08, 0.7, 0.7, 0, floorY + 0.5, -halfL - 0.03));
 
-  const geometry = assemble({ paint, chrome, glass }, canopyY);
+  const geometry = assemble({ paint, chrome, glass, extra }, canopyY);
   const wheelMounts = [
     { x: -d.track / 2, y: d.wheelR, z: d.wheelbase / 2 }, { x: d.track / 2, y: d.wheelR, z: d.wheelbase / 2 },
     { x: -d.track / 2, y: d.wheelR, z: -d.wheelbase / 2 }, { x: d.track / 2, y: d.wheelR, z: -d.wheelbase / 2 },
@@ -306,22 +368,49 @@ export function buildKindModel(kindDef) {
 }
 
 /** Shared wheel geometry at unit radius/width; scaled per-kind via the instance matrix.
- * Local +X = spin axis (lateral), rolling happens in the local Y-Z plane. Groups: [0] tyre [1] rim. */
+ * Local +X = spin axis (lateral), rolling happens in the local Y-Z plane. Groups: [0] tyre [1] rim.
+ * The rim carries a dished hub + 5 lug bosses on BOTH faces — instances aren't mirrored left/right,
+ * so a one-sided dish would face the wrong way on half the wheels in the fleet (critic round 4 #3:
+ * "flat white disc hubs, with no rim detail"). */
 export function buildWheelGeometry() {
   const tyre = new THREE.CylinderGeometry(1, 1, 1, 14, 1, false);
   tyre.rotateZ(HALF_PI);
-  const rim = new THREE.CylinderGeometry(0.56, 0.56, 1.03, 10);
-  rim.rotateZ(HALF_PI);
-  tagFlat(tyre, 1); tagFlat(rim, 1);
+  const rimBright = [new THREE.CylinderGeometry(0.56, 0.56, 1.03, 10)];
+  const rimDark = [];
+  for (const side of [-1, 1]) {
+    const hub = new THREE.CylinderGeometry(0.3, 0.42, 0.16, 12);
+    hub.translate(0, side * 0.48, 0);
+    rimBright.push(hub);
+    const cap = new THREE.CylinderGeometry(0.1, 0.1, 0.07, 10);
+    cap.translate(0, side * 0.6, 0);
+    rimDark.push(cap);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const lug = new THREE.CylinderGeometry(0.05, 0.05, 0.06, 6);
+      lug.translate(Math.cos(a) * 0.2, side * 0.6, Math.sin(a) * 0.2);
+      rimDark.push(lug);
+    }
+  }
+  for (const p of [...rimBright, ...rimDark]) p.rotateZ(HALF_PI);
+  const rimBrightGeo = tagFlat(mergeGeometries(rimBright, false), 1);
+  const rimDarkGeo = tagFlat(mergeGeometries(rimDark, false), 0.35); // darker cap + lug nuts for contrast against the bright rim
+  const rim = mergeGeometries([rimBrightGeo, rimDarkGeo], false);
+  tagFlat(tyre, 1);
   const geo = mergeGeometries([tyre, rim], true);
   geo.computeBoundingSphere();
   return geo;
 }
 
-/** Small emissive lens, forward = local +Z. */
+/** Small emissive lens, forward = local +Z, plus wrap-around wings on BOTH sides (instances aren't
+ * mirrored left/right, so both must be present) so the lamp reads from a 3/4 side angle too, not just
+ * dead-on (critic round 4 #4: "no red taillight is visible" from a side-on view). */
 export function buildLampGeometry(w = 0.16, h = 0.1) {
-  const g = box(w, h, 0.04, 0, 0, 0);
+  const front = box(w, h, 0.04, 0, 0, 0);
+  const wingL = box(0.05, h * 0.85, 0.15, -(w / 2 + 0.02), 0, 0.055);
+  const wingR = box(0.05, h * 0.85, 0.15, (w / 2 + 0.02), 0, 0.055);
+  const g = mergeGeometries([front, wingL, wingR], false);
   tagFlat(g, 1);
+  g.computeBoundingSphere();
   return g;
 }
 
@@ -341,6 +430,11 @@ export function buildPassengerGeometry() {
     box(0.12, 0.24, 0.13, 0.16, 0.6, 0),        // right shoulder/upper arm
     box(0.16, 0.1, 0.36, -0.09, 0.13, 0.14),    // left thigh (seated, forward)
     box(0.16, 0.1, 0.36, 0.09, 0.13, 0.14),     // right thigh
+    // bush hat: a shallow crown dome + a wide flat brim, merged into the clothing instance so every
+    // passenger wears one at zero extra draw calls, tinted by the same per-instance clothing colour
+    // as the rest of the outfit (critic round 4 #3: "no arms and no hats").
+    new THREE.SphereGeometry(0.115, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 0.85, 0.03),
+    new THREE.CylinderGeometry(0.2, 0.2, 0.02, 12).translate(0, 0.835, 0.03),
   ];
   for (const g of skinParts) tagFlat(g, 1);
   for (const g of clothingParts) tagFlat(g, 1);
@@ -348,12 +442,4 @@ export function buildPassengerGeometry() {
   const clothing = mergeGeometries(clothingParts, false);
   skin.computeBoundingSphere(); clothing.computeBoundingSphere();
   return { skin, clothing };
-}
-
-/** A visor-cap, merged into the clothing geometry as an option — kept separate so seatless drivers
- * still read distinctly; reuses tagFlat. */
-export function buildCapGeometry() {
-  const g = new THREE.CylinderGeometry(0.11, 0.11, 0.06, 8).translate(0, 0.86, 0.02);
-  tagFlat(g, 1);
-  return g;
 }

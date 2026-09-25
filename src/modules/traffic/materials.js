@@ -4,13 +4,17 @@
 // CLAUDE.md "Colour authoring" — no darkening compensation.
 import * as THREE from 'three';
 
-/** Subtle clearcoat scratch/fleck detail shared by every paint colour. */
+/** Subtle clearcoat scratch/fleck detail shared by every paint colour. `build.js`'s box UVs are now
+ * real-world metres (see `scaleBoxUV`), not a flat [0,1] per box, so the frequency here is a
+ * cycles-per-metre constant — that's what keeps the fleck's apparent grain size the same on a small
+ * seat pan and the 6 m chassis rail, instead of the old per-box-stretched "wood grain" look (critic
+ * round 4 #3). */
 function paintSet(textures) {
   return textures.pbr({
     key: 'traffic:paint',
     size: 512,
     normalStrength: 0.02,
-    height: 'float height(vec2 uv){ return tfbm(uv, 10.0, 3, uSeed) * 0.5 + 0.5; }',
+    height: 'float height(vec2 uv){ return tfbm(uv, 24.0, 3, uSeed) * 0.5 + 0.5; }',
     roughness: 'float rough(vec2 uv, float h){ return clamp(0.32 + h * 0.22, 0.2, 0.6); }',
     ao: 'float ao(vec2 uv, float h){ return mix(0.92, 1.0, h); }',
   });
@@ -53,8 +57,11 @@ export function buildMaterialLibrary(ctx) {
 
   const chrome = M.standard({ color: 0xd7d9dc, metalness: 1, roughness: 0.28, vertexColors: true });
   chrome.name = 'traffic-chrome';
+  // Darker + higher opacity than before: at 0.55 opacity the pane read as a pale see-through gap
+  // against a bright sky (critic round 4 #3: "no readable windscreen or cab glass"). 0.82 plus a low
+  // roughness reads as dark, slightly reflective glazing instead.
   const glass = M.physical({
-    color: 0x141d24, roughness: 0.12, metalness: 0.05, transparent: true, opacity: 0.55,
+    color: 0x0d1318, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.82,
     vertexColors: true, side: THREE.DoubleSide, depthWrite: false,
   });
   glass.name = 'traffic-glass';

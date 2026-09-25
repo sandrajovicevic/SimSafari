@@ -71,7 +71,11 @@ function spawnOverview(ctx, iface) {
 function spawnClose(ctx, iface) {
   const near = edgeNear(iface, 80, -100);
   if (!near) return;
-  iface.spawnVehicle('safari', near.edge.id, near.s, true, { seatCount: 8 });
+  const v = iface.spawnVehicle('safari', near.edge.id, near.s, true, { seatCount: 8 });
+  // Pin the hero truck (like "sighting" already does) so the capture's settle time doesn't drive it
+  // out of this preset's 11 m frame — critic round 4 #1: the default settle left both "close" and
+  // "night" showing an empty road.
+  if (v) { v._state = 'stopped'; v._stopTimer = 999; }
 }
 
 function spawnSighting(ctx, iface) {
@@ -98,7 +102,10 @@ function spawnNight(ctx, iface) {
   // one vehicle parked right where the camera looks (same spot "close" uses) so its lit headlights/
   // taillights and ground spotlight are actually legible, not just a distant pinprick at 150 m.
   const near = edgeNear(iface, 80, -100);
-  if (near) iface.spawnVehicle('safari', near.edge.id, near.s, true, { seatCount: 6 });
+  if (near) {
+    const v = iface.spawnVehicle('safari', near.edge.id, near.s, true, { seatCount: 6 });
+    if (v) { v._state = 'stopped'; v._stopTimer = 999; }
+  }
   const edges = [...edgesOfGraph(iface.getGraph()).values()];
   if (!edges.length) return;
   const plan = [{ kind: 'minibus', frac: 0.5, forward: false }, { kind: 'ranger', frac: 0.75, forward: true }];
