@@ -55,7 +55,7 @@ graphBackend() → 'roads' | 'fallback'
 | `overview` | 16 | 6 vehicles (2 safari, ranger, 2 minibus, service) on a paved/gravel/dirt loop with a junction and two bridges — at 430 m a 4–5 m vehicle is a speck (see gaps) |
 | `close` | 16.5 | one **parked** open safari truck at ~11 m, 3/4 rear-side: tiered bench seats, 8 passengers, canopy, roof rails, spare wheel |
 | `sighting` | 17.5 | a tour truck stopped on the gravel road ~40 m from a **zebra** herd (needs `animals`; plain stop otherwise) |
-| `night` | 21.5 | the same parked truck as `close` at night: headlights lit with a warm pool on the asphalt ahead; a minibus and a ranger vehicle drive elsewhere on the loop (not in frame). The taillights are lit (emissive raised 2.2 → 6.0) but their flat rear faces are edge-on to this side view, so no red reads in the frame |
+| `night` | 21.5 | the same parked truck as `close` at night: headlights lit with a warm pool on the asphalt ahead; a minibus and a ranger vehicle drive elsewhere on the loop (not in frame). The taillights read as two red lamps at the rear even from this side view — the lens geometry has wrap-around side wings and the emissive was raised (2.2 → ~6.2 at full night) after critic round 4; re-verified in `tools/shots/traffic-night-21_5-gpu.png` (2026-09-25) |
 
 The `close` and `night` hero trucks are pinned (`_state = 'stopped'`, like `sighting`): before
 2026-09-25 they spawned driving, and the capture's 3.6 s settle drove them out of an 11–14 m frame
@@ -64,7 +64,10 @@ The `close` and `night` hero trucks are pinned (`_state = 'stopped'`, like `sigh
 ## Measured
 
 * `close` preset: **106 draw calls, 0 console errors** (wave-2 integration review, independently
-  re-checked 2026-09-04).
+  re-checked 2026-09-04). Re-verified 2026-09-25 on the real GPU (ANGLE D3D11, 1280×720, seed 1,
+  default settle): `close` 108 draws / 3.19 M tris, `night` 130 draws / 3.06 M tris, 0 console
+  errors, and both hero trucks stay in frame (`tools/shots/traffic-close-16_5-gpu.png`,
+  `traffic-night-21_5-gpu.png`).
 * World-state check in the same review: 6 vehicles with plausible in-bounds positions on the live
   graph; `graphBackend()` = `'roads'`.
 
