@@ -22,6 +22,21 @@ CC-BY entries must also appear in the in-game credits panel.
 | `public/assets/textures/polyhaven/gravel_floor_03/gravel_floor_03_diff_1k.jpg` | https://polyhaven.com/a/gravel_floor_03 | Charlotte Baglioni (Poly Haven) | CC0 1.0 | 2026-09-25 | none; not referenced by any module yet (candidate for roads' gravel, as the habitta copy was) |
 | `public/assets/textures/polyhaven/gravel_floor_03/gravel_floor_03_nor_gl_1k.jpg` | https://polyhaven.com/a/gravel_floor_03 | Charlotte Baglioni (Poly Haven) | CC0 1.0 | 2026-09-25 | none (as above) |
 | `public/assets/textures/polyhaven/gravel_floor_03/gravel_floor_03_rough_1k.jpg` | https://polyhaven.com/a/gravel_floor_03 | Charlotte Baglioni (Poly Haven) | CC0 1.0 | 2026-09-25 | none (as above) |
+| `public/assets/models/gobkit/Hippo.glb` | https://gobkit.com/freebies/animal/Hippo.glb | Gobkit (Alsomind Tech Co., Ltd.) | CC0 1.0 | 2026-09-25 | none (downloaded as-is; runtime material tint in `animals/gltfpool.js` ASSET_SPECIES). Rigged: idle/walk/attack/dead |
+| `public/assets/models/gobkit/Rhino.glb` | https://gobkit.com/freebies/animal/Rhino.glb | Gobkit (Alsomind Tech Co., Ltd.) | CC0 1.0 | 2026-09-25 | none (downloaded as-is; runtime tint). Rigged: idle/walk/attack/dead |
+| `public/assets/models/quaternius/Horse_White.glb` | https://quaternius.com/packs/ultimateanimatedanimals.html (Ultimate Animated Animals pack) | Quaternius | CC0 1.0 | 2026-09-25 | converted `.gltf` (base64 buffer) → `.glb`; mapped to **zebra** (runtime tint). 13 clips. Honest stand-in: no UVs → no stripes possible |
+| `public/assets/models/quaternius/Bull.glb` | https://quaternius.com/packs/ultimateanimatedanimals.html (same pack) | Quaternius | CC0 1.0 | 2026-09-25 | converted `.gltf` → `.glb`; mapped to **buffalo AND wildebeest** (two runtime tints, one file). 13 clips |
+| `public/assets/models/quaternius/Deer.glb` | https://quaternius.com/packs/ultimateanimatedanimals.html (same pack) | Quaternius | CC0 1.0 | 2026-09-25 | converted `.gltf` → `.glb`; mapped to **impala** (runtime tint). 13 clips |
+| `public/assets/models/polypizza/Giraffe.glb` | https://poly.pizza/m/0VkNrGSGXOO | Poly by Google | CC-BY 3.0 | 2026-09-25 | renamed only. STATIC mesh — `gltfpool.js` synthesises a one-bone identity rig (translates/turns, no articulation) |
+| `public/assets/models/polypizza/Elephant.glb` | https://poly.pizza/m/a27MA0rXyyj | Poly by Google | CC-BY 3.0 | 2026-09-25 | renamed only. STATIC mesh as above |
+| `public/assets/models/polypizza/Lion.glb` | https://poly.pizza/m/3XAJojWxSWz | Poly by Google | CC-BY 3.0 | 2026-09-25 | renamed only. STATIC mesh as above |
+
+**2026-09-25 species models.** All 9 shipped species now load authored glTFs via
+`animals/gltfpool.js` ASSET_SPECIES (procedural pools remain the per-species fallback; the
+Khronos Fox stays a test fixture only). Gobkit files needed a de-interleave pass for their
+interleaved skin attributes (mixed bytes produced NaN skinned bounds → invisible animals).
+The three **CC-BY 3.0 Poly by Google models must appear in the in-game credits panel** (§8) —
+panel implementation pending (docs/requests/ui.md); recorded here so the obligation is tracked.
 
 **2026-09-25 terrain layer upgrade.** Terrain now loads the Poly Haven 1k originals above as its
 primary photo layers (1k chosen over 2k: the splat packs layers into a `DataArrayTexture` at

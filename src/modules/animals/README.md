@@ -43,6 +43,23 @@ every skin is baked from GLSL, every motion is evaluated procedurally each frame
   machine picks graze/walk-to-water/drink/rest/socialise/flee/hunt; herds use boids-style
   cohesion/separation/alignment behind a wandering leader; predators stalk and chase when hungry, prey
   flee inside the alert radius; diurnal species sleep at night. Fully deterministic through `ctx.rng`.
+* **Authored species models** (`gltfpool.js`, 2026-09-25) — 9 of the 12 species load a rigged or
+  static glTF through `ctx.assets` (ARCHITECTURE §8) instead of the procedural builder:
+  hippo/rhino (Gobkit, CC0, rigged idle/walk), zebra (Quaternius Horse_White, CC0, 13 clips),
+  buffalo + wildebeest (both Quaternius Bull, CC0 — one file, two runtime tints), impala
+  (Quaternius Deer, CC0), giraffe/elephant/lion (Poly Pizza / Poly by Google, CC-BY 3.0 —
+  **static meshes**: no rig exists for them on that source, so `loadModel()` synthesises a
+  one-bone identity rig and they translate/turn but do not articulate — no walk cycle, no graze
+  pose; legs slide while the animal moves). Every clip is baked once at load into skinning
+  matrices (30 fps), so per-frame cost is one array copy per visible animal — no AnimationMixer.
+  The Quaternius meshes are honest stand-ins (horse/bull/deer) recoloured toward the target
+  species at load (`tint` in ASSET_SPECIES, linear albedo); **the zebra has no stripes** — the
+  mesh has no UVs, so a stripe texture is not possible on it. Any load failure falls back to the
+  procedural species (log warn, never throws). Register rows: `docs/requests/assets-species-rows.md`.
+  Loading detail: the gobkit files store position/normal/uv/joints/weights as ONE interleaved vertex
+  record; `loadModel()` de-interleaves attributes before use (reading `.array` of an interleaved
+  attribute silently mixes neighbouring data and skinned the hippo/rhino into NaN — invisible
+  animals, found and fixed 2026-09-25, `tools/shots/species-hippo-fixed.png`).
 * **Rendering** — one *pool* per `(species, variant)`. A pool owns the near geometry, the far LOD, the
   baked skin set, a `FloatType` bone texture (one row per animal, `texelFetch`ed by `aSlot`) and two
   `InstancedMesh`es, so **every animal of a species is one draw call**. Instanced skinning is injected
@@ -127,6 +144,7 @@ reproduced on a real GPU.
 | `predators` | 17.5 | lion pride resting/sleeping, a cheetah walking past, prey herds at distance |
 | `close` | 15 | one elephant at 12 m |
 | `night` | 21.5 | hippos leaving the water, zebra and giraffe asleep, lions moving |
+| `species` | 15 | the 9 authored-model species in a row at ~30 m (asset verification lineup) |
 
 `stage()` works with or without `terrain`: `waterhole`/`night` look for real water within 45 m of the
 requested spot (was up to 260 m, which could adopt water far outside the preset camera's frame whenever
@@ -156,6 +174,22 @@ and is not reported.
 
 Draw calls and triangles are geometry-driven and unaffected by the lighting fixes below; re-measured
 after them anyway to confirm nothing regressed. All six still zero console errors.
+
+**2026-09-25 asset pass (real-GPU D3D11, 1920×1080 — different backend, do NOT compare against the
+SwiftShader table above).** With 9 of 12 species on authored glTF models (see "Authored species
+models" above), whole-frame numbers at `quality=high`, `seed=1`, zero console errors everywhere:
+
+| preset | draw calls | triangles | errors | shot |
+|---|---|---|---|---|
+| `close` | 55 | 3 149 174 | 0 | `tools/shots/species-final-close.png` |
+| `herd` | 138 | 3 593 086 | 0 | `tools/shots/species-final-herd.png` |
+| `waterhole` | 123 | 3 425 420 | 0 | `tools/shots/species-final-waterhole.png` |
+| `predators` | 117 | 3 462 099 | 0 | `tools/shots/species-final-predators.png` |
+| `species` (9 authored species) | 185 | 3 282 147 | 0 | `tools/shots/species-final-lineup.png` |
+| `overview` | 168 | 4 019 908 | 0 | `tools/shots/species-overview-16.png` |
+
+Animals' own `updateMs` with the asset species: 1.65 ms mean at `overview` (budget 3 ms). Frame
+triangle totals include the props module's grass sharing the showcase frame.
 
 Round 3 (elephant skin rework, `wrinkles()`): shader-only — draw calls and triangles are bit-identical
 to the round-2 numbers above (before/after `close` both 53 / 3 286 900). Frame totals are now higher

@@ -22,7 +22,44 @@ const BAKE_FPS = 30;
  * registered in docs/ASSETS.md belong here; anything that fails to load falls back to procedural.
  */
 export const ASSET_SPECIES = {
-  // e.g. hippo: { path: 'models/gobkit/Hippo.glb', height: 1.5, yaw: 0, clips: { idle: 'Idle', walk: 'Walk', run: 'Walk' } },
+  // Gobkit (CC0): rigged, 4 clips (idle/walk/attack/dead) — no graze/run, those slots stay procedural.
+  // Stylised textured models; `tint` pulls the flat cartoon colours toward natural tones.
+  hippo: {
+    path: 'models/gobkit/Hippo.glb', height: 1.5, yaw: 0, clips: { idle: 'idle', walk: 'walk', run: 'walk' },
+    tint: { material: [0.62, 0.55, 0.5] },
+  },
+  rhino: {
+    path: 'models/gobkit/Rhino.glb', height: 1.8, yaw: 0, clips: { idle: 'idle', walk: 'walk', run: 'walk' },
+    tint: { material: [0.5, 0.56, 0.38] },
+  },
+  // Quaternius Ultimate Animated Animals (CC0): rigged, 13 clips. Horse→zebra, Bull→buffalo+wildebeest,
+  // Deer→impala: honest stand-ins (no zebra stripes possible — the mesh has no UVs); `tint` recolours
+  // the named materials (linear albedo) toward the target species.
+  zebra: {
+    path: 'models/quaternius/Horse_White.glb', height: 1.6, yaw: 0,
+    clips: { idle: 'Idle', walk: 'Walk', run: 'Gallop', graze: 'Eating', drink: 'Eating', rest: 'Idle_Headlow' },
+    tint: { Main: [0.55, 0.57, 0.55], Main_Light: [0.5, 0.51, 0.5], Hair: [0.035, 0.035, 0.035], Muzzle: [0.05, 0.05, 0.05], Hooves: [0.04, 0.04, 0.04] },
+  },
+  buffalo: {
+    path: 'models/quaternius/Bull.glb', height: 1.8, yaw: 0,
+    clips: { idle: 'Idle', walk: 'Walk', run: 'Gallop', graze: 'Eating', drink: 'Eating', rest: 'Idle_Headlow' },
+    tint: { Main: [0.05, 0.045, 0.04], Main_Light: [0.09, 0.085, 0.08], Horns: [0.28, 0.25, 0.2], Muzzle: [0.03, 0.03, 0.03], Hooves: [0.04, 0.04, 0.04] },
+  },
+  wildebeest: {
+    path: 'models/quaternius/Bull.glb', height: 1.5, yaw: 0,
+    clips: { idle: 'Idle', walk: 'Walk', run: 'Gallop', graze: 'Eating', drink: 'Eating', rest: 'Idle_Headlow' },
+    tint: { Main: [0.1, 0.095, 0.09], Main_Light: [0.13, 0.12, 0.11], Horns: [0.35, 0.32, 0.26], Muzzle: [0.05, 0.05, 0.05], Hooves: [0.05, 0.05, 0.05] },
+  },
+  impala: {
+    path: 'models/quaternius/Deer.glb', height: 1.0, yaw: 0,
+    clips: { idle: 'Idle', walk: 'Walk', run: 'Gallop', graze: 'Eating', drink: 'Eating', rest: 'Idle_Headlow' },
+    tint: { Main: [0.22, 0.13, 0.06], Main_Light: [0.42, 0.36, 0.28], Main_Dark: [0.14, 0.09, 0.05], Hooves: [0.05, 0.05, 0.05] },
+  },
+  // Poly Pizza / Google Poly (CC-BY 3.0): real species silhouettes + textures but NO rig — loadModel
+  // synthesises a one-bone identity rig so the pool renders them; they do not articulate (see README).
+  giraffe: { path: 'models/polypizza/Giraffe.glb', height: 5.0, yaw: 0 },
+  elephant: { path: 'models/polypizza/Elephant.glb', height: 3.4, yaw: 0 },
+  lion: { path: 'models/polypizza/Lion.glb', height: 1.2, yaw: 0 },
 };
 
 /** Test-only fixture used by the pipeline preset; never mapped to a real species. */
@@ -38,6 +75,82 @@ function firstSkinned(root) {
   return list;
 }
 
+/** Materialise interleaved vertex attributes (some exporters, e.g. gobkit, interleave
+ * position/normal/uv/joints/weights into one 56-byte record) as plain typed arrays. Downstream code
+ * (mergeGeometries, the skin-attribute copies, skinned-bounds loop) reads `.array` directly and
+ * would silently mix neighbouring attributes' bytes into garbage without this. */
+function plainAttributes(g) {
+  for (const k of Object.keys(g.attributes)) {
+    const a = g.attributes[k];
+    if (a.isInterleavedBufferAttribute) {
+      const out = new Float32Array(a.count * a.itemSize);
+      for (let i = 0; i < a.count; i++) {
+        for (let c = 0; c < a.itemSize; c++) out[i * a.itemSize + c] = a.getComponent(i, c);
+      }
+      g.setAttribute(k, new THREE.BufferAttribute(out, a.itemSize));
+    }
+  }
+}
+
+/** def.tint: material name → linear albedo, applied to a clone so two species may share one file. */
+function tintMaterials(def, mats) {
+  if (!def.tint) return mats;
+  return mats.map((m) => {
+    const t = def.tint[m.name];
+    if (!t) return m;
+    const c = m.clone();
+    c.color.setRGB(t[0], t[1], t[2]);
+    return c;
+  });
+}
+
+/**
+ * Static-mesh path: Poly Pizza / Google Poly models ship no rig or clips. Synthesise a one-bone
+ * identity rig + a one-frame identity "clip" so the same instanced-skinning pool renders them.
+ * Honest limitation: these species translate and turn but do not articulate (no walk cycle).
+ */
+function bakeStatic(ctx, def, gltf) {
+  const list = [];
+  gltf.scene.traverse((o) => { if (o.isMesh && o.geometry) list.push(o); });
+  if (!list.length) { ctx.log.warn(`[animals] ${def.path}: no usable mesh`); return null; }
+  const geos = [], mats = [];
+  for (const mesh of list) {
+    const g = mesh.geometry.clone();
+    plainAttributes(g);
+    g.applyMatrix4(mesh.matrixWorld);
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+    g.clearGroups();
+    if (!g.getAttribute('uv')) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+    if (!g.getAttribute('normal')) g.computeVertexNormals();
+    const n = g.attributes.position.count;
+    g.setAttribute('aBoneIndex', new THREE.Float32BufferAttribute(new Float32Array(n * 4), 4));
+    const w = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) w[i * 4] = 1;
+    g.setAttribute('aBoneWeight', new THREE.Float32BufferAttribute(w, 4));
+    geos.push(g);
+    mats.push(Array.isArray(mesh.material) ? mesh.material[0] : mesh.material);
+  }
+  const merged = geos.length === 1 ? geos[0] : mergeGeometries(geos, true);
+  if (!merged) { ctx.log.warn(`[animals] ${def.path}: geometries could not be merged`); return null; }
+
+  merged.computeBoundingBox();
+  const box = merged.boundingBox, size = box.getSize(new THREE.Vector3());
+  const s = def.height / Math.max(1e-3, size.y);
+  const cx = (box.min.x + box.max.x) / 2, cz = (box.min.z + box.max.z) / 2;
+  _n.makeRotationY(def.yaw || 0).multiply(new THREE.Matrix4().makeScale(s, s, s)).multiply(new THREE.Matrix4().makeTranslation(-cx, -box.min.y, -cz));
+  merged.applyMatrix4(_n);
+
+  const identity = new Float32Array(16); identity[0] = identity[5] = identity[10] = identity[15] = 1;
+  const clip = { name: 'idle', duration: 1, frames: 1, data: identity };
+  const len = Math.max(size.x, size.z) * s, wid = Math.min(size.x, size.z) * s;
+  return {
+    path: def.path, nb: 1, geometry: merged, materials: tintMaterials(def, mats), clips: { idle: clip },
+    slots: { idle: clip, walk: null, run: null, graze: null, drink: null, rest: null },
+    len, wid, height: def.height, triangles: (merged.index ? merged.index.count : merged.attributes.position.count) / 3,
+    static: true,
+  };
+}
+
 /** Load + bake one model. Resolves a "model" record or null (never throws). */
 export async function loadModel(ctx, def) {
   try {
@@ -46,7 +159,7 @@ export async function loadModel(ctx, def) {
     const scene = gltf.scene;
     scene.updateMatrixWorld(true);
     const meshes = firstSkinned(scene);
-    if (!meshes.length) { ctx.log.warn(`[animals] ${def.path}: no skinned mesh`); return null; }
+    if (!meshes.length) return bakeStatic(ctx, def, gltf);
     const skeleton = meshes[0].skeleton;
     const skinMeshes = meshes.filter((m) => m.skeleton === skeleton);
     const bones = skeleton.bones, nb = bones.length;
@@ -55,6 +168,7 @@ export async function loadModel(ctx, def) {
     const geos = [], mats = [];
     for (const mesh of skinMeshes) {
       const g = mesh.geometry.clone();
+      plainAttributes(g);
       const si = g.getAttribute('skinIndex'), sw = g.getAttribute('skinWeight');
       if (!si || !sw) continue;
       g.setAttribute('aBoneIndex', new THREE.Float32BufferAttribute(Float32Array.from(si.array), 4));
@@ -121,7 +235,7 @@ export async function loadModel(ctx, def) {
     const len = Math.max(size.x, size.z) * s, wid = Math.min(size.x, size.z) * s;
     const slot = (k) => clips[def.clips?.[k]] || null;
     return {
-      path: def.path, nb, geometry: merged, materials: mats, clips,
+      path: def.path, nb, geometry: merged, materials: tintMaterials(def, mats), clips,
       slots: { idle: clips[idleName], walk: slot('walk'), run: slot('run') || slot('walk'), graze: slot('graze'), drink: slot('drink') || slot('graze'), rest: slot('rest') },
       len, wid, height: def.height, triangles: (merged.index ? merged.index.count : P.count) / 3,
     };
