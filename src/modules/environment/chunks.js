@@ -150,6 +150,15 @@ const fogFragment = /* glsl */ `
 			float fogSunLum = dot( directionalLights[ 0 ].color, vec3( 0.2126, 0.7152, 0.0722 ) );
 			fogCol += fogColLin * ( 0.25 * pow( fogMu, 6.0 ) + 0.9 * pow( fogMu, 48.0 ) ) * min( 1.0, fogSunLum * 0.6 );
 		#endif
+		// three applies fog AFTER tonemapping_fragment and colorspace_fragment. Rendering straight to the
+		// canvas, gl_FragColor is already tone-mapped display colour here while fogCol is linear HDR, so
+		// fog read far darker than the sky it should match; rendering into the effects pipeline's linear
+		// buffer (no in-material tone mapping) it was correct. Bring fogCol into the same space as
+		// gl_FragColor so both paths agree (effects critic r4: "+39% at golden hour" was this).
+		#ifdef TONE_MAPPING
+			fogCol = toneMapping( fogCol );
+		#endif
+		fogCol = linearToOutputTexel( vec4( fogCol, 1.0 ) ).rgb;
 		gl_FragColor.rgb = mix( gl_FragColor.rgb, fogCol, clamp( fogFactor, 0.0, 1.0 ) );
 	}
 #endif
