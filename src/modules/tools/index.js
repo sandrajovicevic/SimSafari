@@ -1,6 +1,7 @@
 // tools — the player's hands. Tool framework (activate/deactivate/current, undo/redo >=50 steps),
 // owner of world.selection, drives terrain/roads/zoning/buildings/animals through their public APIs,
 // renders cursors/ghosts/preview ribbons in the WebGL canvas. See README.md for the full API.
+import { ZONE } from '../../core/World.js';
 import * as THREE from 'three';
 import { UndoStack } from './UndoStack.js';
 import { RingCursor, RoadRibbon, SelectionMarker } from './cursors.js';
@@ -27,7 +28,7 @@ const S = {
 };
 S.select = (kind, id) => setSelection(kind, id);
 
-let offDown, offUp, offKey;
+let offDown, offUp, offKey, offReq;
 let markerTarget = null;
 
 function setSelection(kind, id) {
@@ -123,6 +124,40 @@ function performDelete(kind, id) {
   setSelection(null, null);
 }
 
+/**
+ * ui → tools bridge (spec: "Listens to tool:request from ui"). This listener was never written, so no
+ * toolbar card or panel Demolish/Sell/Remove button did anything in the real game (critic tools
+ * round 4, verified: nothing in src/ handled the event). ui speaks dotted names; translate them.
+ */
+const ZONE_BY_NAME = { habitat: ZONE.HABITAT, visitor: ZONE.VISITOR, service: ZONE.SERVICE };
+function handleToolRequest(req = {}) {
+  const name = req.tool, o = req.options || {};
+  if (!name || name === 'select') { activate('select'); return; }
+  if (name === 'overlay') return; // ui-local map overlay, not a tool
+  const [cat, sub] = String(name).split('.');
+  if (cat === 'bulldoze' || (cat === 'animal' && sub === 'sell')) {
+    if (o.id == null) { activate('road', { bulldoze: true }); return; } // toolbar card: bulldoze mode
+    let kind = cat === 'animal' ? 'animal' : null;
+    if (!kind && ctx.modules.get('buildings')?.get?.(o.id)) kind = 'building';
+    if (!kind && ctx.modules.get('roads')?.getEdge?.(o.id)) kind = 'road';
+    if (!kind && ctx.modules.get('animals')?.get?.(o.id)) kind = 'animal';
+    if (kind) performDelete(kind, o.id); // explicit panel button: no second confirmation
+    else ctx.log.warn(`[tools] tool:request ${name}: unknown id ${o.id}`);
+    return;
+  }
+  if (cat === 'terrain') { activate('terrain', { ...o, mode: sub === 'paint' ? 'paintBiome' : (sub || 'raise') }); return; }
+  if (cat === 'road') { activate('road', { ...o, kind: sub || 'dirt', bulldoze: false }); return; }
+  if (cat === 'zone') {
+    if (sub === 'erase') activate('zone', { ...o, mode: 'erase' });
+    else activate('zone', { ...o, zone: ZONE_BY_NAME[sub] ?? ZONE.HABITAT, mode: 'paint' });
+    return;
+  }
+  if (cat === 'building') { activate('building', { ...o, bulldoze: false }); return; }
+  if (cat === 'animal') { activate('animal', o); return; }
+  if (TOOLS[cat]) { activate(cat, o); return; }
+  ctx.log.warn(`[tools] tool:request: unknown tool "${name}"`);
+}
+
 function handleGlobalKey(e) {
   if (e.code === 'Escape') {
     if (S.pendingDelete) { S.pendingDelete = null; return; }
@@ -197,6 +232,8 @@ export default {
       try { S.toolObj?.key?.(ctx, S, e); } catch (err) { ctx.log.error(`[tools] ${S.current}.key threw`, err); }
     });
 
+    offReq = ctx.events.on('tool:request', (r) => { try { handleToolRequest(r); } catch (err) { ctx.log.error('[tools] tool:request handler threw', err); } });
+
     activate('select');
     ctx.log.info('[tools] ready');
   },
@@ -212,7 +249,7 @@ export default {
 
   dispose() {
     if (!ctx) return;
-    offDown?.(); offUp?.(); offKey?.();
+    offDown?.(); offUp?.(); offKey?.(); offReq?.();
     S.ring?.dispose(); S.ribbon?.dispose(); S.marker?.dispose();
     S.group?.removeFromParent();
     S.group = null; S.undo = null; S.ring = null; S.ribbon = null; S.marker = null;
