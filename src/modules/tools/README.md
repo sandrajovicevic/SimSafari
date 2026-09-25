@@ -206,9 +206,13 @@ calls and a few hundred triangles, well inside any reasonable per-module soft ca
 
 ## Known gaps (honest)
 
-- **Terrain drags are expensive**: every held frame calls `terrain.raise()`, which runs terrain's full
-  `afterEdit()` (chunk rebuild, water check, upload) — measured ~130 ms per frame under SwiftShader
-  (critic round 4). Needs a batched/deferred edit API on terrain; not fixed.
+- **Terrain drags are still over the 1.5 ms guide**, but no longer pathological. Every held frame calls
+  `terrain.raise()`, which runs terrain's `afterEdit()`. Profiled 2026-09-25 (CPU profile of a held
+  drag, 30 frames, full game): 187 ms/frame, 135 ms of it terrain re-packing the *whole* 513² control
+  texture per edit. Terrain now repacks only the edited rect (byte-identical weights): tools
+  `updateMs` 83 → **14 ms mean, 34 ms peak**. What remains: chunk rebuild/height texture/reclassify per
+  edit, roads re-conforming on `terrain:modified`, and three re-uploading the full control textures
+  on the render side. Coalescing brush applications across frames would divide it further.
 - **Road preview has no length/cost readout, no straight mode and no water-crossing warning** (the spec
   asks for a cost preview and straight/curve modes). The ribbon now follows the terrain under each edge
   (2026-09-25) instead of a flat cross-section, but still draws with depth test on.

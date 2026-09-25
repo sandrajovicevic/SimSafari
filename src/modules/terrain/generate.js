@@ -381,6 +381,39 @@ export function packControl(world, gen, noise, ctl0, ctl1, aux) {
   }
 }
 
+/**
+ * packControl for a sample rectangle only (inclusive, clamped), for per-edit updates. Same 3×3
+ * [¼ ½ ¼]⊗[¼ ½ ¼] one-hot blur with the same edge clamping as packControl, evaluated per sample, so
+ * the bytes match a full repack; the rect is widened by 1 sample for the blur. No allocations. The full
+ * repack (two N×8 Float32Arrays, ~2 M samples) cost ~135 ms per terrain edit, i.e. per frame of a
+ * brush drag (profiled 2026-09-25, tools critic r4 #3).
+ */
+const _wk = new Float32Array(8);
+const _kw = [0.25, 0.5, 0.25];
+export function packControlRect(world, gen, noise, ctl0, ctl1, aux, ix0, iz0, ix1, iz1) {
+  const T = world.terrain, res = T.res, cell = T.cell, half = world.half, H = T.heights, B = T.biome;
+  ix0 = Math.max(0, ix0 - 1); iz0 = Math.max(0, iz0 - 1); ix1 = Math.min(res - 1, ix1 + 1); iz1 = Math.min(res - 1, iz1 + 1);
+  for (let iz = iz0; iz <= iz1; iz++) {
+    const z = iz * cell - half;
+    const zs = [iz > 0 ? iz - 1 : iz, iz, iz < res - 1 ? iz + 1 : iz];
+    for (let ix = ix0; ix <= ix1; ix++) {
+      const xs0 = ix > 0 ? ix - 1 : ix, xs2 = ix < res - 1 ? ix + 1 : ix;
+      _wk.fill(0);
+      for (let a = 0; a < 3; a++) {
+        const row = zs[a] * res, wz = _kw[a];
+        _wk[B[row + xs0]] += wz * 0.25; _wk[B[row + ix]] += wz * 0.5; _wk[B[row + xs2]] += wz * 0.25;
+      }
+      const i = iz * res + ix, o = i * 4, x = ix * cell - half;
+      ctl0[o] = _wk[0] * 255; ctl0[o + 1] = _wk[1] * 255; ctl0[o + 2] = _wk[2] * 255; ctl0[o + 3] = _wk[3] * 255;
+      ctl1[o] = _wk[4] * 255; ctl1[o + 1] = _wk[5] * 255; ctl1[o + 2] = _wk[6] * 255; ctl1[o + 3] = _wk[7] * 255;
+      const above = H[i] - gen.localLevel[i];
+      const wet = 1 - smooth(-0.2, 1.6, above);
+      const macro = 0.5 + 0.5 * (0.6 * noise.fbm2D(x / 210 + 3.3, z / 210 + 8.1, 3) + 0.4 * noise.fbm2D(x / 70 + 1.1, z / 70 + 4.4, 2));
+      aux[o] = gen.moisture[i] * 255; aux[o + 1] = wet * 255; aux[o + 2] = clamp(macro, 0, 1) * 255; aux[o + 3] = 255;
+    }
+  }
+}
+
 /** Moisture sample (bilinear). */
 export function sampleMoisture(world, gen, x, z) {
   const T = world.terrain, res = T.res, cell = T.cell;

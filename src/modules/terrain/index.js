@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { BIOME } from '../../core/World.js';
 import { presets, stage } from './showcase.js';
 import { buildLayerArrays, buildWaterNormal, applyPhotoLayers } from './textures.js';
-import { generateSavannah, classifyRange, classifyAll, packControl, sampleMoisture, BIOME_NAMES, normalAt } from './generate.js';
+import { generateSavannah, classifyRange, classifyAll, packControl, packControlRect, sampleMoisture, BIOME_NAMES, normalAt } from './generate.js';
 import { buildChunks, refreshChunk, chunkAt } from './mesh.js';
 import { createTerrainMaterial, createControlTextures, createHeightTexture, updateHeightTexture } from './material.js';
 import { buildWaterGeometry, createWaterMaterial, updateWaterSky } from './water.js';
@@ -74,9 +74,11 @@ function rebuildApron() {
   } catch (err) { ctx.log.warn('[terrain] apron build failed: ' + (err?.message || err)); }
 }
 
-function uploadControl() {
+/** Repack the control textures: the whole map, or only sample rect {ix0,iz0,ix1,iz1} after an edit. */
+function uploadControl(rect) {
   const world = S.ctx.world;
-  packControl(world, S.gen, S.ctx.noise, S.ctlBytes.ctl0, S.ctlBytes.ctl1, S.ctlBytes.aux);
+  if (rect) packControlRect(world, S.gen, S.ctx.noise, S.ctlBytes.ctl0, S.ctlBytes.ctl1, S.ctlBytes.aux, rect.ix0, rect.iz0, rect.ix1, rect.iz1);
+  else packControl(world, S.gen, S.ctx.noise, S.ctlBytes.ctl0, S.ctlBytes.ctl1, S.ctlBytes.aux);
   S.control.tCtl0.needsUpdate = true; S.control.tCtl1.needsUpdate = true; S.control.tAux.needsUpdate = true;
 }
 
@@ -145,7 +147,7 @@ function afterEdit(rect, { heights = true } = {}) {
     }
     if (near) rebuildWater();
   }
-  uploadControl();
+  uploadControl({ ix0, iz0, ix1, iz1 });
   const x0 = Math.max(0, ix0) * cell - half, z0 = Math.max(0, iz0) * cell - half, x1 = Math.min(T.res - 1, ix1) * cell - half, z1 = Math.min(T.res - 1, iz1) * cell - half;
   S.ctx.events.emit('terrain:modified', { x0, z0, x1, z1 });
 }

@@ -144,6 +144,12 @@ Terrain + water draw calls: 16 chunk meshes (4×4, always resident) + 1 water me
 
 ## Known gaps (honest)
 
+* **Edit cost (2026-09-25).** `afterEdit()` used to re-pack the whole 513² splat control texture on
+  every edit (~135 ms each, so every frame of a brush drag). It now calls `packControlRect()` for the
+  edited sample rect (+1 for the blur): verified byte-identical weight textures against a full repack,
+  one `raise()` ~8–13 ms under SwiftShader. `setWaterLevel()`/`generate()` still do the full repack.
+  Not fixed: the full control/height textures are still re-uploaded to the GPU on each edit.
+
 * **Night water fixed 2026-09-25** (critic r4 #1: water ~2.5–3× brighter than ground and sky at night).
   Cause: the in-column scatter floor in `water.js` was divided by exposure, so its *displayed*
   brightness stayed at its daytime level all night. It now also scales with a daylight factor `uDay`
