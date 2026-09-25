@@ -30,14 +30,20 @@ export function defaultCategories(s) {
     { id: 'erase', name: 'Erase zone', icon: 'erase', tool: 'zone.erase', cost: 'free', desc: 'Clear zoning from cells.' },
   ] });
 
-  // buildings — from the buildings module catalogue when present
+  // buildings — from the buildings module catalogue when present. Real catalogue rows (catalogue.js)
+  // identify a type by `key`, not `type`/`id` (only the species.js fallback list uses `type`) — reading
+  // the wrong field left every card's tool options as {type: undefined}, so no card could ever be
+  // resolved back from an active tool (and, live, placement itself would have gotten no type).
   let blds = null;
   try { blds = get('buildings')?.catalogue?.() || null; } catch { blds = null; }
-  const bList = Array.isArray(blds) ? blds : blds && typeof blds === 'object' ? Object.entries(blds).map(([type, v]) => ({ type, ...v })) : BUILDINGS;
-  cats.push({ id: 'buildings', name: 'Buildings', icon: 'building', key: '4', hint: 'Click to place, R rotates, right-click cancels.', items: bList.map((b) => ({
-    id: b.type || b.id, name: b.name || titleCase(b.type || b.id), icon: hasIcon(b.icon) ? b.icon : hasIcon(b.type) ? b.type : 'building',
-    tool: 'building.place', options: { type: b.type || b.id }, cost: b.perM ? fmtMoney(b.cost) + '/m' : b.cost, upkeep: b.upkeep, desc: b.desc || b.description || '',
-  })) });
+  const bList = Array.isArray(blds) ? blds : blds && typeof blds === 'object' ? Object.entries(blds).map(([k, v]) => ({ key: k, ...v })) : BUILDINGS;
+  cats.push({ id: 'buildings', name: 'Buildings', icon: 'building', key: '4', hint: 'Click to place, R rotates, right-click cancels.', items: bList.map((b) => {
+    const bkey = b.key || b.type || b.id;
+    return {
+      id: bkey, name: b.name || titleCase(bkey), icon: hasIcon(b.icon) ? b.icon : hasIcon(bkey) ? bkey : 'building',
+      tool: 'building.place', options: { type: bkey }, cost: b.perM ? fmtMoney(b.cost) + '/m' : b.cost, upkeep: b.upkeep, desc: b.desc || b.description || '',
+    };
+  }) });
 
   // animals — species list from the animals module when present
   const animals = get('animals');
@@ -95,18 +101,19 @@ export function createToolbar(root, s) {
     const c = categories.find((x) => x.id === open);
     if (!c || !c.items) { items.hidden = true; return; }
     items.hidden = false;
+    const activeItem = resolveActiveItem();
     const head = el('div.tb-items-h', null,
       el('span.title', null, icon(c.icon), c.name, c.hint ? el('span.hint', { text: c.hint }) : null),
       el('span.sp'),
       el('button.btn.icon.ghost', { 'data-tip': 'Close', 'data-key': 'Esc', onclick: () => openCategory(null) }, icon('close')));
     const row = el('div.cards');
     c.items.forEach((it, i) => {
-      const active = it.sticky ? (it.tool === 'overlay' && it.options?.overlay === overlay) : (s.activeTool && s.activeTool.tool === it.tool && sameOptions(s.activeTool.options, it.options));
+      const active = it.sticky ? (it.tool === 'overlay' && it.options?.overlay === overlay) : (it === activeItem);
       const costTxt = typeof it.cost === 'number' ? fmtMoney(it.cost) : (it.cost || '');
       const tip = it.desc || it.name;
       const sub = typeof it.upkeep === 'number' ? 'Upkeep ' + fmtMoney(it.upkeep) + '/day' : undefined;
       const card = el('button.card' + (active ? '.on' : ''), {
-        'data-tip': tip, 'data-sub': sub,
+        'data-tip': tip, 'data-sub': sub, 'data-tip-pos': 'side',
         onclick: () => choose(it),
       },
         it.tag ? el('span.tag' + (it.tagCls ? '.' + it.tagCls : ''), { text: it.tag }) : null,
@@ -126,17 +133,18 @@ export function createToolbar(root, s) {
   }
 
   function refresh() {
+    const activeItem = resolveActiveItem();
     for (const c of categories) {
       if (!c.items) continue;
       const b = catButtons.get(c.id);
-      const has = !!s.activeTool && c.items.some((it) => !it.sticky && it.tool === s.activeTool.tool && sameOptions(s.activeTool.options, it.options));
+      const has = !!activeItem && c.items.includes(activeItem);
       b?.classList.toggle('active-tool', has);
     }
     // pill
     const t = s.activeTool;
     if (t && t.tool) {
       clear(pill);
-      const item = t.item || findItem(t.tool, t.options);
+      const item = activeItem;
       const cost = item ? (typeof item.cost === 'number' ? fmtMoney(item.cost) : item.cost) : '';
       // pill is a raw DOM element — native Element.append() stringifies a null/undefined argument
       // into a literal "null"/"undefined" text node instead of skipping it (confirmed by the
@@ -150,8 +158,23 @@ export function createToolbar(root, s) {
     renderItems();
   }
 
+  /** The catalogue card for the current active tool, if any (used by the pill and card/category highlighting). */
+  function resolveActiveItem() {
+    const t = s.activeTool;
+    return t ? (t.item || findItem(t.tool, t.options)) : null;
+  }
+
   function findItem(tool, options) {
     for (const c of categories) for (const it of c.items || []) if (it.tool === tool && sameOptions(it.options, options)) return it;
+    // A tool module may normalize and re-broadcast its own {tool, options} via tool:selected instead of
+    // echoing what was requested (e.g. 'building.place' comes back as 'building' with extra rot/bulldoze
+    // fields) — fall back to matching the catalogue by the option that actually identifies the item.
+    if (options) {
+      for (const key of ['type', 'species', 'overlay', 'biome']) {
+        if (options[key] === undefined) continue;
+        for (const c of categories) for (const it of c.items || []) if (it.options?.[key] === options[key]) return it;
+      }
+    }
     return null;
   }
 
