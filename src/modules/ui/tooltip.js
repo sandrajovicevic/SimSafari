@@ -18,12 +18,23 @@ export function createTooltip(root) {
     const rr = root.getBoundingClientRect();
     node.style.left = '0px'; node.style.top = '0px';
     const w = node.offsetWidth, h = node.offsetHeight;
-    const below = target.dataset.tipPos === 'below';
-    let x = r.left + r.width / 2 - w / 2 - rr.left;
-    let y = below ? r.bottom + 8 - rr.top : r.top - h - 8 - rr.top;
-    if (y < 8) y = r.bottom + 8 - rr.top;
-    if (y + h > rr.height - 8) y = r.top - h - 8 - rr.top;
+    const pos = target.dataset.tipPos;
+    let x, y;
+    if (pos === 'side') {
+      // beside the target rather than above it — used for toolbar cards, where "above" collides
+      // with the item panel's header hint sitting just above the cards row
+      x = r.right + 10 - rr.left;
+      if (x + w > rr.width - 8) x = r.left - w - 10 - rr.left;
+      y = r.top + r.height / 2 - h / 2 - rr.top;
+    } else {
+      const below = pos === 'below';
+      x = r.left + r.width / 2 - w / 2 - rr.left;
+      y = below ? r.bottom + 8 - rr.top : r.top - h - 8 - rr.top;
+      if (y < 8) y = r.bottom + 8 - rr.top;
+      if (y + h > rr.height - 8) y = r.top - h - 8 - rr.top;
+    }
     x = Math.max(8, Math.min(rr.width - w - 8, x));
+    y = Math.max(8, Math.min(rr.height - h - 8, y));
     node.style.left = Math.round(x) + 'px';
     node.style.top = Math.round(y) + 'px';
   }

@@ -91,6 +91,16 @@ SwiftShader software GL (fps is not representative; draws/tris/errors are real).
 
 ## Known gaps (honest)
 
+* **Cumulus scale (2026-09-25).** The "stars smeared into horizontal dashes" several critics reported
+  at night were the cumulus layer, not the stars: with clouds toggled off (`setDebug({clouds:false})`)
+  the dashes vanish and the stars are points. At fair-weather coverage only noise peaks pass the
+  threshold, and at the old sample scale (0.00021/m) those were ~150 m flecks that foreshorten into
+  rows of dashes, by day too. Scale is now 0.00009/m: fewer, larger puffs (`env-after-overview.png`,
+  `env-after-golden.png`), night sky mostly points (`env-after2-night.png`). **Still open:** daytime
+  cumulus read flat mid-grey rather than white tops over grey bases (softening the 2-tap self-shadow
+  made no visible difference and was reverted), and the golden-hour sun disc renders as a hollow
+  white ring (`env-after-golden.png`, top left).
+
 * **Single-scattering only** — no multiple scattering, so the sky directly anti-sunward at twilight
   is darker than reference photography; the phase function partly fakes the wide glow.
 * **Exposure night ceiling (12) is a first correction, not tuned** against real night-photo

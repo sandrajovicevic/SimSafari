@@ -149,12 +149,16 @@ The buildings-only row comes from `ctx.modules.get('buildings').stats()`.
 
 | preset | resolution | draw calls (frame) | triangles (frame) | console errors |
 |---|---|---|---|---|
-| overview | 1920×1080 | 296 | 4,260,251 | 0 |
-| lodge | 1280×720 | 276 | 3,847,968 | 0 |
+| overview (2026-09-25, 1280×720 re-run) | 1280×720 | 295 | 4,538,206 | 0 |
+| lodge (2026-09-25) | 1280×720 | 269 | 3,901,387 | 0 |
 | gate | 1280×720 | 257 | 4,059,583 | 0 |
 | close | 1280×720 | 280 | 3,751,873 | 0 |
 | hide | 1280×720 | 275 | 3,677,968 | 0 |
-| night | 1280×720 | 280 | 3,739,065 | 0 |
+| night (2026-09-25) | 1280×720 | 280 | 3,587,245 | 0 |
+
+`gate`/`close`/`hide` were not re-captured this round — the stray-rail fix below only corrects existing
+vertex *positions*, it adds no geometry, so their draw-call/triangle counts are unaffected; not re-verified
+by a fresh screenshot this pass.
 
 **Buildings-only** (`api.stats()` at the `overview` site, 25 buildings across all 16 types):
 **34 draw calls, 131,730 triangles** — well inside the spec's ≤ 60 draw calls / ≤ 400 k triangles
@@ -165,9 +169,31 @@ soft cap at 64 draw calls and props' at 400, against a 1500 total).
 
 ## Known gaps
 
-* **Stray rail geometry** (critic r4 major): thin parallel rails/lines run diagonally from the lodge deck
-  across the lawn and between lodge, restaurant and field — still visible in `lodge` (2026-09-25).
-  Suspected `railing()`/`beam()` calls with mis-ordered endpoints; not yet fixed.
+* **Stray rail geometry — fixed 2026-09-25 (critic r4 major).** Root cause was not mis-ordered call-site
+  endpoints (the suspicion in the last pass): `Buf.beam()` in `kit.js` computed all six of its face quads
+  through a closure that read the shared, module-scoped scratch vector `_a` (the beam's own start point)
+  — but `Buf.quad()`, which `beam()` calls six times in a row to emit those faces, reuses that same `_a`
+  (and `_b`/`_c`) as *its own* scratch space for the face-normal calculation, overwriting it. After the
+  first `quad()` call, `_a` no longer held the beam's start point; each subsequent face was offset from
+  the drifted value instead, and the drift compounds by roughly the beam's own length every couple of
+  faces (traced exactly: the lodge's 21.8 m veranda ring beam produced a corner at world x=32.7, which is
+  `10.9 + 21.8` — the beam's correct far corner plus its own length again). Any beam under a couple of
+  metres drifted by an invisible fraction of itself; the veranda ring beam, `railing()`'s rails (which
+  call `beam()` internally) and other long structural beams across every building type showed it clearly
+  — this is why it was visible in `lodge`, `restaurant`, and reported as spanning "between lodge,
+  restaurant and field" in one wide critic screenshot: those were several buildings' own long beams, not
+  one line connecting separate `InstancedMesh` instances (buildings are instanced per type; nothing in
+  the geometry pipeline could literally connect two different buildings).
+  Fixed by having `beam()`'s `P()` corner closure read plain numbers captured before any `quad()` call
+  (the original `ax,ay,az` parameters and a snapshot of the direction vector), never the shared `_a`.
+  Verified by re-reading the lodge's merged `opaque` bucket's vertex positions directly (bounding box was
+  x∈[-19.5,32.7] before the fix, x∈[-19.5,19.5] — the real footprint — after) and by screenshot
+  (`lodge`, `night`, `overview`): no stray geometry in any of the three. Also added a dev assert (log via
+  `ctx.log.warn`, never throws): `getProto()` now passes each builder a `maxBeamLen` (the catalogue type's
+  own footprint diagonal), and `beam()` warns if a call exceeds it — a cheap net for the next mis-scaled
+  endpoint, though it would not by itself have caught this bug (the corruption came from the shared
+  scratch vector, not from a bad call-site argument, and the drifted length for most calls stayed under
+  the diagonal). No warnings fired across any of the 16 catalogue types after the fix.
 * **Terrace sits low in the terrain** (slab top 0.12 m, grass pokes through near the pool), **close-range
   surfaces read as programmer art** (grid paving, flat white plaster, smooth grey posts) and **thatch
   reads as uniform stacked slats** — all critic r4, open.

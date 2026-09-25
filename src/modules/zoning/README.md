@@ -107,6 +107,36 @@ Consumed: `terrain:modified`, `terrain:ready`, `road:changed`, `building:placed`
   brush) still leaves ≥4 m between two edges pulling toward each other. NONE and NO_BUILD never fill (see
   "Zone semantics" for why NO_BUILD staying invisible matters — it covers every road and river on the
   map).
+- **Exposure- and night-aware fill/line (2026-09-25, critic r6 #2/#6):** both the fill and the boundary
+  ribbon are unlit `ShaderMaterial`s that write straight into the shared HDR scene buffer `effects/
+  pipeline.js` then runs through Bloom → Grade → ACES Output using the same `renderer.toneMappingExposure`
+  as every lit material (see `environment` README). A fixed-colour probe fragment run through the real
+  pipeline showed why the naive fix (scale *alpha* by `1/exposure`) still blew out at night: raw linear
+  magnitudes as small as 0.02–0.05 already read back post-pipeline as ~0.6–0.9 (near white) once
+  multiplied by the night-range exposure (~12×) that Bloom sees *before* tonemap — alpha blending happens
+  in that same HDR buffer, so alpha alone can't fix it. `overlay.js`/`boundaries.js` now take
+  `environment.getNightAmount()` and `.getExposure()` each frame (optional dependency; both default to
+  day-neutral values — 0 / 1 — when `environment` isn't loaded) and scale the **raw colour magnitude**
+  down (fill to ×0.05, line to ×0.22) in step with a `mutedK` factor driven by whichever is higher of
+  night-amount or `(exposure − 0.8)/4` (so golden-hour/dawn, which raises exposure before night-amount
+  turns on, is caught too — critic's "neon mint over orange dawn grass" at 6.5 h), on top of a smaller
+  alpha trim and a cool desaturating tint. The contour keeps a higher floor on both terms than the fill
+  (per the brief: "keeping the contour line readable"). The marching-ants gap floor also drops from 0.12
+  to 0.02 at night, since at the old floor gap and dash blended into a visually solid glowing tube once
+  exposure multiplied everything back up pre-tonemap (critic r6 #6).
+- **VISITOR (boardwalk) fill floor + adaptive plank direction (2026-09-25, critic r6 #1):** the fill's
+  same-region consensus field never reaches the plain 0.42–0.9 smoothstep range on a 2-cell corridor (see
+  `overlay.js`), so VISITOR cells get an extra, much looser floor term (`0.20 * smoothstep(0.10, 0.32,
+  field)`, maxed with the normal term) that is visible even on the thinnest paintable corridor. The plank
+  seam direction now follows the corridor's own local long axis instead of a fixed world diagonal: a
+  cheap 12-tap same-region survival test along ±x/±z (3 taps each direction) picks whichever axis the
+  corridor extends further along, so a diagonal boardwalk reads as planks laid across it rather than a
+  fixed-angle hatch. This is the **cheap version, not a full SDF clip** (the critic's stronger fix): the
+  fill is still driven by the same 5×5 pyramid field as HABITAT/SERVICE, so a corridor that bends sharply
+  within one 5-cell window can still show a seam angle lagging the true curve by a cell or two, and the
+  fill's edge is feathered rather than clipped exactly to the smoothed boundary ribbon. Good enough that
+  the boardwalk is now visible and oriented correctly in every preset (`overview`, `close`, `overlay`,
+  `night`); a true SDF clip is listed as a follow-up in Known gaps, not implemented here.
 - **Fences** (`fences.js`, 2 draw calls: posts, rails): `traceBoundaryEdges()` walks every outward-facing
   grid-cell edge of each habitat (each is exactly `world.grid.cell` = 4 m, matching real fence-post
   spacing). A post is instanced at every boundary corner, a two-wire rail spans every non-gate edge. An
@@ -139,16 +169,20 @@ ribbon + 2 fence `InstancedMesh`es for posts/rails — no per-habitat multiplica
 + animals + roads + zoning together, as the screenshot tool reports) since that is what actually renders
 in the showcase.
 
-| preset | draw calls (scene) | triangles (scene) | console errors |
-|---|---|---|---|
-| `overview` | 150 | 4,045,072 | 0 |
-| `close` | 140 | 3,971,880 | 0 |
-| `overlay` | 158 | 4,021,607 | 0 |
-| `night` | 154 | 4,299,376 | 0 |
+| preset | draw calls (scene) | triangles (scene) | console errors | `updateMs` |
+|---|---|---|---|---|
+| `overview` | 165 | 3,906,599 | 0 | 2.73 |
+| `close` (6.5 h) | 156 | 3,940,309 | 0 | 2.88 |
+| `overlay` | 173 | 3,882,110 | 0 | 1.93 |
+| `night` | 169 | 4,156,589 | 0 | 2.45 |
 
 `fps`/`frameMs` are not reported here — under SwiftShader they are not representative (see CLAUDE.md) and
 were ~0.1–0.2 fps / 300–560 ms per frame across all four, dominated by `props`' grass field rebuild
 (150–480 ms of the `props.update()` cost per shot), not by zoning.
+
+`updateMs` (2026-09-25): still 1.9–2.9 ms against the ≤1.5 ms per-module guide, **not meaningfully lower**
+than round 6's 2.1–2.3 ms despite fixing the throttle below — see "Known gaps" for why the throttle
+fix (which is real and correct) doesn't show up much in a short screenshot capture.
 
 ## Known gaps (honest)
 
@@ -173,6 +207,14 @@ were ~0.1–0.2 fps / 300–560 ms per frame across all four, dominated by `prop
   at the showcase's camera distances (verified in `close` and the near-top-down `overlay` preset) but a
   camera far closer to grazing-angle than either preset uses could still show minor shimmer, since `fwidth`
   only estimates one pixel of derivative, not a true prefiltered footprint.
+- **No full SDF clip for the boardwalk fill (2026-09-25, critic r6 #1).** The fill/plank-direction fix
+  (see Rendering) is the cheap version: a floor alpha plus a 12-tap axis pick, still layered on the same
+  5×5 same-region field the HABITAT/SERVICE fill uses, not a distance field rasterised from the smoothed
+  boundary ribbon. Two consequences, both minor at the showcase's corridor widths and turn radii: a
+  corridor that bends sharply inside one 5-cell window can show the plank seam lag the true curve by a
+  cell or two, and the fill's own edge is feathered rather than clipped exactly to the ribbon (so very
+  close up the fill can extend a little past the line, or fall a little short of it, at a tight corner).
+  A follow-up could bake the ribbon into a distance texture and clip/orient off that instead.
 - **`cover` (shrubs/rocks) has no direct query.** No module exposes shrub/boulder density at a point (only
   `props.coverAt` for tree canopy). `cover` is approximated as `0.7×rockyBiomeFraction + 0.35×shade` —
   documented as an approximation, not measured shrub cover.
@@ -190,10 +232,24 @@ were ~0.1–0.2 fps / 300–560 ms per frame across all four, dominated by `prop
   code path (skip the rail, raise the flanking posts near any `roads` polyline point) is exercised only
   when the `roads` module or another module's showcase/game actually threads a road through a habitat.
   Verified by reading the code path and by a synthetic check, not by a screenshot.
-- **Species-set changes are batched, not instant.** `animal:spawned`/`animal:died` set a flag; the next
-  full `rebuildHabitats()` (which recomputes `species` and `quality`) happens up to ~1.2 s later, not on
-  the same frame. Physical stats (water/shade/cover/roughness/grass/area) do not change on animal
-  spawn/death at all — only `species` and `quality` do.
+- **Species-set changes are batched, not instant (updated 2026-09-25, critic r6 #5).** `animal:spawned`/
+  `animal:died` set a flag; the batched refresh now (a) uses a **frame-count throttle** (72 `update()`
+  calls, not a 1.2 s wall-clock accumulator — the old one could fire on the very first frame under
+  fast-settle, whose `dt=0.1` per step is 6× a real 60 fps frame) and (b) calls the new
+  `refreshSpeciesOnly()` instead of the full `rebuildHabitats()` — it updates `species`/`quality` on every
+  existing habitat from the current animal positions without re-flooding the grid, recomputing physical
+  stats or rebuilding fences. Physical stats (water/shade/cover/roughness/grass/area) still do not change
+  on animal spawn/death at all — only `species` and `quality` do.
+  **Measured (2026-09-25):** this did not move `updateMs` in a screenshot capture — instrumented directly,
+  the throttle never even fires within a ~40-`update()`-call capture window (72 > 40), and the ~2–2.9 ms
+  reading in the Measured table above is actually the slow EMA (`Perf.recordModule`, α=0.05) tail of the
+  **one-time boundary-ribbon rebuild** (`updateOverlay`'s `rebuildLines()`, measured directly at ~20 ms)
+  that fires once after `stage()` paints the demo habitats — a real cost, but a one-time edit-time cost,
+  not the per-frame steady-state cost the 1.5 ms budget is about, and not what critic r6 #5 diagnosed. The
+  throttle/cheap-refresh fix is still correct and matters for a long play session with frequent animal
+  spawns/deaths (the scenario the wall-clock throttle actually mis-handled), it just doesn't show up in a
+  short capture. Not investigated further: whether `rebuildLines()` itself is worth speeding up is a
+  separate question from what critic r6 #5 asked for.
 - **`quality` on a habitat with no species present defaults to 0.6** (a neutral placeholder), not a real
   score for any particular species — call `getHabitatQuality(id, species)` for a species-specific number.
 - **Stable habitat ids use a 15%-cell-overlap heuristic** against the previous flood fill, not persistent

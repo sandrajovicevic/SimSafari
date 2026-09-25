@@ -93,22 +93,92 @@ function buildWater(ctx, parent) {
   return mesh;
 }
 
-/** The showcase network. Coordinates in metres. */
+/** The showcase network (metres), authored against the flat-fallback river (riverX). */
+const ROUTES = [
+  // paved spine east–west, crossing the river (concrete bridge)
+  [[[-330, -70], [-200, -55], [-80, -45], [40, -30], [120, -10], [200, 5], [300, 30]], 'paved'],
+  // gravel loop hanging off the spine (two 3-way junctions)
+  [[[40, -30], [70, 60], [50, 170], [-40, 230], [-160, 225], [-230, 140], [-200, 30], [-80, -45]], 'gravel'],
+  // dirt track east across the river (timber bridge) to a hide
+  [[[50, 170], [140, 150], [220, 175], [320, 130], [380, 60]], 'dirt'],
+  // dirt track crossing the loop (4-way) and ending at the loop's south-east node (4-way)
+  [[[-330, 100], [-230, 140], [-120, 120], [-30, 120], [50, 170]], 'dirt'],
+  // gravel spur from the paved end to a camp (kind change at a 2-way node → transition patch)
+  [[[300, 30], [340, -60], [330, -150]], 'gravel'],
+  // dirt spur south to a hide
+  [[[-40, 230], [-30, 300], [-70, 360]], 'dirt'],
+];
+
 function layNetwork(api) {
   const ids = [];
-  // paved spine east–west, crossing the river (concrete bridge)
-  ids.push(...api.addRoad([[-330, -70], [-200, -55], [-80, -45], [40, -30], [120, -10], [200, 5], [300, 30]], 'paved'));
-  // gravel loop hanging off the spine (two 3-way junctions)
-  ids.push(...api.addRoad([[40, -30], [70, 60], [50, 170], [-40, 230], [-160, 225], [-230, 140], [-200, 30], [-80, -45]], 'gravel'));
-  // dirt track east across the river (timber bridge) to a hide
-  ids.push(...api.addRoad([[50, 170], [140, 150], [220, 175], [320, 130], [380, 60]], 'dirt'));
-  // dirt track crossing the loop (4-way) and ending at the loop's south-east node (4-way)
-  ids.push(...api.addRoad([[-330, 100], [-230, 140], [-120, 120], [-30, 120], [50, 170]], 'dirt'));
-  // gravel spur from the paved end to a camp (kind change at a 2-way node → transition patch)
-  ids.push(...api.addRoad([[300, 30], [340, -60], [330, -150]], 'gravel'));
-  // dirt spur south to a hide
-  ids.push(...api.addRoad([[-40, 230], [-30, 300], [-70, 360]], 'dirt'));
+  for (const [pts, kind] of ROUTES) ids.push(...api.addRoad(pts, kind));
   return ids;
+}
+
+/** Longest continuous under-water run along the polyline, metres (sampled every 4 m). */
+function longestWetRun(world, pts) {
+  let best = 0, run = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const [ax, az] = pts[i - 1], [bx, bz] = pts[i];
+    const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 4)), step = Math.hypot(bx - ax, bz - az) / n;
+    for (let k = 1; k <= n; k++) {
+      if (world.isWater(ax + (bx - ax) * k / n, az + (bz - az) * k / n)) { run += step; if (run > best) best = run; } else run = 0;
+    }
+  }
+  return best;
+}
+
+const MAX_WET_RUN = 60;   // m: a clean crossing of the 18–50 m channel; longer means the route follows the river
+
+/**
+ * On generated terrain the river does not follow riverX, so some fixed routes ran along the channel on
+ * 45–80 m "bridges" (critic roads r4 #2). Keep every route whose wet runs are real crossings, drop the
+ * ones that follow the river, and if fewer than two crossings survive add ones perpendicular to the
+ * real river (terrain.getFeatures()), each end joined outward to the nearest dry-reachable node.
+ */
+function layNetworkOnTerrain(ctx, api, features) {
+  const world = ctx.world;
+  const nodes = [];
+  let crossings = 0;
+  for (const [pts, kind] of ROUTES) {
+    const wet = longestWetRun(world, pts);
+    if (wet > MAX_WET_RUN) continue;
+    if (wet > 0) crossings++;
+    api.addRoad(pts, kind);
+    for (const p of pts) nodes.push(p);
+  }
+  if (!features?.pointOnRiver) return;
+  for (const [t, kind] of [[0.44, 'paved'], [0.58, 'dirt']]) {
+    if (crossings >= 2) break;
+    const r = features.pointOnRiver(t);
+    const reach = r.hw + 45;
+    const a = [r.x - r.nx * reach, r.z - r.nz * reach], b = [r.x + r.nx * reach, r.z + r.nz * reach];
+    const ai = [r.x - r.nx * (r.hw + 6), r.z - r.nz * (r.hw + 6)], bi = [r.x + r.nx * (r.hw + 6), r.z + r.nz * (r.hw + 6)];
+    const crossing = [a, ai, bi, b];
+    for (const [end, side] of [[a, -1], [b, 1]]) {
+      let best = null, bd = 260;
+      for (const nd of nodes) {
+        const dx = nd[0] - end[0], dz = nd[1] - end[1], d = Math.hypot(dx, dz);
+        // outward only (away from the river along the crossing normal), so the road never hooks back
+        if ((dx * r.nx + dz * r.nz) * side < d * 0.3) continue;
+        if (d < bd && d > 8 && longestWetRun(world, [end, nd]) === 0) { bd = d; best = nd; }
+      }
+      if (best) { if (side < 0) crossing.unshift(best); else crossing.push(best); }
+    }
+    api.addRoad(crossing, kind);
+    crossings++;
+  }
+}
+
+/** Point the `junction` preset at a real ≥3-way node (nearest to its authored target). */
+function locateJunction(graph, tx, tz) {
+  let best = null, bd = Infinity;
+  for (const [id, n] of graph.nodes) {
+    if (graph.degree(id) < 3) continue;
+    const d = Math.hypot(n.x - tx, n.z - tz);
+    if (d < bd) { bd = d; best = n; }
+  }
+  return best;
 }
 
 /** On real terrain: if nothing crosses water, add a dirt crossing over the nearest water body. */
@@ -178,8 +248,9 @@ export async function stage(ctx, presetName, mod) {
     try {
       if (typeof terrain.generate === 'function' && !(world.terrain.version > 0)) await terrain.generate({ preset: 'savannah', seed: world.seed });
     } catch (err) { ctx.log.warn('[roads] terrain.generate failed: ' + (err?.message || err)); }
-    layNetwork(mod.api);
-    ensureBridge(ctx, mod.api, mod.graph);
+    const features = terrain.getFeatures?.();
+    if (features?.pointOnRiver) layNetworkOnTerrain(ctx, mod.api, features);
+    else { layNetwork(mod.api); ensureBridge(ctx, mod.api, mod.graph); }
   } else {
     stageHeights(ctx);
     layNetwork(mod.api);
@@ -197,6 +268,8 @@ export async function stage(ctx, presetName, mod) {
     const yaw = (Math.atan2(-found.dx, -found.dz) * 180) / Math.PI + 55; // 3/4 view across the span
     presets.bridge.camera = { target: [found.x, found.z], distance: Math.max(34, found.len * 1.1), pitch: 18, yaw };
   }
+  const jn = locateJunction(mod.graph, 40, -30);
+  if (jn) presets.junction.camera = { ...presets.junction.camera, target: [jn.x, jn.z] };
   for (const [name, p] of Object.entries(presets)) ctx.rig.registerPreset?.('roads-' + name, { ...p.camera, tod: p.tod, description: p.description });
 
   if (!ctx.modules.get('environment')) {

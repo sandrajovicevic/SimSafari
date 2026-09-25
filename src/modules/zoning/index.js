@@ -8,14 +8,19 @@ import {
   paint, paintCells, erase, fill, getZone, cellsInRadius, isBuildable, nearestHabitat,
   recomputeNoBuild, rectFromWorld,
 } from './grid.js';
-import { rebuildHabitats, boundary, getHabitatQuality } from './habitats.js';
+import { rebuildHabitats, refreshSpeciesOnly, boundary, getHabitatQuality } from './habitats.js';
 import { buildOverlay, setOverlay, updateOverlay, markOverlayDirty, markOverlayHeightsDirty, disposeOverlay } from './overlay.js';
 import { buildFences, rebuildFences, disposeFences } from './fences.js';
 import { presets, stage } from './showcase.js';
 
 let ctx = null;
 let pendingSpeciesRefresh = false;
-let speciesRefreshTimer = 0;
+let speciesRefreshFrames = 0;
+// Frame-count throttle, not wall-clock (critic r6 #5): under slow/software rendering a single
+// update() call can carry a much-larger-than-real dt (fast-settle advances the sim in big steps),
+// so a 1.2s wall-clock accumulator tripped almost every frame. ~72 frames is ~1.2s at 60 fps, but the
+// guarantee that matters here is "not every frame", not the exact wall-clock interval.
+const SPECIES_REFRESH_INTERVAL = 72;
 
 function onTerrainModified(p) {
   const rect = (p && Number.isFinite(p.x0)) ? rectFromWorld(p.x0, p.z0, p.x1, p.z1, 1) : undefined;
@@ -74,7 +79,7 @@ export default {
   id: 'zoning',
   version: 1,
   dependencies: [],
-  optional: ['terrain', 'roads', 'props', 'animals', 'simulation'],
+  optional: ['terrain', 'roads', 'props', 'animals', 'simulation', 'environment'],
   api,
 
   async init(c) {
@@ -107,8 +112,10 @@ export default {
   update(dt, t) {
     updateOverlay(dt);
     if (pendingSpeciesRefresh) {
-      speciesRefreshTimer += dt;
-      if (speciesRefreshTimer > 1.2) { speciesRefreshTimer = 0; pendingSpeciesRefresh = false; rebuildHabitats(); }
+      speciesRefreshFrames++;
+      if (speciesRefreshFrames >= SPECIES_REFRESH_INTERVAL) {
+        speciesRefreshFrames = 0; pendingSpeciesRefresh = false; refreshSpeciesOnly();
+      }
     }
   },
 
@@ -120,7 +127,7 @@ export default {
     Z.group?.removeFromParent();
     Z.ctx = null; Z.world = null; Z.group = null;
     Z.nextHabitatId = 1; Z.overlayOn = false;
-    ctx = null; pendingSpeciesRefresh = false; speciesRefreshTimer = 0;
+    ctx = null; pendingSpeciesRefresh = false; speciesRefreshFrames = 0;
   },
 
   showcase: { presets, stage },

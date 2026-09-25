@@ -177,6 +177,12 @@ Budget position: draw calls are far inside the ≤1500 total / 200 per-module bu
 
 ## Known gaps (honest)
 
+* **Update budget (re-measured 2026-09-25).** Critic round 5 reported `update()` at 4.2–5.0 ms. A CPU
+  profile of 60 steady frames shows 0.6–0.8 ms in the module showcase and 0.39 ms in the full game; the
+  reported number came from core's `updateMs` metric, an EMA seeded with the first (start-up) sample.
+  Core now skips warm-up samples and also reports `updatePeakMs`: full game overview 14 h → animals
+  0.20 ms mean, 0.4 ms peak (`tools/shots/game-perf-probe.json`). Within the 3 ms budget.
+
 1. **Real cast shadows are still disabled by the terrain module, not by this one.** `terrain/mesh.js:31`
    sets `mesh.receiveShadow = false`, so nothing in the world can receive a shadow; the depth pass this
    module produces (`castShadow` + animated `customDepthMaterial`) is simply discarded by the receiver.

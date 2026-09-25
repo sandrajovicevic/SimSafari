@@ -35,6 +35,8 @@ const LINE_FRAG = /* glsl */ `
 precision highp float;
 uniform float uTime;
 uniform float uOpacity;
+uniform float uNightAmount;
+uniform float uExposure;
 varying float vAlong;
 varying float vCross;
 void main() {
@@ -43,11 +45,29 @@ void main() {
   float fw = fwidth(ph);
   float w = min(fw * 1.5 + 0.001, 0.249);
   float dash = smoothstep(0.42 - w, 0.42 + w, ph) * (1.0 - smoothstep(0.92 - w, 0.92 + w, ph));
-  // dash contrast: gaps drop to ~0.1 alpha — the old 0.55 floor all but vanished over bright dry-grass
-  // ground at overview distance. Rhythm (11.4 m cycle, ~50% duty, 2.2 cycles/s) is unchanged.
-  float a = lineA * mix(0.12, 1.0, dash) * 0.9 * uOpacity;
+  // dash contrast: gaps drop to a floor alpha — the old fixed 0.55 floor all but vanished over bright
+  // dry-grass ground at overview distance. The floor itself drops further at night (critic r6 #6): the
+  // line is unlit and un-tonemapped, so by day a 0.12 gap floor reads as a faint tint next to the fully
+  // tonemapped ground, but at night — when the scene around it goes dark under auto-exposure — that
+  // same constant floor stays bright enough that gap and dash blend into one solid glowing tube instead
+  // of marching ants. Rhythm (11.4 m cycle, ~50% duty, 2.2 cycles/s) is unchanged.
+  float nightK = clamp(uNightAmount, 0.0, 1.0);
+  float exposureLift = clamp((uExposure - 0.8) / 4.0, 0.0, 1.0);
+  float mutedK = max(nightK, exposureLift);
+  float gapFloor = mix(0.12, 0.02, nightK);
+  float a = lineA * mix(gapFloor, 1.0, dash) * 0.9 * uOpacity;
+  // Same pipeline reality as the fill (see overlay.js — measured via a fixed-colour probe): this line
+  // is unlit and writes straight into the shared HDR buffer that Bloom/Grade/ACES-Output then process
+  // with the same renderer.toneMappingExposure, so raw colour magnitude has to come down at night too,
+  // not just alpha — alpha-only dimming still reads as a solid glowing tube once exposure multiplies
+  // it back up pre-tonemap. Kept less dim than the fill (mix targets 0.22 vs the fill's 0.05, floor 0.55
+  // vs the fill's 0.4) so the contour stays the more readable of the two, per the brief.
+  vec3 warm = vec3(1.0, 0.93, 0.55);
+  vec3 cool = vec3(0.55, 0.62, 0.70); // cooler, desaturated at night — matches the exposure-neutral night grade
+  vec3 col = mix(warm, cool, nightK * 0.7) * mix(1.0, 0.22, mutedK);
+  a *= mix(1.0, 0.55, mutedK);
   if (a <= 0.004) discard;
-  gl_FragColor = vec4(vec3(1.0, 0.93, 0.55), a);
+  gl_FragColor = vec4(col, a);
 }`;
 
 /** Zone-region key — must match the overlay data texture packing (R=zone, G/B=habitatId bytes). */
@@ -265,11 +285,18 @@ export function buildBoundaryGeometry(world) {
   return geo;
 }
 
-/** Create the boundary ribbon material; `timeUniform` is shared with the overlay fill material. */
-export function createBoundaryMaterial(timeUniform) {
+/**
+ * Create the boundary ribbon material. `shared` carries the uTime/uNightAmount/uExposure uniform
+ * *objects* (same references as the overlay fill material's), so updateOverlay only writes one copy
+ * per frame and both materials see it.
+ */
+export function createBoundaryMaterial(shared) {
   const m = new THREE.ShaderMaterial({
     vertexShader: LINE_VERT, fragmentShader: LINE_FRAG,
-    uniforms: { uTime: timeUniform, uOpacity: { value: 1 } },
+    uniforms: {
+      uTime: shared.uTime, uOpacity: { value: 1 },
+      uNightAmount: shared.uNightAmount, uExposure: shared.uExposure,
+    },
     transparent: true, depthWrite: false, depthTest: true,
     polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8,
     side: THREE.DoubleSide, fog: false,

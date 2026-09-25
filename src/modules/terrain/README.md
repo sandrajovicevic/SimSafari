@@ -144,6 +144,14 @@ Terrain + water draw calls: 16 chunk meshes (4×4, always resident) + 1 water me
 
 ## Known gaps (honest)
 
+* **Night water fixed 2026-09-25** (critic r4 #1: water ~2.5–3× brighter than ground and sky at night).
+  Cause: the in-column scatter floor in `water.js` was divided by exposure, so its *displayed*
+  brightness stayed at its daytime level all night. It now also scales with a daylight factor `uDay`
+  (1 by day, 0.08 at night). Verified: `terrain-night-21_5.png` and `game-overview-21_5.png` show dark
+  water with a faint sky reflection, lamps the brightest points; `terrain-river-auto.png` (9 h)
+  unchanged. Still open from the same review: the escarpment's repeating fluted motif (#2) and
+  illegible ripples (#3).
+
 * **Two-scale texture repeats are broken up, not eliminated.** The round-3 rotations, warps and
   masks stop the 3.7 m grass stamp and the dirt crack lattice from reading as motifs (verified
   in round-3 after shots), but the underlying 1024² tiles still repeat; a dedicated texture

@@ -19,7 +19,7 @@ export class ModuleRegistry {
     const out = {};
     for (const [id, r] of this.modules) {
       out[id] = { status: r.status, error: r.error ? String(r.error?.message || r.error) : undefined,
-        updateMs: +(this.app.perf.moduleMs.get(id) || 0).toFixed(3), errors: r.errorCount, consecutive: r.consecutive };
+        updateMs: +(this.app.perf.moduleMs.get(id) || 0).toFixed(3), updatePeakMs: +(this.app.perf.modulePeak.get(id) || 0).toFixed(3), errors: r.errorCount, consecutive: r.consecutive };
     }
     return out;
   }

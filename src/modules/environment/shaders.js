@@ -255,7 +255,11 @@ void main(){
   // --- cumulus / stratus (1.8 km) ---
   float t = (1800.0 - uCamHeight) / dy;
   vec2 base = d.xz * t;
-  vec2 p = base * 0.00021 + uWind * uTime * 0.00018;
+  // 0.00009 per m (was 0.00021): at fair-weather coverage only noise peaks survive the threshold, and at
+  // the old scale those were ~150 m flecks that foreshortened into rows of horizontal dashes from the
+  // ground, day and night (critics traffic/effects r4: "stars smeared into dashes" was this layer).
+  // Fair-weather cumulus are ~0.5-1 km across.
+  vec2 p = base * 0.00009 + uWind * uTime * 0.00018;
   float cov = uCoverage;
   float dens = cloudShape(p, cov);
   if (dens > 0.001) {

@@ -116,12 +116,20 @@ the 12-edge / 5-junction / several-bridge overview network this is at most ~10 r
   allocation-free. Passing a plain `{x,z}`-shaped object instead (rather than one with real `Vector3`
   members) throws, since the implementation calls `out.position.set(...)`. `traffic` (when built)
   needs to know this.
-* **The showcase network's fixed control-point coordinates are tuned for the generated-terrain
-  river's typical position for seed 1**, not derived from `terrain.getFeatures()` the way `terrain`'s
-  own showcase re-anchors every preset. It works because `ensureBridge()` adds a crossing if none
-  exists and `stage()` now re-targets the `bridge` camera dynamically, but a very different seed could
-  still produce a network that crosses the river at an awkward angle or not at all along the paved
-  spine.
+* **Showcase network on generated terrain (fixed 2026-09-25).** The fixed routes were authored against
+  the flat-fallback river, and on generated terrain some ran *along* the channel on 45–80 m bridges
+  (critic r4 #2). `layNetworkOnTerrain()` now drops any route whose longest continuous wet run exceeds
+  60 m (a clean crossing of the 18–50 m channel), adds crossings perpendicular to the real river from
+  `terrain.getFeatures().pointOnRiver()` if fewer than two survive, and joins their ends only outward
+  to dry-reachable nodes. The `junction` preset re-targets onto the nearest real ≥3-way node.
+  Verified in `roads-overview-15.png` (4 short crossings, full loop), `roads-bridge-9.png`,
+  `roads-junction-17.png`. Remaining: one loop crossing is oblique (~55 m, inside the 60 m rule).
+* **Junction patches are still geometrically poor at close range** (critic r4 #1): flat dark quad with
+  hard seams to the legs, edge-line stubs, and on some nodes a folded triangle — visible in
+  `roads-junction-17.png`. Not yet rebuilt.
+* **A full `rebuild()` is not "a few ms"**: the critic measured `stats().build.ms` at ~1,600 ms on the
+  showcase network under SwiftShader (terrain conform dominates). It runs once per edit batch, not per
+  frame.
 * **No traffic-facing lane geometry beyond `getLanes()`'s two-lane assumption** — every road kind
   reports exactly 2 lanes with a fixed `leftHand: true` convention; there's no notion of one-lane
   dirt tracks (realistic for a safari track) or shoulder pull-outs.

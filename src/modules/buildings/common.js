@@ -21,7 +21,15 @@ export class BuildCtx {
     this.spinners = [];
   }
   /** Buf for a material family. */
-  f(name) { return this.parts.f(name); }
+  f(name) {
+    const b = this.parts.f(name);
+    // Tag each Buf (once) with the dev-assert threshold for beam() — see Buf.beam() in kit.js.
+    if (this.opts.maxBeamLen != null && b._maxLen == null) {
+      b._maxLen = this.opts.maxBeamLen;
+      b._onLongBeam = this.opts.onLongBeam;
+    }
+    return b;
+  }
   /** Register a lamp position (local space). At night it becomes a small point light. */
   lamp(x, y, z, power = 1) { this.lamps.push([x, y, z, power]); return this; }
   /** A sub-assembly that rotates about `axis` at `speed` rad/s (windpump rotor). */

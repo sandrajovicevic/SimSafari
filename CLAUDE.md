@@ -62,3 +62,5 @@ Captures fast-settle by default (simulation advanced without rendering, then 4 r
 ~7 min per 960×540 shot on a 4-core container. Pass `--slow` to render every settle frame (old behaviour).
 Full-game captures (`--game`) pin the clock with `&speed=0` automatically; pass `--live` to let it run.
 `tools/shots/*.json` has `errors`, `drawCalls`, `triangles`, `fps` (software GL — not representative), `modules` status.
+Per-module `updateMs` is the steady-state mean (first 5 samples skipped as warm-up) and `updatePeakMs` the worst frame after
+warm-up. Before 2026-09-25 `updateMs` still carried ~10 % of the start-up spike after a capture — old budget findings may be stale.
