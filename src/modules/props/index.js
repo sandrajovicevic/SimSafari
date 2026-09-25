@@ -198,13 +198,15 @@ function buildMaterials() {
   M.barkFever = barkMaterial('fever', TEX.barkFever(T, { size }));
   M.barkBaobab = barkMaterial('baobab', TEX.barkBaobab(T, { size }));
   M.barkDead = barkMaterial('dead', TEX.barkDead(T, { size }));
-  // Linear albedo. Savannah canopy is a dark olive — well under 0.10 — and reads much lighter
-  // once the sun, sky IBL and ACES have had their way with it.
-  M.leafAcacia = leafMaterial('acacia', TEX.foliageAcacia(T, { size: leafSize, seed: 5, key: 'props:leaf:acacia', tint: [0.0620, 0.0655, 0.0225] }));
-  M.leafFever = leafMaterial('fever', TEX.foliageAcacia(T, { size: leafSize, seed: 27, key: 'props:leaf:fever', tint: [0.0500, 0.0760, 0.0235] }));
-  M.leafBroad = leafMaterial('broad', TEX.foliageBroad(T, { size: leafSize, seed: 8, key: 'props:leaf:broad', tint: [0.0450, 0.0640, 0.0205] }));
-  M.leafScrub = leafMaterial('scrub', TEX.foliageScrub(T, { size: leafSize, seed: 12, key: 'props:leaf:scrub', tint: [0.0580, 0.0580, 0.0265] }));
-  M.leafScrubDry = leafMaterial('scrubdry', TEX.foliageScrub(T, { size: leafSize, seed: 63, key: 'props:leaf:scrubdry', tint: [0.0750, 0.0620, 0.0260] }));
+  // Linear LEAF albedo (2026-09-24): set from measured green-leaf reflectance (~0.10-0.12 green,
+  // ~0.06 red, ~0.03 blue). The old values (green ~0.065) were half that and rendered canopies as
+  // near-black blobs; canopy-level darkness comes from the rendered self-shadowing, not the albedo.
+  // Acacia grey-green, fever tree yellow-green, riverine broadleaf a darker green.
+  M.leafAcacia = leafMaterial('acacia', TEX.foliageAcacia(T, { size: leafSize, seed: 5, key: 'props:leaf:acacia', tint: [0.0750, 0.0980, 0.0400] }));
+  M.leafFever = leafMaterial('fever', TEX.foliageAcacia(T, { size: leafSize, seed: 27, key: 'props:leaf:fever', tint: [0.0800, 0.1150, 0.0380] }));
+  M.leafBroad = leafMaterial('broad', TEX.foliageBroad(T, { size: leafSize, seed: 8, key: 'props:leaf:broad', tint: [0.0500, 0.0900, 0.0300] }));
+  M.leafScrub = leafMaterial('scrub', TEX.foliageScrub(T, { size: leafSize, seed: 12, key: 'props:leaf:scrub', tint: [0.0750, 0.0820, 0.0380] }));
+  M.leafScrubDry = leafMaterial('scrubdry', TEX.foliageScrub(T, { size: leafSize, seed: 63, key: 'props:leaf:scrubdry', tint: [0.1000, 0.0880, 0.0450] }));
 
   const gran = TEX.granite(T, { size });
   M.rock = S.ctx.materials.standard({
