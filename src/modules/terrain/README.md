@@ -120,6 +120,16 @@ seed 1.
   (core's `srgb:true` path does the single sRGB encode — see `CLAUDE.md`). No saturation/contrast
   compensation is applied in the shader (`uSat`/`uContrast` sit at neutral); the earlier round's
   compensation for the (now-fixed) core double-encode bug has been removed.
+* **Photo layers (2026-09-25)**: the dryGrass/dirt/rock layer slices are overwritten at init with
+  the Poly Haven 1k originals (`textures/polyhaven/<asset>/`, colour + OpenGL normal + roughness as
+  three CC0 maps; the packed normal-XY+roughness surface map is composed at load, `textures.js` →
+  `applyPhotoLayers`). The photo's mean colour is re-tinted per channel (linear) to the procedural
+  layer's mean, so the scans contribute real structure without shifting the art-directed palette.
+  Fallback chain: originals → 2026-09-24 habitta 512 px packs (`textures/polyhaven-via-habitta/`,
+  kept registered and on disk) → fully procedural layers; every step is verified by capture
+  (2026-09-25: `d3d11-after-*` vs `d3d11-before-*`, plus `fallback-habitta-close` and
+  `fallback-procedural-close` on SwiftShader — draw calls and triangles identical across all
+  three paths, palette unchanged).
 * **Kopjes**: `generate.js` builds each kopje as a stack of angular blocks — superellipse footprints
   (`|u|^p + |v|^p = 1`, p = 3..7 → rounded-rectangular in plan), near-vertical sides, flat tops, each
   sliced by 2–3 tilted fracture planes (the exfoliation joints real kopjes show), unioned with `max()`
