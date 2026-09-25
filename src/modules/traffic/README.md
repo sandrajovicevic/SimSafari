@@ -55,7 +55,7 @@ graphBackend() → 'roads' | 'fallback'
 | `overview` | 16 | 6 vehicles (2 safari, ranger, 2 minibus, service) on a paved/gravel/dirt loop with a junction and two bridges — at 430 m a 4–5 m vehicle is a speck (see gaps) |
 | `close` | 16.5 | one **parked** open safari truck at ~11 m, 3/4 rear-side: tiered bench seats, 8 passengers, canopy, roof rails, spare wheel |
 | `sighting` | 17.5 | a tour truck stopped on the gravel road ~40 m from a **zebra** herd (needs `animals`; plain stop otherwise) |
-| `night` | 21.5 | the same parked truck as `close` at night: headlights and taillights lit, headlight pool on the asphalt; a minibus and a ranger vehicle drive elsewhere on the loop (not in frame) |
+| `night` | 21.5 | the same parked truck as `close` at night: headlights lit with a warm pool on the asphalt ahead; a minibus and a ranger vehicle drive elsewhere on the loop (not in frame). The taillights are lit (emissive raised 2.2 → 6.0) but their flat rear faces are edge-on to this side view, so no red reads in the frame |
 
 The `close` and `night` hero trucks are pinned (`_state = 'stopped'`, like `sighting`): before
 2026-09-25 they spawned driving, and the capture's 3.6 s settle drove them out of an 11–14 m frame
