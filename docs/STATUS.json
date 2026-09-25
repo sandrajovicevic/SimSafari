@@ -492,8 +492,8 @@
     "traffic": {
       "wave": 2,
       "domain": "built",
-      "round": 3,
-      "score": 8,
+      "round": 4,
+      "score": 5.0,
       "status": "fail",
       "errors": 0,
       "drawCalls": 155,
@@ -501,21 +501,43 @@
       "presetsSeen": [
         "overview 16",
         "close 16.5",
+        "close 16.5 settle4 (extra)",
         "sighting 17.5",
+        "sighting 12 (extra)",
         "night 21.5",
-        "stats() readback (extra)"
+        "night 21.5 settle4 (extra)"
       ],
       "issues": [
         {
-          "sev": "minor",
-          "text": "overview preset (430m camera) makes vehicles nearly invisible -- disclosed honestly in the README as a presentation flaw, and independently confirmed to be exactly as significant as claimed (6 vehicles per stats(), genuinely present but unreadable at this distance)."
+          "sev": "blocker",
+          "text": "close and night presets render an empty road: the hero truck is spawned driving (state drive), and after the standard 3.6 s settle it is 24 m from the camera target, out of the 11-14 m frame. Park it like spawnSighting does (_state stopped, _stopTimer 999)."
+        },
+        {
+          "sev": "major",
+          "text": "README presets table does not reproduce: it says overview 11h, close 16h, sighting 16.5h beside elephants, night parked trucks at the lodge; the code has 16/16.5/17.5h, zebra, and trucks on the open road (cap 6)."
+        },
+        {
+          "sev": "major",
+          "text": "At close range the safari truck is programmer art: body reads as brown wood-grain (stretched paint fleck), no readable windscreen/glass, flat white disc hubs, grey slab canopy, box-and-sphere passengers. The spec asks for PBR paint with dust, glass, chrome."
+        },
+        {
+          "sev": "major",
+          "text": "Night: no taillights visible on a side-on truck; the body is an unlit silhouette (headlight ground pool itself is good)."
         },
         {
           "sev": "minor",
-          "text": "Ambient vehicles never sight-stop (only tours do); passengers are static with no boarding animation -- both disclosed, consistent with what was observed."
+          "text": "overview at 430 m still makes vehicles invisible (disclosed)."
+        },
+        {
+          "sev": "minor",
+          "text": "Sighting passengers do not visibly turn heads toward the animals (spec: head yaw)."
+        },
+        {
+          "sev": "minor",
+          "text": "About 5 draw calls per vehicle when kinds do not share pools (15 draws for 3 vehicles), above the spec guidance of 3 per vehicle; module budget still fine."
         }
       ],
-      "good": "Safari truck at close range is one of the better individual assets in the project (tiered bench seating, individually coloured passengers, canopy, roof rack, spare wheel). Sighting behaviour real and demonstrated. Night headlights and reflective road paint both convincing. Own-module budget independently confirmed via stats() (18 draws for 6 vehicles, well inside <=80-for-10 spec) and updateMs (0.66-0.70ms, well inside 2ms budget). API matches README; dispose() thorough."
+      "good": "Sighting preset staged robustly (forced stop, zebra at plausible distance, holds at 12h and 17.5h). Headlight ground pool convincing. Zero errors, updateMs 0.11-0.28 ms, no per-frame allocations, lint ok, API matches README."
     },
     "tools": {
       "wave": 2,
@@ -1140,6 +1162,12 @@
       "module": "audio",
       "round": 4,
       "score": 8.5,
+      "date": "2026-09-25"
+    },
+    {
+      "module": "traffic",
+      "round": 4,
+      "score": 5.0,
       "date": "2026-09-25"
     }
   ]
