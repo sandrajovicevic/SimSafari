@@ -159,6 +159,11 @@ export class Buf {
     _a.set(ax, ay, az); _b.set(bx, by, bz);
     _v.copy(_b).sub(_a); const len = _v.length();
     if (len < 1e-5) return;
+    // Dev assert (no throw): a beam longer than the building's own footprint diagonal is almost
+    // certainly a mis-ordered/mis-scaled endpoint, not a real structural member — see the caller-side
+    // maxBeamLen wiring in common.js/index.js. Kept as a runtime check, not a lint rule, since it
+    // depends on which catalogue type is currently being built.
+    if (this._maxLen && len > this._maxLen) this._onLongBeam?.(len, ax, ay, az, bx, by, bz);
     _v.multiplyScalar(1 / len);
     // side vector: perpendicular to the beam, as horizontal as possible
     _c.set(0, 1, 0);
@@ -166,10 +171,17 @@ export class Buf {
     const sx = _c.clone().cross(_v).normalize();           // width axis
     const up = _v.clone().cross(sx).normalize();           // height axis
     const hw = w * 0.5, hh = h * 0.5, t = 1 / tile;
+    // P() must not read the shared _a/_v scratch vectors: this.quad() below reuses _a/_b/_c as its
+    // OWN scratch space (for its face-normal calc), clobbering _a between this beam()'s six quad()
+    // calls. Reading it back after the first quad() call made every following face drift by the
+    // already-corrupted origin, compounding into geometry tens of metres off (round 4: "stray rail
+    // geometry" — the ring beams/railings that showed it were simply the long enough beams for the
+    // drift to become visible). Snapshot the direction/origin into plain numbers up front instead.
+    const ox = ax, oy = ay, oz = az, vx = _v.x, vy = _v.y, vz = _v.z;
     const P = (s, e, f) => [
-      _a.x + _v.x * s + sx.x * e + up.x * f,
-      _a.y + _v.y * s + sx.y * e + up.y * f,
-      _a.z + _v.z * s + sx.z * e + up.z * f,
+      ox + vx * s + sx.x * e + up.x * f,
+      oy + vy * s + sx.y * e + up.y * f,
+      oz + vz * s + sx.z * e + up.z * f,
     ];
     const L = len * t, W = w * t, H = h * t;
     this.quad(P(0, hw, -hh), P(len, hw, -hh), P(len, hw, hh), P(0, hw, hh), 0, 0, L, H);
