@@ -1,4 +1,4 @@
-// Settings modal: quality (reload with ?quality=), audio volume, FPS counter, auto daily report, shortcuts reference.
+// Settings modal: quality (reload with ?quality=), audio volume, FPS counter, auto daily report, shortcuts reference, credits.
 import { el } from './dom.js';
 import { icon } from './icons.js';
 
@@ -6,6 +6,14 @@ export const SHORTCUTS = [
   ['Pan camera', 'W A S D'], ['Rotate', 'Q / E'], ['Tilt', 'R / F'], ['Zoom', 'Wheel / + −'],
   ['Pause / resume', 'Space'], ['Slower / faster', ', / .'], ['Toolbar category', '1 – 6'], ['Cancel / close', 'Esc'],
   ['Daily report', 'J'], ['Settings', 'O'], ['Toggle minimap', 'M'], ['Hide interface', 'H'],
+];
+
+// CC-BY attributions shown in-game (ARCHITECTURE §8). Static list kept in sync by hand with the
+// CC-BY rows of docs/ASSETS.md — never fetched at runtime. Rendered once per settings-open (static
+// DOM, zero per-frame cost); always appended through dom.js's null-filtering helpers, never native
+// Element.append (see STATUS 2026-09-22: native append stringifies null arguments into visible text).
+const CREDITS = [
+  'Animal models (giraffe, elephant, lion): Poly by Google, CC-BY 3.0, via poly.pizza',
 ];
 
 export function createSettings(root, s) {
@@ -41,7 +49,11 @@ export function createSettings(root, s) {
         row('Show frame rate', 'Overlay with fps, frame time and draw calls', el('label.checkbox', null, fps, 'Enabled')),
         row('Daily report', 'Open the report automatically at the start of each day', el('label.checkbox', null, auto, 'Auto-open')),
         row('Camera', 'Return to the park overview', el('span', null, el('button.btn', { onclick: () => { try { s.ctx.rig.setPreset('overview'); } catch {} } }, icon('camera'), 'Reset view'))),
-        el('div.sec', { style: 'padding-top:12px' }, el('div.sec-h', null, icon('keyboard'), 'Keyboard shortcuts'), keys)),
+        el('div.sec', { style: 'padding-top:12px' }, el('div.sec-h', null, icon('keyboard'), 'Keyboard shortcuts'), keys),
+        el('div.sec', { style: 'padding-top:12px' }, el('div.sec-h', null, icon('paw'), 'Credits'),
+          el('div.credits', null,
+            CREDITS.map((line) => el('div.c', { text: line })),
+            el('div.c.muted', { text: 'Other assets are CC0; full register in docs/ASSETS.md.' })))),
       el('div.modal-f', null, el('span.muted', { text: 'SimSafari · seed ' + s.world.seed + ' · quality ' + quality, style: 'font-size:11.5px' }), el('span.sp'), el('button.btn.primary', { onclick: hide }, 'Done')));
     return el('div.backdrop.pe', { onclick: (e) => { if (e.target.classList.contains('backdrop')) hide(); } }, modal);
   }

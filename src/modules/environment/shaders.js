@@ -207,7 +207,7 @@ varying vec3 vWorldDir;
 uniform sampler2D uNoise;
 uniform vec3 uSunDir; uniform vec3 uSunLight; uniform vec3 uSunHigh; uniform vec3 uAmbient; uniform vec3 uHorizon;
 uniform float uCoverage; uniform float uCirrus; uniform float uStorm; uniform float uTime; uniform vec2 uWind; uniform float uCamHeight;
-uniform float uMoonBoost;
+uniform float uMoonBoost; uniform float uNight;
 const float PI = 3.14159265359;
 
 float cloudShape(vec2 p, float cov) {
@@ -261,6 +261,25 @@ void main(){
   // Fair-weather cumulus are ~0.5-1 km across.
   vec2 p = base * 0.00009 + uWind * uTime * 0.00018;
   float cov = uCoverage;
+  // Round-8: large-scale coverage variance + a night presentation gate. The threshold inside
+  // cloudShape has no spatial structure of its own, so at low coverage the surviving noise peaks
+  // tiled the dome uniformly — the round-8 dusk capture read as a uniform spackle wall against the
+  // afterglow instead of banks with clear sky between. (The dense NIGHT wall the same critic saw
+  // turned out to be the aliased star bake in NIGHT_TEX_GLSL, not this layer — see the real-GPU
+  // toggle diagnostic in the README; the moonlit-branch brightness in index.js was also over-hot.)
+  // Three changes here, all faded out by coverage ~0.8 so the overcast/storm decks (full cover is
+  // the point there) are bit-for-bit untouched:
+  //   1. modulate the effective coverage with a ~4 km octave of the same tileable field so puffs
+  //      cluster into banks with clear sky between (real cumulus organises exactly like this);
+  //   2. at night (uNight = st.night) thin the field, so fair-weather cloud 0.08 keeps only its
+  //      strongest peaks — a few faint moonlit puffs — and the star field dominates;
+  //   3. thin the low sky at every sub-overcast coverage so the afterglow/haze band owns the
+  //   horizon (real cloud decks thin out just above the skyline).
+  float clearGate = 1.0 - smoothstep(0.5, 0.8, cov);
+  float bank = texture2D(uNoise, p * 0.9 + vec2(0.53, 0.19)).r;
+  cov *= mix(1.0, 0.45 + 1.1 * bank, clearGate * mix(0.3, 0.55, uNight));
+  cov *= mix(1.0, 0.5, uNight * clearGate);
+  cov *= mix(1.0, 0.55, (1.0 - smoothstep(0.05, 0.30, dy)) * clearGate);
   float dens = cloudShape(p, cov);
   if (dens > 0.001) {
     // cheap self shadowing: density toward the sun, 2 taps. This is the right proxy for "is this
@@ -402,8 +421,17 @@ vec4 shade(vec2 uv){
   float dust = smoothstep(0.35, 0.8, fbm(vec3(l * 2.2, b * 9.0, 0.7) + d * 2.0, 4) * 0.5 + 0.5) * exp(-b * b / (2.0 * 0.05 * 0.05));
   float mw = band * structure * (0.35 + 0.9 * core + 1.4 * bulge) * (1.0 - 0.8 * dust);
   vec3 mwCol = mix(vec3(0.75, 0.82, 1.0), vec3(1.0, 0.86, 0.7), core) * mw * 0.22;
-  // faint star field (two layers)
-  vec3 stars = starLayer(d, 46.0, 1.0 + uSeed, 0.0035, 0.75, 1.0) + starLayer(d, 150.0, 7.0 + uSeed, 0.0026, 0.55, 0.25);
+  // faint star field (two layers). Sigma is radians and must stay SUB-TEXEL of this 2048x1024 bake
+  // (one texel = 0.0031 rad): the earlier bake used sigma 0.0035/0.0026 (~1 texel), so every star
+  // baked as a ~4-texel soft blob and the dome's linear magnification blew each one up into a
+  // 10-20 px grey blob — thousands merged into the "dense bright grey-white speckle wall" the
+  // round-8 critic capped the module for (diagnosed then as the cumulus layer because the
+  // clouds-off check ran on SwiftShader, where this texture filters differently; the real-GPU
+  // toggle diagnostic 2026-09-25 isolates the texture: zeroing uNightAmount removes the wall with
+  // clouds ON, keeping it with clouds OFF). Sub-texel sigmas bake each star into a single texel
+  // that magnifies back to a ~2-4 px point; the density/brightness cuts keep the field faint so
+  // the brighter point layer (STAR_VERT) and the band carry the sky.
+  vec3 stars = starLayer(d, 46.0, 1.0 + uSeed, 0.0008, 0.35, 1.0) + starLayer(d, 150.0, 7.0 + uSeed, 0.0006, 0.22, 0.25);
   stars *= 1.0 + 1.2 * band; // denser field inside the band
   return vec4(mwCol + stars, 1.0);
 }`;

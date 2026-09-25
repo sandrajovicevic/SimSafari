@@ -314,6 +314,9 @@ export const CSS = `
 .sf .keys { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 16px; font-size: 12px; color: var(--muted); }
 .sf .keys div { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
 .sf .keys .key { margin: 0; }
+.sf .credits { font-size: 12px; color: var(--text); }
+.sf .credits .c { padding: 2px 0; }
+.sf .credits .muted { font-size: 11.5px; }
 
 /* ---------- minimap ---------- */
 .sf .minimap { position: absolute; left: 12px; bottom: 12px; width: 216px; padding: 7px; }

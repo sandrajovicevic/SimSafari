@@ -4,6 +4,7 @@ import { populateMockWorld, mockReport, mockPopHistory } from './mock.js';
 export const presets = {
   overview: { camera: { target: [0, 40], distance: 520, pitch: 42, yaw: 35 }, tod: 15, description: 'Full HUD: top bar, toolbar, minimap, three notifications over the park at 15 h' },
   report:   { camera: { target: [0, 40], distance: 520, pitch: 42, yaw: 35 }, tod: 15, description: 'Daily report modal with 30-day sparklines, breakdowns, population and events' },
+  settings: { camera: { target: [0, 40], distance: 520, pitch: 42, yaw: 35 }, tod: 15, description: 'Settings modal open over the park, including the CC-BY credits section' },
   panel:    { camera: { target: [110, -140], distance: 70, pitch: 24, yaw: 60 }, tod: 16.5, description: 'Animal selected: side panel with happiness ring, needs bars, facts and actions' },
   toolbar:  { camera: { target: [0, 40], distance: 420, pitch: 40, yaw: 35 }, tod: 15, description: 'Buildings category open in the toolbar, a card hovered with its tooltip' },
   close:    { camera: { target: [-130, 80], distance: 60, pitch: 20, yaw: 60 }, tod: 16.5, description: 'Close camera; habitat selected (quality, resources, fit per species); animals category open' },
@@ -29,6 +30,9 @@ export async function stage(ctx, presetName, ui) {
   switch (presetName) {
     case 'report':
       api.showReport(s.lastReport);
+      break;
+    case 'settings':
+      api.openPanel('settings');
       break;
     case 'panel':
       if (mock.selectedAnimal) sel('animal', mock.selectedAnimal);

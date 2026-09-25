@@ -13,6 +13,14 @@ a UI exception can never stop rendering. The only module allowed to read the DOM
   and styled by the injected stylesheet `ui.css.js`.
 * Visibility: shown in the full game; **hidden automatically while another module's showcase is
   up** and with `?noui=1` (park's demo relies on both rules).
+* **Credits panel (2026-09-25)**: a static "Credits" section in the settings modal listing the
+  CC-BY assets shown in-game — currently "Animal models (giraffe, elephant, lion): Poly by Google,
+  CC-BY 3.0, via poly.pizza" — per ARCHITECTURE §8, kept in sync by hand with the CC-BY rows of
+  `docs/ASSETS.md` (`CREDITS` in `settings.js`; never fetched at runtime). Reachable from the
+  top-bar gear button, the `O` key, or `openPanel('settings')`. No network, no dependencies, zero
+  per-frame cost (built once per settings-open); rendered through `dom.js`'s `el()`/null-filtering
+  append — never native `Element.append` (which stringifies null arguments into visible text, the
+  09-22 toolbar bug).
 * Keyboard: `Space` pause · `,`/`.` speed (steps 1/3/10) · `J` report · `O` settings · `M` minimap ·
   `H` hide UI · `1`–`9` toolbar categories.
 
@@ -61,6 +69,7 @@ table), `environment` (weather readout), `terrain` (minimap sampling).
 |---|---|---|
 | `overview` | 14 | full HUD over the live game |
 | `report` | 14 | daily report panel open |
+| `settings` | 15 | settings modal open (graphics/audio/shortcuts + CC-BY credits section) |
 | `panel` | 14 | settings/selection side panel |
 | `toolbar` | 14 | every category toolbar expanded |
 | `close` | 16 | HUD over a near camera |

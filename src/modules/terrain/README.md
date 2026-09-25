@@ -107,15 +107,28 @@ seed 1.
   `envMapIntensity` is forced to 0.10 in `updateWaterSky()` every frame because `environment`'s
   `setEnvMap()` rewrites `envMapIntensity` on every tracked material whenever the PMREM regenerates.
 * **Apron**: `apron.js` builds a ring of decreasing detail from the world border out to ~6.5×
-  `world.half`, sharing height samples with the true edge (no seam), rising into low distant
-  "highlands" (`rise = 45·t² + ridged noise`) so the rim always sits above a ground-level camera's
-  horizon instead of leaving a gap that shows the sky dome's below-horizon colour as a dark band.
-  Since round 3 the apron's material samples the SAME packed layer texture arrays as the playable
-  splat (`layers.tAlb`/`tNrm`) through the splat's two-scale UV scheme, height blend and full tint
-  chain, with an analytic plains control (dry grass dominant, laterite `pt` patches, slope dirt/rock
-  mirroring `classifySample`). Near the border the baked control aux (moisture/wet/macro) is sampled
-  clamped and faded to the analytic field over 20–220 m, so macro-variation blotches and the riverine
-  green band continue across the world border instead of stepping to a different-detail slab.
+  `world.half`, sharing height samples with the true edge at ring 0 (no seam at the handoff), rising
+  into low distant "highlands" (`rise = 45·t² + ridged noise`) so the rim always sits above a
+  ground-level camera's horizon instead of leaving a gap that shows the sky dome's below-horizon
+  colour as a dark band. Since round 3 the apron's material samples the SAME packed layer texture
+  arrays as the playable splat (`layers.tAlb`/`tNrm`) through the splat's two-scale UV scheme,
+  height blend and full tint chain, with an analytic plains control (dry grass dominant, laterite
+  `pt` patches, slope dirt/rock mirroring `classifySample`). Near the border the baked control aux
+  (moisture/wet/macro) is sampled clamped and faded to the analytic field over 20–220 m, so
+  macro-variation blotches and the riverine green band continue across the world border instead of
+  stepping to a different-detail slab.
+  **Sharp border features no longer extend radially (2026-09-25, round-5 major fix).** Hard-sharing
+  the border heights along every ray turned the escarpment's west/east border crossings (~86–90 m
+  columns over a ~150–190 m stretch) into two ruler-straight hairline ridges across the apron
+  (critic-unprojected to ≈(−504,−355)→(−945,−625) and (511,−342)→(761,−487)). Now ring 0 keeps the
+  exact border heights, while beyond it the border height's deviation from a wide low-passed plains
+  baseline (two ±384 m wrapped box passes along the perimeter) decays radially (`exp(−(t/0.07)²)`,
+  gone by ring 5 ≈ 450 m) and is smeared along the perimeter with a kernel widening from 0 to ±384 m,
+  so the ridge ends in a short broad shoulder instead of a fin. Verified at both reported segments:
+  `tools/shots/seb-before-terrain-overview-15.png` (before, both lines) →
+  `seb-after2-terrain-overview-15.png` / `seb-after2-terrain-overview-12.png` (after, both clean at
+  two sun angles) and `seb-after2-terrain-escarpment-7.png` (grazing dawn light); geometry-only
+  change — same draw calls (35 overview) and triangle count (1,090,924).
 * **Colour**: all albedo is authored as **true linear colour** consumed by `ctx.textures.pbr()`
   (core's `srgb:true` path does the single sRGB encode — see `CLAUDE.md`). No saturation/contrast
   compensation is applied in the shader (`uSat`/`uContrast` sit at neutral); the earlier round's

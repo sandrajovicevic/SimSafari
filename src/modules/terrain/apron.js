@@ -34,16 +34,70 @@ export function buildApronGeometry(world, noise) {
   const pos = new Float32Array(cols * rows * 3);
   const sp = { x: 0, z: 0 };
   const fb = (x, z, s, o) => noise.fbm2D(x / s + 37.3, z / s + 91.7, o);
+
+  // Border heights per perimeter column. Ring 0 must keep these EXACTLY (shared heights with the
+  // playable mesh = no seam at the handoff). But hard-extending them radially turns every sharp
+  // border feature into a straight one-column-wide spur: where the escarpment crest meets the
+  // west/east borders (~86-90 m columns over a ~150-190 m stretch), its height continued outward
+  // along the scaled-square ray as two ruler-straight hairline ridges across the apron — the
+  // terrain round-5 major. Two-part fix, both fading in with radius so ring 0 stays exact:
+  //   1. the border height's DEVIATION from the local plains baseline decays with radius;
+  //   2. the deviation is also smeared along the perimeter with a kernel that widens from 0 columns
+  //      at ring 0 to ±384 m, so what remains of a sharp feature ends as a broad tapering shoulder
+  //      (a plausible ridge-end cone) instead of a one-column fin.
+  // Gently-varying plains borders (deviation ≈ 0) are untouched by construction.
+  const edge = new Float32Array(cols);
+  for (let c = 0; c < cols; c++) {
+    squarePoint((c % nPer) / nPer, sp);
+    edge[c] = world.getHeight(sp.x * half, sp.z * half);
+  }
+  // Plains baseline: border heights low-passed along the perimeter (two wrapped box passes,
+  // ±384 m each — wide enough that a ~180 m crest crossing barely lifts it). Ping-pong buffers;
+  // column nPer duplicates column 0 so the closed ring stays consistent.
+  const base = new Float32Array(cols);
+  const bufA = Float32Array.from(edge), bufB = new Float32Array(cols);
+  {
+    const W = 48;
+    let src = bufA, dst = bufB;
+    for (let pass = 0; pass < 2; pass++) {
+      for (let c = 0; c < cols; c++) {
+        const c0 = c % nPer;
+        let sum = 0;
+        for (let k = -W; k <= W; k++) sum += src[(c0 + k + nPer) % nPer];
+        dst[c] = sum / (2 * W + 1);
+      }
+      const t = src; src = dst; dst = t; // ping-pong; after pass 0 src holds pass 0's output
+    }
+    base.set(src);
+  }
+  const dev = new Float32Array(cols);
+  for (let c = 0; c < cols; c++) dev[c] = edge[c] - base[c];
+  const sm = new Float32Array(cols);   // per-ring perimeter-smeared deviation
+
   for (let r = 0; r < rows; r++) {
     const v = r / RINGS;
     const t = Math.pow(v, 1.35);                       // rings bunch up near the playable edge
     const f = 1 + t * (OUTER - 1);
+    // deviation decay: exp(-(t/0.07)^2) — full border height at ring 0, ~35% by ring 3 (~200 m
+    // out), gone by ring 5 (~450 m) where the apron's own relief/rise dominate anyway.
+    const decay = Math.exp(-(t * t) / 0.0049);
+    // widening smear kernel: 0 columns at ring 0 (exact border heights), full ±48 columns by t=0.06
+    const Kt = Math.round(48 * Math.min(1, t / 0.06));
+    if (Kt === 0) {
+      sm.set(dev);
+    } else {
+      for (let c = 0; c < cols; c++) {
+        const c0 = c % nPer;
+        let sum = 0;
+        for (let k = -Kt; k <= Kt; k++) sum += dev[(c0 + k + nPer) % nPer];
+        sm[c] = sum / (2 * Kt + 1);
+      }
+    }
     for (let c = 0; c < cols; c++) {
       const u = (c % nPer) / nPer;
       squarePoint(u, sp);
-      const ex = sp.x * half, ez = sp.z * half;        // point on the world border
       const x = sp.x * half * f, z = sp.z * half * f;
-      const edgeH = world.getHeight(ex, ez);
+      const h0 = base[c] + sm[c] * decay;
       // continue the plains: same low-frequency relief, fading sag so the far rim drops out of frame
       // relief fades back to flat at the rim: a tilted outermost row renders as a hard dark line
       // along the horizon (it is seen almost edge-on and its normal points away from the sun).
@@ -56,7 +110,7 @@ export function buildApronGeometry(world, noise) {
       const rise = 45 * t * t
         + t * t * (16 * noise.ridged2D(x / 820 + 5.1, z / 820 + 2.3, 3) + 7 * fb(x, z, 380, 2));
       const k = (r * cols + c);
-      pos[k * 3] = x; pos[k * 3 + 1] = edgeH + relief + rise; pos[k * 3 + 2] = z;
+      pos[k * 3] = x; pos[k * 3 + 1] = h0 + relief + rise; pos[k * 3 + 2] = z;
     }
   }
   const idx = new Uint32Array(RINGS * nPer * 6);
