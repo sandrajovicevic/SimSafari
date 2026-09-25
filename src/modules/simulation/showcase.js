@@ -17,9 +17,9 @@ const CREW = { keeper: 6, ranger: 2, guide: 4, maintenance: 3, lodge: 2 };
 
 export const presets = {
   overview: { camera: CAM, tod: 15, days: 60, mode: 'overview', park: { ticketPrice: 20, animalScale: 0.5, staff: CREW },
-    description: '60 accelerated days of the park at $20 volume tickets and a right-sized crew: 5 habitats, loop road with spurs, lodge, 3 water holes — cash climbs, the herd grows, sparklines plus the last daily report' },
+    description: '60 accelerated days of the park at $20 volume tickets and a right-sized crew: 5 habitats, loop road with spurs, lodge, 3 water holes — the herd grows 98 → 134; cash ends up, but only through event windfalls (the typical day runs slightly negative), sparklines plus the last daily report' },
   boom: { camera: CAM, tod: 11, days: 60, mode: 'overview', park: { ticketPrice: 15, water: 0.2, shade: 0.1, roadKind: 'gravel', animalScale: 0.6, staff: CREW },
-    description: 'Cheaper $15 tickets, wetter and shadier habitats, gravel loop road: happier herds breed fast, word of mouth lifts arrivals above the overview park, cash climbs faster' },
+    description: 'Price-driven boom: $15 tickets, wetter and shadier habitats, gravel loop road — cheaper tickets lift arrivals ~40 % above the overview park and the typical day turns profitable, so cash climbs every week. The habitat tweaks do not make the herds happier: they breed less than in overview' },
   bust: { camera: CAM, tod: 17, days: 60, mode: 'overview', park: { ticketPrice: 80, water: -1, waterholes: false, lodge: false, roads: 'loop', cash: 15000, loan: 200000 },
     description: 'No water in any habitat, $80 tickets, no lodge, a $200k loan: the herds wither and never recover, visitors stay away after the first week, the bank forecloses (BANKRUPT)' },
   close: { camera: CAM, tod: 16.5, days: 30, mode: 'report', park: { ticketPrice: 20, animalScale: 0.5, staff: CREW },
@@ -37,6 +37,8 @@ function clearStage(ctx) {
   S = null;
 }
 
+const STAGE_START_HOUR = 6;
+
 export async function stage(ctx, presetName, env = {}) {
   clearStage(ctx);
   const preset = presets[presetName] || presets.overview;
@@ -44,6 +46,11 @@ export async function stage(ctx, presetName, env = {}) {
   const seed = world.seed;
   // 1. synthetic park (zoning/buildings/roads/animals modules are not staged in this showcase)
   const park = buildPark(world, ctx.rng.fork('park:' + presetName), preset.park || {});
+  // The staged run starts at a fixed 06:00 on day 1, whatever hour the capture is viewed at: Simulation
+  // seeds its clock from world.time.hour, so the same preset + seed gave 46 vs 42 births at 15 h vs 6.5 h
+  // (critic simulation r6). The viewing hour is restored after the fast-forward.
+  const viewHour = world.time.hour, viewDay = world.time.day;
+  world.time.hour = STAGE_START_HOUR; world.time.day = 1;
   const sim = new Simulation(world, ctx.rng.fork('sim:' + presetName + ':' + seed), env.hooks || {});
   applyPark(sim, park);
   // The animals module (loaded alongside this showcase through the optional-dependency closure) owns
@@ -60,6 +67,7 @@ export async function stage(ctx, presetName, env = {}) {
   const t0 = performance.now();
   sim.runDays(preset.days || 60);
   const simMs = performance.now() - t0;
+  world.time.hour = viewHour; world.time.day = viewDay;
   ctx.log.info(`simulation showcase "${presetName}": ${preset.days} days in ${simMs.toFixed(0)} ms, cash ${Math.round(world.economy.cash)}, pop ${sim.count()}`);
   // 3. dashboard canvas
   const canvas = document.createElement('canvas');

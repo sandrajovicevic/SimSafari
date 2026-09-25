@@ -106,7 +106,7 @@ const api = {
   stats() {
     return {
       quality: pipeline?.quality, enabled: pipeline ? { ...pipeline.enabled } : null, failed: pipeline ? { ...pipeline.failed } : null,
-      msaa: pipeline?.msaaSamples, haze: haze?.strength ?? 0, ambientDust: S.ambientAlpha, particles: particles ? { ...particles.stats, capacity: particles.capacity } : null,
+      msaa: pipeline?.msaaSamples, haze: haze?.strength ?? 0, ambientDust: S.ambientAlpha, particles: particles ? (particles.countAlive(), { ...particles.stats, capacity: particles.capacity }) : null,
     };
   },
 };
@@ -147,7 +147,7 @@ export default {
     haze.update({ temperature: w.temperature ?? 28, sunUp: S.sunUp });
     S.ambientAlpha = (S.ambientDust >= 0 ? S.ambientDust : autoAmbientDust()) * 0.55;
     S.target.copy(ctx.rig.target);
-    if (pipeline) pipeline.setFrame({ sunColor: S.sunColor, sunUp: S.sunUp, haze: haze.strength, groundY: S.target.y });
+    if (pipeline) pipeline.setFrame(S.sunColor, S.sunUp, haze.strength, S.target.y);
     if (particles) {
       if (!S.lightIn) S.lightIn = { sunDir: S.sunDir, sunColor: S.sunRadiance, ambient: S.ambient, wind: null, camera: ctx.camera, target: S.target, ambientAlpha: 0 };
       S.lightIn.wind = w.wind; S.lightIn.ambientAlpha = S.ambientAlpha;

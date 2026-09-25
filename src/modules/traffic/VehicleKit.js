@@ -114,7 +114,7 @@ export class VehicleKit {
     if (slot.cloth >= 0) this.clothPool.setColor(slot.cloth, clothHex);
   }
   setHeadlightIntensity(v) { this.lib.headlightMat.emissiveIntensity = v; }
-  setTaillightIntensity(v) { this.lib.taillightMat.emissiveIntensity = 0.15 + v * 2.2; }
+  setTaillightIntensity(v) { this.lib.taillightMat.emissiveIntensity = 0.15 + v * 6.0; } // 2.2 did not read at night (critic r4)
 
   stats() {
     let bodyDraws = 0;

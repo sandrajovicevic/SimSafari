@@ -144,7 +144,7 @@ export function buildBoundaryGeometry(world) {
   // The water/NO_BUILD fringe and paint rims are ragged at 1-cell scale; drawing that faithfully
   // reads as a wave chain. A few Taubin (λ|μ) passes are a band-pass: they kill ~1-2 cell ripples
   // while barely shrinking the overall shape. Every point is then clamped to MAX_PULL metres of its
-  // exact-crack position, so the smoothed line can never wander more than half a cell off the true
+  // exact-crack position (3.2 m since 2026-09-22, see below), so the smoothed line stays near the true
   // partition — it cannot leak into a neighbouring region, only cut across single-cell corners.
   //
   // MAX_PULL was 2.0 (exactly half a cell). The independent critic pass (2026-09-22) found this too

@@ -98,13 +98,18 @@ headless with none of them present (that is how its tests run).
 
 ## Presets
 
-| preset | tod | what it shows (all measured 2026-09-08, staged environment, seed 1) |
+| preset | tod | what it shows (measured 2026-09-25, seed 1; identical at any `tod`, see below) |
 |---|---|---|
-| `overview` | 15 | the synthetic park at $20 volume tickets, right-sized crew, ~98 staged animals: cash climbs (+$18k over 60 d, healthy), arrivals ~215/d (base 100), herd grows 98 → 140 with 46 births |
-| `boom` | 11 | same park pushed into a real boom — $15 tickets, wetter/shadier habitats, gravel road: births 38, arrivals ~282/d (well above base 100 and above overview), cash climbs +$37k over 60 d |
-| `bust` | 17 | over-priced + no water: births stall (5), 22 deaths, herd 193 → 176, arrivals collapse to 0, cash −$427k and the bank forecloses (BANKRUPT stamp on the panel) |
-| `close` | 16.5 | the habitat-quality matrix (every species × every habitat) beside a living, growing population |
-| `night` | 21.5 | same park as `overview` after dark, its own seeded stream (different weather/events) — the dashboard is unlit HUD geometry so it stays readable |
+| `overview` | 15 | the synthetic park at $20 volume tickets, right-sized crew: herd 98 → 134 (42 births, 6 deaths), arrivals ~223/d (base 100), cash +$16.6k over 60 d — **but the typical day loses money (median net −$274/day)**; the gain comes from event windfalls (travel-writer spikes, grants) |
+| `boom` | 11 | a **price-driven** boom — $15 tickets, wetter/shadier habitats, gravel road: arrivals ~310/d (+39 % over overview), median day +$735, cash +$58.8k over 60 d. Births are *lower* than overview (32 vs 42): the habitat tweaks do not raise happiness, both parks reach the ~140 capacity ceiling |
+| `bust` | 17 | over-priced + no water: births stall (6), 21 deaths, herd 193 → 178, arrivals collapse (~7/d average, 0 after week one), cash −$419k and the bank forecloses (BANKRUPT stamp on the panel) |
+| `close` | 16.5 | 30-day run: the habitat-quality matrix (every species × every habitat) beside a growing population (99 → 108, 15 births) |
+| `night` | 21.5 | same park as `overview` after dark on its own seeded stream (different weather/events: herd 98 → 109, cash +$28.7k) — the dashboard is unlit HUD geometry so it stays readable |
+
+**Staged runs are independent of the capture hour** (fixed 2026-09-25): `stage()` starts the sim at
+06:00 on day 1 whatever `tod` the preset is viewed at, then restores the viewing hour. Before, the
+sim clock started at `tod`, so the same preset and seed gave 46 vs 42 births at 15 h vs 6.5 h.
+Verified: `overview` at 15 h and 6.5 h, and `bust` at 17 h and 3 h, produce identical numbers.
 
 Staged herds are spawned into `world.animals` through the same animals-module hook the sim itself
 uses, so `stage()` ends with `world.animals.size == sim.count()` and the population sparkline shows
@@ -119,18 +124,25 @@ punished; the regression tests in test.mjs pin it).
   mirrored showcase park (193 staged → 219 on day 30, every animal accounted: born/died/left),
   and census adoption), determinism verified: the same seed reproduces an identical 90-day
   history; a different seed diverges.
-* Live-park fidelity harness (`tools/fidelity.mjs`, 2026-09-08): **$15/day ticket breaks even**
-  (net +$383/day mean over 30 days, day-30 net +$1,630), **10–15 births per 30 days at every
+* Live-park fidelity harness (`tools/fidelity.mjs`, re-run 2026-09-25): **$15/day ticket breaks even**
+  (net +$627/day mean over 30 days; was +$383 on 2026-09-08 before the plains habitat moved off the river), **10–15 births per 30 days at every
   measured price (was 0)**, 0 migrations, predators alive, poaching/drought/disease/prosperity
   chains all demonstrated — see the park README for the full table.
-* Staged showcase parks (2026-09-08, after the reconcile fix): `world.animals.size ==
-  sim.count()` at every preset; boom 146 animals / 38 births / 282 arrivals-per-day / cash
-  +$37k over 60 days; overview 140 / 46 births / 215 arrivals-per-day / cash +$18k — the preset
-  claims on the panel are what the run actually does.
+* Staged showcase parks (re-measured 2026-09-25 by reading back `getSim().getHistory()` and
+  `totals` in the page): `world.animals.size == sim.count()` at every preset; numbers as in the
+  Presets table. The panel descriptions were rewritten to match them (boom is price-driven, overview's
+  cash gain is event-driven).
 * Draw calls of the module itself: **2** (empty group + one helper); all visible geometry belongs to
   other modules.
 
 ## Known gaps (honest)
+
+* **The $20 overview park is not profitable day to day** (median −$274/day); its 60-day cash gain is
+  event windfalls. Not tuned yet: the fidelity harness says $15 is the break-even price.
+* **Poaching targets high-*appeal* species** (in the live game `appeal` overwrites `rarity`), so zebra
+  and ostrich count as targets; and a poaching event leaves no lasting reputation cost.
+* **A bankrupt park keeps frozen visitor sentiment** (satisfaction/reputation from before the collapse
+  stay on the panel with 0 visitors) and its staff morale does not react to foreclosure.
 
 * The village is modelled as staff morale → upkeep efficiency and a prosperity scalar; there is no
   physical village, no village-building layer, and no per-household simulation (SimSafari 1998 had

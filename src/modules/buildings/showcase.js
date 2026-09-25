@@ -6,12 +6,12 @@
 
 export const presets = {
   overview: {
-    camera: { target: [0, 0], distance: 190, pitch: 24, yaw: 205 }, tod: 16,
+    camera: { target: [0, 0], distance: 190, pitch: 24, yaw: 330 }, tod: 16,   // yaw 0 = camera on +z (south); the terrace faces +z
     description: 'The whole lodge complex from the south-west at 16:00 — entrance gate and car park, '
       + 'the thatched safari lodge on its stone plinth, restaurant boma, gift shop, hide and viewing tower.',
   },
   lodge: {
-    camera: { target: [0, 0], distance: 62, pitch: 12, yaw: 182 }, tod: 17.5,
+    camera: { target: [0, 0], distance: 62, pitch: 12, yaw: 12 }, tod: 17.5,   // was 182: showed the back (critic r4)
     description: 'The safari lodge at 17:30: makuti thatch with a ragged noise-displaced eave, round '
       + 'timber poles carrying the veranda, stone plinth, plank deck and railings, plunge pool.',
   },

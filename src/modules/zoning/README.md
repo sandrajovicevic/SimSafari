@@ -20,7 +20,7 @@ conforming wooden-post fences with gates wherever a road crosses.
   (used by `fences.js` and the public `boundary()`), and `getHabitatQuality`.
 - `overlay.js` — the ground overlay fill decal (mesh + shader + live data texture).
 - `boundaries.js` — the smooth dashed boundary ribbon: traces every region interface once (crack
-  following), melts 1-cell teeth (Taubin, clamped to ≤2 m of the true partition), rounds corners with
+  following), melts 1-cell teeth (Taubin, clamped to ≤3.2 m of the true partition), rounds corners with
   Chaikin cutting, and draws one animated marching-ants ribbon along the smoothed contour.
 - `fences.js` — instanced posts + wire rails, gate detection against `roads`.
 - `index.js` — module definition, event wiring, public API.
@@ -101,8 +101,10 @@ Consumed: `terrain:modified`, `terrain:ready`, `road:changed`, `building:placed`
   boardwalk read. The boundary LINE is a separate ribbon (`boundaries.js`): region interfaces are traced
   once each, corner-rounded, and drawn as one smooth animated "marching ants" contour (11.4 m dash cycle,
   2.2 cycles/s) so boundaries read as smoothed zoning-tool lines at any camera angle, never as the 4 m
-  cell staircase. Every smoothed point is clamped to ≤2 m of the exact cell partition, so a line can cut
-  a single-cell corner but can never leak into a neighbouring region. NONE and NO_BUILD never fill (see
+  cell staircase. Every smoothed point is clamped to ≤3.2 m (`MAX_PULL`, raised from 2.0 m on
+  2026-09-22 to straighten 2-cell boardwalk corridors) of the exact cell partition, so a line can cut a
+  single-cell corner but cannot leak into a neighbouring region: the thinnest paintable corridor (4 m
+  brush) still leaves ≥4 m between two edges pulling toward each other. NONE and NO_BUILD never fill (see
   "Zone semantics" for why NO_BUILD staying invisible matters — it covers every road and river on the
   map).
 - **Fences** (`fences.js`, 2 draw calls: posts, rails): `traceBoundaryEdges()` walks every outward-facing
@@ -150,14 +152,21 @@ were ~0.1–0.2 fps / 300–560 ms per frame across all four, dominated by `prop
 
 ## Known gaps (honest)
 
+- **Habitat components (2026-09-25):** painted HABITAT cells join into one habitat through edges *and*
+  corners (8-connected), and a component under **10 cells (160 m²)** gets no habitat id — it keeps its
+  paint but is not listed, scored, fenced or counted until it grows. This removes the 1–3-cell
+  fragments a road or river cut used to leave (critic r6: 12 habitats listed for 4 painted). Not done:
+  a river-split habitat still becomes two habitats, and a NO_BUILD line that is only diagonally
+  connected (a 1-cell staircase) would not separate two habitats.
+
 - **Painted shapes are grid-quantised; only the drawn line is smoothed** — `paint()` only ever fills
   whole grid cells, so an organic-looking blob is really a union of cell squares. Round 3 replaced the
   shader's cell-staircase line with a traced-and-smoothed contour (Taubin + Chaikin in `boundaries.js`),
   so the boundary reads as a Cities: Skylines II-style smooth dashed curve. The smoothing is clamped to
-  2 m of the exact partition: it can round a single-cell corner but cannot relocate a boundary. The
+  3.2 m of the exact partition: it can round a single-cell corner but cannot relocate a boundary. The
   physical cell grid itself is untouched — `fences.js` still places posts on the exact cell edges (a
   fence that follows the smoothed line would float off the cells it legally encloses), so up close the
-  fence and the overlay line can diverge by up to ~2 m around tight corners.
+  fence and the overlay line can diverge by up to ~3 m around tight corners (visible in `close`).
 - **The boardwalk plank tint uses `fwidth()`-based analytic antialiasing**, not mipmapping — it stays clean
   at the showcase's camera distances (verified in `close` and the near-top-down `overlay` preset) but a
   camera far closer to grazing-angle than either preset uses could still show minor shimmer, since `fwidth`

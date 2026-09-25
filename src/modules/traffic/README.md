@@ -50,12 +50,16 @@ graphBackend() → 'roads' | 'fallback'
 
 ## Presets
 
-| preset | tod | what it shows |
+| preset | tod | what it shows (from `showcase.js`, 2026-09-25) |
 |---|---|---|
-| `overview` | 11 | vehicles spread along a road network (note: at 430 m a 4–5 m vehicle is small — see gaps) |
-| `close` | 16 | one safari truck close: bench seats, passengers, canopy, spare wheel, contact shadow |
-| `sighting` | 16.5 | a tour truck stopped beside elephants, visitors raised for the view |
-| `night` | 21.5 | headlights + parked trucks at the lodge |
+| `overview` | 16 | 6 vehicles (2 safari, ranger, 2 minibus, service) on a paved/gravel/dirt loop with a junction and two bridges — at 430 m a 4–5 m vehicle is a speck (see gaps) |
+| `close` | 16.5 | one **parked** open safari truck at ~11 m, 3/4 rear-side: tiered bench seats, 8 passengers, canopy, roof rails, spare wheel |
+| `sighting` | 17.5 | a tour truck stopped on the gravel road ~40 m from a **zebra** herd (needs `animals`; plain stop otherwise) |
+| `night` | 21.5 | the same parked truck as `close` at night: headlights and taillights lit, headlight pool on the asphalt; a minibus and a ranger vehicle drive elsewhere on the loop (not in frame) |
+
+The `close` and `night` hero trucks are pinned (`_state = 'stopped'`, like `sighting`): before
+2026-09-25 they spawned driving, and the capture's 3.6 s settle drove them out of an 11–14 m frame
+(critic round 4: both presets rendered an empty road).
 
 ## Measured
 
@@ -72,8 +76,13 @@ graphBackend() → 'roads' | 'fallback'
   inset would fix it. Not yet changed.
 * Ambient vehicles never sight-stop (only tours do); they also despawn/respawn around the player
   rather than running schedules.
-* Passengers are static figures (varied clothing colours, seated poses) — no boarding animation, no
-  individual visitors entering/leaving buildings.
+* Passengers are static figures (box torsos, sphere heads, varied clothing colours) — no arms or hats,
+  no head turn toward animals on a sighting (`_sightYaw` is computed but not applied to the heads),
+  no boarding animation, no individual visitors entering/leaving buildings.
+* **The vehicle reads as programmer art at close range** (critic round 4): striated brown body instead
+  of khaki paint, no readable windscreen/cab glass, box headlights, flat disc hubs, slab canopy.
+* About 5 draw calls per vehicle when kinds do not share pools (15 for 3 vehicles of 3 kinds) — inside
+  the module budget, above the spec's ≤3-per-vehicle guidance.
 * No vehicle–animal collision avoidance beyond slowing: a truck stops near a herd only on tour
   sight-stops; ambient trucks drive through anything (roads only, so in practice they miss animals).
 * No dust settling/puddles after rain stops; dust rate scales with speed only.

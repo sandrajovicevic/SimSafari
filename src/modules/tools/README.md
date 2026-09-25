@@ -13,7 +13,7 @@ snapping, guides, previews, undo.
 |---|---|
 | `index.js` | module definition: the tool framework (`activate`/`deactivate`/`current`), undo/redo, `world.selection` ownership, global key handling (Esc/Delete/Ctrl+Z/Ctrl+Y), the render-loop hookup for cursors |
 | `common.js` | shared cost constants, `spend()`, cell-iteration helpers used for undo bookkeeping, `pickEntity()`/`entityPosition()` for select/inspect |
-| `cursors.js` | `RingCursor` (terrain/zone brush decal), `RoadRibbon` (Catmull-Rom preview + node markers + snap indicator), `SelectionMarker` — all pre-allocated, mutated in place per frame |
+| `cursors.js` | `RingCursor` (terrain/zone brush decal), `RoadRibbon` (Catmull-Rom preview + node markers + snap indicator), `SelectionMarker` — pre-allocated and mutated in place. The ribbon reuses one curve over a fixed `Vector3` pool and rebuilds only when its control points change; that rebuild re-creates three's arc-length table (one small array), so a moving cursor still allocates a little, an idle one nothing |
 | `UndoStack.js` | bounded (64) undo/redo stack of `{label, undo(ctx), redo(ctx)}` ops |
 | `SelectTool.js` | default tool: click to pick, sets `world.selection` |
 | `TerrainTool.js` | raise/lower/flatten/smooth/paint-biome |
@@ -106,10 +106,10 @@ poking module-owned state directly:
 
 ## Cost model (`common.js` `COST`, `spend()`)
 
-`world.economy` is owned by `simulation`; there is no public "spend" API on it (see
-`docs/requests/tools.md` #1), so `spend(ctx, amount)` writes `ctx.world.economy.cash -= amount`
-directly and only when `ctx.modules.get('simulation')` is loaded (per spec: "cost charged to
-world.economy if simulation is present"), re-emitting `economy:updated`.
+`world.economy` is owned by `simulation`. `spend(ctx, amount, reason = 'tools')` charges through
+`simulation.spend(amount, reason)` (public since 2026-09-08, `docs/requests/tools.md` #1), so every
+tool cost lands in `getSpendLog()`; only when simulation is not loaded is nothing charged (per spec:
+"cost charged to world.economy if simulation is present").
 
 | action | cost |
 |---|---|
@@ -156,7 +156,7 @@ a bug — it is reliable and cheap, and degrades gracefully (never throws) when 
 | `tool:confirmRequest` | emits | `{kind, id, message}` — first Delete press on a selection |
 | `selection:changed` | emits | `{kind, id}` — `world.selection` owner |
 | `ui:notify` | emits | `{level, text}` — missing-module refusals, placement failures, confirm prompts |
-| `economy:updated` | emits | `{cash, income, expenses, day}` — after every `spend()` (see Cost model gap above) |
+| `economy:updated` | emits (via `simulation.spend`) | `{cash, income, expenses, day, spend, reason}` — after every `spend()` |
 | `input:down` / `input:up` | consumes | core's raw pointer events (`{button, ground}`) |
 | `input:key` | consumes | core's raw key events (`{code, key, shift, ctrl}`) — Escape / Delete / Ctrl+Z / Ctrl+Y handled centrally, then forwarded to the active tool |
 
@@ -206,6 +206,15 @@ calls and a few hundred triangles, well inside any reasonable per-module soft ca
 
 ## Known gaps (honest)
 
+- **Terrain drags are expensive**: every held frame calls `terrain.raise()`, which runs terrain's full
+  `afterEdit()` (chunk rebuild, water check, upload) — measured ~130 ms per frame under SwiftShader
+  (critic round 4). Needs a batched/deferred edit API on terrain; not fixed.
+- **Road preview has no length/cost readout, no straight mode and no water-crossing warning** (the spec
+  asks for a cost preview and straight/curve modes). The ribbon now follows the terrain under each edge
+  (2026-09-25) instead of a flat cross-section, but still draws with depth test on.
+- **Selection marker**: sized from the building footprint and drawn without depth test (2026-09-25:
+  the fixed 4 m ring was hidden under the lodge); it follows walking animals every frame.
+
 * **Terrain stroke amount is now frame-count-capped, not truly continuous-real-time.** A raise/lower
   stroke stops accumulating height once it has moved 14 m total (`MAX_STROKE_RISE` in
   `TerrainTool.js`), regardless of how long the drag is held. This was added as a direct fix for a
@@ -230,8 +239,9 @@ calls and a few hundred triangles, well inside any reasonable per-module soft ca
   `buildings.place` and `animals.spawn` all mint a fresh id on every call — there is no "restore under
   this exact id" entry point in any of the three modules — so undoing a bulldoze and then redoing it
   (or vice versa) leaves a *different* id than whatever existed before, even though position/type/kind
-  are identical. `world.selection` is cleared rather than left pointing at a stale id across such an
-  op. Terrain and zone undo/redo have no such issue (they mutate the shared array in place).
+  are identical. After every undo/redo, a selection whose entity no longer exists is cleared
+  (`selection:changed` → `{kind: null, id: null}`); before 2026-09-25 undoing a placement left the
+  selection on the deleted id (critic round 4). Terrain and zone undo/redo have no such issue (they mutate the shared array in place).
 - **`zoning`'s `paintCells` cannot directly restore a captured `NO_BUILD` cell** (only
   `HABITAT|VISITOR|SERVICE|NONE` are valid paint targets) — zone undo/redo remap any captured
   `NO_BUILD` value to `NONE` on restore and rely on `zoning`'s own `recomputeNoBuild()` (called from

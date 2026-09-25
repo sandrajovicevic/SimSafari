@@ -18,7 +18,7 @@ numbers off a screenshot.
 | `isEnabled` | `(name) → boolean` | |
 | `setQuality` | `(q) → boolean` | `'low'\|'medium'\|'high'`; rebuilds the whole chain. |
 | `setAA` | `(mode)` | `'fxaa'\|'smaa'\|'none'`, overrides the tier default; rebuilds. |
-| `setBloomMode` | `(mode)` | `'mip'` (default, lean 3-level mip chain, 5 draws) or `'unreal'` (three's `UnrealBloomPass`, ~13 draws); rebuilds. |
+| `setBloomMode` | `(mode)` | `'mip'` (default, 4-level 13-tap mip chain, 7 draws) or `'unreal'` (three's `UnrealBloomPass`, ~13 draws); rebuilds. |
 | `setGrade` | `({exposure, contrast, saturation, warmth, lift, vignette, grain, bloom})` | any subset; cheap (no rebuild). `exposure` multiplies inside the grade shader — `renderer.toneMappingExposure` is owned by `environment` and untouched. |
 | `getGrade` | `() → object \| null` | copy of current grade state. |
 | `setAO` | `({radius, intensity, scale, thickness})` | metres/0-1/AO-exponent/metres; any subset. |
@@ -43,11 +43,12 @@ ScenePass      scene → offscreen HDR target (HalfFloat, 4× MSAA, float depth 
 AOPass         GTAO from depth only (normals reconstructed, no 2nd geometry pass)          [2]
 ResolvePass    scene × AO, + heat-haze UV refraction                                       [1]
 ParticlesPass  soft dust/smoke/splash quad-instances over the resolved buffer              [1]
-BloomPass      soft-knee threshold → 3-level mip chain → tent upsample (¼ res)              [5]
-GradePass      + bloom, exposure/contrast/saturation/warmth/lift, vignette, fine grain      [1]
+BloomPass      Karis 13-tap threshold → 4-level 13-tap mip chain → tent upsample (¼ res)    [7]
+GradePass      + bloom, exposure, toe-protected contrast, sat/warmth, night scotopic shift,  [1]
+               lift, vignette, fine grain
 FXAAPass       (SMAA at 3 draws if selected)                                               [1]
 OutputPass     ACES tone mapping + sRGB (renderer.toneMappingExposure, owned by environment) [1]
-                                                                              total extra = 12
+                                                                              total extra = 14
 ```
 
 `quality=low` drops AO and bloom (FXAA-only): **5** extra draws, measured. `quality=off` (`setEnabled('pipeline', false)`)
@@ -58,8 +59,8 @@ depth test instead of the soft-particle depth texture.
 
 | tier | MSAA | AO | AO samples/scale | Bloom | Haze | AA | measured extra draws |
 |---|---|---|---|---|---|---|---|
-| high | 4× | on | 16 / 1.0 | on | on | fxaa | 12 |
-| medium | 2× | on | 8 / 0.5 | on | on | fxaa | 12 |
+| high | 4× | on | 16 / 1.0 | on | on | fxaa | 14 |
+| medium | 2× | on | 8 / 0.5 | on | on | fxaa | 14 |
 | low | off | off | — | off | off | fxaa | 5 |
 
 (medium and high add the same *passes* as each other — only sample counts/MSAA/AO render-scale differ
@@ -82,13 +83,13 @@ hides the showcase's `effects-stage` group and re-renders to isolate its exact c
 
 | preset | total draws | → pipeline (passes) | → effects' own test yard | → environment (sky/sun/moon/clouds) |
 |---|---|---|---|---|
-| overview (17.5h) | 204 | **12** | 189 | 3 |
-| close (17h) | 201 | **12** | 186 | 3 |
-| heat (13h) | 172 | **12** | 157 | 3 |
-| night (22h) | 213 | **12** | 197 | 4 |
+| overview (17.5h) | 204 → 206 | **12 → 14** | 189 | 3 |
+| close (17h) | 201 → 203 | **12 → 14** | 186 | 3 |
+| heat (13h) | 172 → 174 | **12 → 14** | 157 | 3 |
+| night (22h) | 213 → 215 | **12 → 14** | 197 | 4 |
 | off (17.5h, bypassed) | 192 | 0 | 189 | 3 |
 
-**The pipeline itself costs exactly 12 draw calls in every preset** — precisely the spec's budget — and
+**The pipeline itself costs exactly 12 draw calls in every preset** (14 since the 2026-09-25 bloom kernel, see Known gaps) — the spec's budget at the time — and
 that number does not move with camera angle or time of day, as expected for a fixed sequence of
 full-screen passes. Every remaining draw is the showcase's own test-yard content (spheres, plinths,
 crates, tanks, rocks, campfire, lamp posts, trees, skyline) plus, surprisingly, its 3-cascade shadow
@@ -107,33 +108,56 @@ individual meshes, and doing the same for the 9 unique displaced-icosahedron roc
 this module is actually scored on and was not done this round to avoid spending effort outside what's
 visible.
 
-## `off` vs `overview` A/B (round-1 finding, resolved)
+## `off` vs `overview` A/B — calibration (rewritten 2026-09-25, round 5 fix)
 
-Round 1 shipped without ever comparing the `off` preset (pipeline bypassed) to `overview` (pipeline on).
-Done this round: `tools/shots/effects-overview-17_5.png` vs `tools/shots/effects-off-17_5.png`, same
-camera/time/seed, plus a pixel-level diff (`960×540`, mean over RGB channels):
+The round-1/2 numbers that used to be here (mean abs diff 12.7, "exposure unaffected") did not reproduce:
+the critic measured the bare chain (every optional pass off) at **+39 %** frame mean over direct rendering at
+golden hour and the full chain at **−30 %** in the game at night (`docs/critic/effects-round4.md`). Both
+were real; neither was a bloom/grade taste issue.
 
-* **Mean abs difference across the whole frame: 12.7 / 255 (≈5%).** Small, as intended — post
-  effects here are meant to be a refinement, not a repaint (the spec asks for "subtle" bloom and a
-  "gentle" vignette).
-* **Corner luminance: 100.8 (pipeline on) vs 113.3 (pipeline off) — corners are ~11% darker with the
-  pipeline on.** This isolates the vignette contribution cleanly since the frame corners are far from
-  every light source and shadow.
-* **Centre luminance: 93.0 vs 95.7 — only ~3% darker with the pipeline on**, consistent with a mild
-  GTAO contact-darkening + contrast/saturation shaping rather than a global exposure change (exposure
-  itself is unaffected — the pipeline's `exposure` grade term is 1.0 by default and `environment` sets
-  `renderer.toneMappingExposure` identically in both cases).
-* At this camera distance (240 m) individual ambient dust motes and the sun-disc bloom halo are only a
-  handful of pixels each, so they barely move the frame mean but do produce the diff's `maxAbsDiff` of
-  188 (isolated bright pixels, not a global shift).
-* Renderer-level MSAA (`antialias: true` on the `WebGLRenderer`, set by core) still applies in `off`
-  mode, so edge aliasing is not part of this A/B — both images have hardware AA; the pipeline's own
-  FXAA/SMAA pass is an additional, separate refinement on top of that baseline.
+**Root cause 1 — fog, not the chain.** three applies `fog_fragment` *after* tone mapping and sRGB encoding,
+and uploads `fogColor` in the output colour space (`getUnlitUniformColorSpace`). Rendering straight to
+the canvas therefore mixed an sRGB-encoded fog colour into a display-encoded pixel; rendering into the
+chain's HalfFloat target mixed a linear colour in linear light. Same scene, different fog. With
+`scene.fog = null` the two paths were already byte-identical (59.7 / 59.8). Fixed in
+`environment/chunks.js`: fog now runs at the head of `tonemapping_fragment` (linear, before exposure) and
+decodes `fogColor` when the program's output is sRGB. Grey-card test (plane at 5 km, fog density 1,
+three colours) and the full scene now match **byte for byte** on both paths.
+*Side effect worth knowing:* every module showcase that renders without `effects` (direct path) now shows
+the same aerial fog as the game. Distant terrain in those showcases is hazier/brighter than before —
+that is the game's look; before, the standalone shots under-fogged.
 
-Honest takeaway: at a typical overview distance, the pipeline is a real but deliberately subtle
-refinement, exactly as specced ("subtle bloom", "gentle vignette", grain ≤0.02) — not a dramatic
-before/after. The difference is much more visible up close (see `close`, where GTAO/bloom/dust
-particles all become individually legible against the PBR spheres) than from 240 m out.
+**Root cause 2 — grade contrast pivot.** `GradePass` runs before `OutputPass` applies
+`renderer.toneMappingExposure` (≈0.8 by day, 12 at night), but pivoted contrast at a fixed linear 0.18. A
+night frame sits near 0.015 pre-exposure, so 1.06 contrast pulled the whole frame down ~15 %. The pivot is
+now `0.18 / exposure` (display middle grey) and the curve fades to identity ~4 stops below it (toe
+protection), so contrast acts on midtones and highlights and does not crush night blacks.
+
+**Measured after the fix** (480×270, seed 1, `high`, frame mean over RGB, `tools/.fxcal` probes via `capture()`):
+
+| scene | direct | bare chain | full chain | full vs direct | of which AO / vignette |
+|---|---|---|---|---|---|
+| effects `overview` 17.5 h | 98.0 | 98.0 | 94.9 | −3.2 % | −0.3 / −1.1 |
+| game `low` 14 h | 116.5 | 118.0 | 114.4 | −1.8 % | −3.4 / −1.0 |
+| game `low` 21.5 h | 21.8 | 22.0 | 19.9 (before night shift) | −8.7 % | −5.0 / −1.8 |
+
+Before: +34 % / 0 % / −30 %. What remains is AO darkening occluded areas and the vignette darkening
+corners — what those passes are for. The bare chain is within 1.3 % of direct everywhere.
+
+## Night look (round 5 fix)
+
+Critic round 4 read the game at night as "warm sepia-brown". The old grade scaled the *day* sun tint with a
+tiny blue boost. Replaced with a Purkinje-style scotopic shift in `GradePass` (`uNight` = 1 once the sun is
+below the horizon): pixels below ~0.45 displayed luminance lose most of their colour and drift blue-grey;
+lamps, fires and anything bright keep their warm colour. Verified: `game-low-21_5.png` /
+`game-overview-21_5.png` read cool and desaturated with warm lamp accents (first attempt at 0.8 strength read
+neutral grey, pulled back to 0.6 with a bluer target).
+
+## Bloom kernel (round 5 fix)
+
+The 4-tap box chain made visibly square halos around lamp heads. Now: 13-tap (Jimenez 2014) downsample
+with a Karis average on the first level (no fireflies), 4 levels instead of 3, 3×3 tent upsample. Halos in
+`effects-night-22.png` are round. Cost 5 → 7 draws, pipeline total 12 → **14** at high/medium.
 
 ## Visual re-verification after the environment/terrain fixes (round 2)
 
@@ -176,10 +200,10 @@ All at 960×540, `seed=1`, `quality=high`, zero console errors on every shot.
 
 | preset | tod | screenshot | draws | tris | what it shows |
 |---|---|---|---|---|---|
-| `overview` | 17.5 | `tools/shots/effects-overview-17_5.png` | 204 | 251,453 | Full stack at golden hour: GTAO contact shadows under crates/spheres/trees, warm filmic grade, gentle vignette, ambient dust motes, subtle bloom on the sun disc — judged against the `off` A/B above. |
-| `close` | 17 | `tools/shots/effects-close-17.png` | 201 | 252,689 | Fixed this round (see above). Dust puffs and campfire smoke, soft-particle fade into ground/crates, PBR sphere materials (metal/rock/paint) read clearly with real specular variation, rim-lit by the low sun. |
-| `heat` | 13 | `tools/shots/effects-heat-13.png` | 172 | 212,863 | Midday, clear sky. `api.getHazeStrength()` reads **0.875** (verified via `--eval`, temperature forced to 37 °C by the preset) — the shimmer itself is a ~3 px animated noise warp, essentially invisible in a single still frame at this resolution; its presence is confirmed numerically rather than visually. A hard dark horizon band is visible where the sky meets the ground — this is `environment`'s known, already-flagged issue (see Known gaps), reproduced here, not fixed here. |
-| `night` | 22 | `tools/shots/effects-night-22.png` | 213 | 260,425 | Bloom on the 4 lit lamp heads and campfire embers, point-lit ground pools, stars visible in the upper sky band, blacks not crushed. Same horizon-band artifact as `heat` (inherited from `environment`). |
+| `overview` | 17.5 | `tools/shots/effects-overview-17_5.png` | 206 | 251,455 | Full stack at golden hour: GTAO contact shadows under crates/spheres/trees, warm filmic grade, gentle vignette, ambient dust motes, subtle bloom on the sun disc — judged against the `off` A/B above. |
+| `close` | 17 | `tools/shots/effects-close-17.png` | 203 | 252,691 | Fixed this round (see above). Dust puffs and campfire smoke, soft-particle fade into ground/crates, PBR sphere materials (metal/rock/paint) read clearly with real specular variation, rim-lit by the low sun. |
+| `heat` | 13 | `tools/shots/effects-heat-13.png` | 174 | 212,865 | Midday, clear sky. `api.getHazeStrength()` reads **0.875** (verified via `--eval`, temperature forced to 37 °C by the preset) — the shimmer itself is a ~3 px animated noise warp, essentially invisible in a single still frame at this resolution; its presence is confirmed numerically rather than visually. A hard dark horizon band is visible where the sky meets the ground — this is `environment`'s known, already-flagged issue (see Known gaps), reproduced here, not fixed here. |
+| `night` | 22 | `tools/shots/effects-night-22.png` | 215 | 260,427 | Bloom on the 4 lit lamp heads and campfire embers, point-lit ground pools, stars visible in the upper sky band, blacks not crushed; round halos (13-tap bloom) and a cool, desaturated ground under warm lamp pools (night shift, 2026-09-25). Same horizon-band artifact as `heat` (inherited from `environment`). |
 | `off` | 17.5 | `tools/shots/effects-off-17_5.png` | 192 | 235,058 | Pipeline bypassed for the A/B above — same camera/time as `overview`. |
 
 ## Known gaps (honest)
@@ -199,7 +223,14 @@ All at 960×540, `seed=1`, `quality=high`, zero console errors on every shot.
   sub-pixel at 960×540 screenshot size, and the default AA at every tier is FXAA (SMAA is implemented
   and reachable via `setAA('smaa')` but not exercised by any shipped preset).
 * **`UnrealBloomPass` mode (`setBloomMode('unreal')`) is implemented but not screenshotted** — every
-  preset here uses the default lean `mip` bloom (5 draws vs three's ~13).
+  preset here uses the default `mip` bloom (7 draws vs three's ~13).
+* **Pipeline is 14 extra draws, 2 over the original ≤12 spec** — spent on the round bloom kernel.
+* **`toneMapped: false` materials are still tone-mapped by `OutputPass`** (found 2026-09-25: animals'
+  contact shadows and tools' cursor/road-preview overlays). The chain cannot honour per-material
+  `toneMapped`; those overlays render slightly differently with the pipeline on vs off. Not visibly wrong in
+  the shots checked, not fixed.
+* **Night shift is luminance-driven, not physically scotopic** — a tuned look, verified at 21.5 h in two
+  game views only.
 * **No LOD** beyond what `frustumCulled = false` on the particle mesh already forces; the pipeline's
   own passes are resolution-independent full-screen quads so LOD doesn't apply to them, but the
   showcase's individual (non-instanced) rocks/spheres/tanks have no distance culling.

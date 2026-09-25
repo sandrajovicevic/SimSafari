@@ -7,6 +7,11 @@
 //    without calling setupMaterial(), and it does not fight with Materials.withWind's onBeforeCompile.
 // 2. fog_*: exponential height fog with a sun-ward in-scatter glow, driven by the standard scene.fog
 //    (FogExp2) uniforms. World position is reconstructed from mvPosition + viewMatrix (no extra uniforms).
+//    The fog is applied at the head of tonemapping_fragment, i.e. in linear HDR BEFORE exposure, tone
+//    mapping and sRGB encoding. three's stock order (fog_fragment after colorspace_fragment) mixes a linear
+//    fog colour into a display-encoded pixel when rendering straight to the canvas, but in linear light when
+//    rendering to a HalfFloat target (effects' chain) — the same scene then differed by +39 % frame mean at
+//    golden hour between the two paths (critic effects round 4). Measured after this change: identical.
 import * as THREE from 'three';
 
 const SC = THREE.ShaderChunk;
@@ -117,7 +122,8 @@ const fogParsFragment = /* glsl */ `
 `;
 // fogDensity is interpreted as extinction per metre at ground level (y = 0); density halves every 90 m of height.
 const fogFragment = /* glsl */ `
-#ifdef USE_FOG
+#if defined( USE_FOG ) && ! defined( SIM_FOG_DONE )
+	#define SIM_FOG_DONE
 	{
 		vec3 fogRay = vFogWorldPos - cameraPosition;
 		float fogDist = length( fogRay );
@@ -133,17 +139,24 @@ const fogFragment = /* glsl */ `
 		#else
 			fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
 		#endif
-		vec3 fogCol = fogColor;
+		// three uploads fogColor in the OUTPUT colour space (getUnlitUniformColorSpace: sRGB on the canvas,
+		// linear into a render target) because its stock fog runs after encoding. This fog runs in linear
+		// light, so decode it when the output is sRGB. The probe is a compile-time constant per program.
+		vec3 fogCol = linearToOutputTexel( vec4( 0.5 ) ).r > 0.6 ? sRGBTransferEOTF( vec4( fogColor, 1.0 ) ).rgb : fogColor;
+		vec3 fogColLin = fogCol;
 		#if defined( RE_Direct ) && NUM_DIR_LIGHTS > 0
 			vec3 fogSunDir = ( vec4( directionalLights[ 0 ].direction, 0.0 ) * viewMatrix ).xyz;
 			float fogMu = max( 0.0, dot( fogRay / max( fogDist, 1e-3 ), normalize( fogSunDir ) ) );
 			float fogSunLum = dot( directionalLights[ 0 ].color, vec3( 0.2126, 0.7152, 0.0722 ) );
-			fogCol += fogColor * ( 0.25 * pow( fogMu, 6.0 ) + 0.9 * pow( fogMu, 48.0 ) ) * min( 1.0, fogSunLum * 0.6 );
+			fogCol += fogColLin * ( 0.25 * pow( fogMu, 6.0 ) + 0.9 * pow( fogMu, 48.0 ) ) * min( 1.0, fogSunLum * 0.6 );
 		#endif
 		gl_FragColor.rgb = mix( gl_FragColor.rgb, fogCol, clamp( fogFactor, 0.0, 1.0 ) );
 	}
 #endif
 `;
+
+// Fog in linear light, ahead of tone mapping; fog_fragment itself becomes a no-op once this ran (SIM_FOG_DONE).
+const tonemappingFragment = fogFragment + SC.tonemapping_fragment;
 
 let installed = false;
 export function installChunks() {
@@ -156,6 +169,7 @@ export function installChunks() {
   SC.fog_vertex = fogVertex;
   SC.fog_pars_fragment = fogParsFragment;
   SC.fog_fragment = fogFragment;
+  SC.tonemapping_fragment = tonemappingFragment;
 }
 
 installChunks();
