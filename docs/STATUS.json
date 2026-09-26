@@ -910,6 +910,28 @@
         "savannah-night soft bloom cluster in sky (medium)",
         "close-range grass scribble mottle (minor)"
       ]
+    },
+    "gameplayFidelityP1": {
+      "date": "2026-09-26",
+      "branch": "claude/gifted-pascal-l0as60",
+      "scenarios": 14,
+      "allOk": true,
+      "consoleErrors": 0,
+      "determinismIdentical": true,
+      "breakEven15": {
+        "before": 433,
+        "after": 506
+      },
+      "organic100d": {
+        "animalsBefore": 100,
+        "animalsAfter": 79
+      },
+      "newScenarios": {
+        "plantAloe": "elephant capacity 3 -> 5 (+2), food cap 3 -> 11, $4524",
+        "removePrey": "lag 16 d, lions 0 by day 19, control 3",
+        "spread": "extra cover 0.025 -> 0.066 ha / 30 d, drought 0.033"
+      },
+      "note": "gameplayFidelity score left at 8 (not re-scored by a critic). Concern: demo woodland elephants exceed food capacity by ~day 30; starvation collapse is abrupt (3 days)."
     }
   },
   "history": [

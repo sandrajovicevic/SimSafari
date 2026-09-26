@@ -154,6 +154,31 @@ punished; the regression tests in test.mjs pin it).
 
 ## Measured
 
+* **Wave P1 (integrator re-run on the merged branch, 2026-09-26; seed 1, live park with the demo
+  planting, SwiftShader):** tests **110 passed, 0 failed**; full `tools/fidelity.mjs` — all 14
+  scenarios OK, 0 console errors, **determinism identical** (30 days).
+
+  | scenario | before P1 (2026-09-25) | after P1 |
+  |---|---|---|
+  | price-sweep $15 net/day (break-even headline) | +$433 | **+$506** |
+  | price-sweep $12 / $20 net/day | — / — | −$130 / −$1,073 |
+  | baseline $25: net/day, born/died/left in 30 d | −$2,497, 11/6/0 | −$1,513, 10/5/0 |
+  | elasticity $10 / $40 / $60 arrivals/day | 274 / 80 / 49 | 275 / 83 / 50 |
+  | bankruptcy day | 17 | 17 |
+  | poaching, 100 organic days: animals 80 → | 100 (elephants 5, lions 2) | **79 (elephants 3, lions 1)** |
+  | disease: impala deaths during / impala end | 4 / 26 | 11 / 21 |
+  | prosperity chain (3 links) | all true | all true |
+  | **plant-aloe**: woodland elephant capacity, day 30 | — | control 3, planted 5 (food cap 3 → 11), $4,524 |
+  | **remove-prey**: lions (removed vs control) | — | 3 held to day 15, 1 on day 16, 0 by day 19; control 3 |
+  | **spread**: red-oat extra cover, 30 d | — | 0.025 → 0.066 ha; drought 0.033 ha; reach stays 9 cells |
+
+  Reading it: the economy headline holds (+$506/day at $15). The park no longer grows unbounded —
+  100 organic days end at 79 animals instead of 100, because capacity is now food-limited. The demo
+  woodland is **at or over** its elephant food capacity even with the demo planting (control
+  capacity falls to 3 for 5 elephants by day 30), so elephants decline unless the player plants
+  more browse — the intended pressure, but steep for an opening park. The disease difference is
+  one seed; not investigated.
+
 * Tests: **89 passed, 0 failed** (`node src/modules/simulation/test.mjs`; 58 pre-round-3 — all
   still passing — plus 22 round-3 tests for the births mechanics, room cap, replan(), spend() and
   injectEvent, plus 9 staged-population reconciliation tests: the ledger-only write-off, the
@@ -176,6 +201,13 @@ punished; the regression tests in test.mjs pin it).
   other modules.
 
 ## Known gaps (honest)
+
+* **P1 food web:** starvation (`CONST.starveRate` 0.08/day per excess predator) turns a 16-day
+  hunger lag into a 3-day collapse (lions 3 → 0 between days 15 and 19) — abrupt rather than a
+  gradual decline. Grazing below the seeded baseline is simulated but not drawn (props draws only
+  cover above `world.vegetation.natural`). There are no insectivores among the 12 species, so
+  the original's "insects come free with grass" rule does not apply. The demo park's woodland
+  elephants exceed food capacity by day ~30 (see Measured).
 
 * **The $20 overview park is not profitable day to day** (median −$284/day); its 60-day cash gain is
   event windfalls. Not tuned yet: the fidelity harness says $15 is the break-even price.
