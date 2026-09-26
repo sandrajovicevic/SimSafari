@@ -6,8 +6,10 @@ boulders, termite mounds and fallen logs. Owns the `props` scene group and nothi
 `world` except its own bookkeeping (grazing state, tree-cover field) — placement respects
 `world.grid.occupancy` and `world.terrain.biome`/heights but never writes them.
 
-It also draws a second, additive layer (`plants.js`) from `world.vegetation` — the P1 food-web
-plant catalogue (`core/Plants.js`, `docs/specs/p1-food-web.md`). See "P1 vegetation layer" below.
+The scatter and the grass field **follow `world.vegetation`** (P2 prerequisite, 2026-09-26): grazed,
+burnt or regrown cover thins and restores the same trees, shrubs and grass tufts — see "Vegetation
+grid" below. It also draws a second layer (`plants.js`) for cover **above** the natural baseline — the
+P1 food-web plant catalogue (`core/Plants.js`, `docs/specs/p1-food-web.md`). See "P1 vegetation layer".
 
 ## What it looks like
 
@@ -20,6 +22,8 @@ plant catalogue (`core/Plants.js`, `docs/specs/p1-food-web.md`). See "P1 vegetat
 | `riverine` | `tools/shots/props-riverine-auto.png` | Dense fever-tree gallery forest along the river in morning light, lime-yellow bark |
 | `close` | `tools/shots/props-close-auto.png` | Ground detail: termite mound, thorn bush, fallen log, dead tree and boulder against dry grass |
 | `night` | `tools/shots/props-night-auto.png` | Moonlit acacia silhouettes over grass and a kopje (very dark after `environment`'s auto-exposure ceiling was tightened from 60→4 for physical realism — see Known gaps) |
+| `unburnt` | `tools/shots/after-props-unburnt.png` | Control for `burnt`: a wooded patch by the river at 14:00 with a staged uniform natural baseline, cover = natural (scatter drawn exactly as without the grid) |
+| `burnt` | `tools/shots/after-props-burnt.png` | Same view, cover staged to 0 in a 60 m disc and to 35 % of natural in a ring out to 95 m: grass, fever trees, acacias and scrub gone in the disc and thinned in the ring; rocks/termite mounds/logs stay |
 | `plants` | `tools/shots/props-plants-auto.png` | All 10 P1 food-web plants laid out with staged test cover (docs/specs/p1-food-web.md): four grass tussocks and the sour-plum bush/aloe row in front, umbrella thorn/knobthorn/marula/baobab spaced out behind — see "P1 vegetation layer" below |
 
 `tools/shots/diag-noprops.png` is a controlled test with the whole `props` group hidden
@@ -64,6 +68,17 @@ incrementally as trees are placed/removed. `graze` reduces a 256×256-cell grazi
 faster nowhere in particular (uniform rate — see Known gaps).
 
 ```js
+grassRatioAt(x, z)                  // → 0..1 Σ grass cover / Σ natural grass cover (bilinear over 16 m cells)
+```
+**How `graze()` and the food web combine.** Both are multiplicative on the biome density:
+`grassDensityAt = biome/slope/moisture density × graze multiplier (props-local, 4 m cells, short-term
+trampling, regrows in `tick()`) × grassRatioAt (simulation's stock)`. The rendered field uses the same
+product (the graze multiplier is baked into grass chunks, the ratio is applied at pack time), so
+`grassDensityAt` and what is drawn agree. `graze()` never writes `world.vegetation`; simulation's own
+grazing is what moves the ratio. If `animals` ever calls `graze()` for the same herds simulation
+already grazes, the effect is counted twice — callers should use one or the other.
+
+```js
 kinds()                             // → ['acacia','fever','baobab','dead','shrub','boulder','termite','log']
 kindInfo(kind)                      // → { kind, type:'tree'|'prop', variants, height, crownR, hasImposter } | null
 getStats()                          // → live counts + timings, see below
@@ -80,6 +95,9 @@ refresh()                           // force a full re-pack + grass rebuild next
   grassChunks,                      // cached near+far grass chunks currently in memory
   instancedMeshesDrawn,             // InstancedMesh draw calls actually issued this pack
   packMs, grassRebuildMs,           // last prop-pack / grass-rebuild wall time (ms)
+  vegHiddenTrees, vegHiddenShrubs,  // scatter trees / shrubs currently hidden by the vegetation grid
+  vegNoBaseline,                    // grid-bound items with no woody natural cover within 80 m (drawn unconditionally)
+  vegApplyMs, vegApplies,           // last vegetation-grid apply wall time (ms), applies so far
 }
 ```
 
@@ -93,6 +111,11 @@ Consumed:
 * `road:added` / `road:changed` — removes props whose position falls within the road's carriageway
   width of its centreline.
 * `building:placed` — clears props in a padded footprint around the building.
+* `vegetation:changed` `{x0,z0,x1,z1}` — (1) `plants.js` re-derives the above-baseline cells in the
+  rect; (2) the rect is unioned into a pending rect that `update()` applies at most once per 0.5 s
+  (immediately for the first apply and in the showcase): ratios for its cells (+ a 2-cell halo for the
+  neighbourhood fallback), visibility of the scatter items in them, `coverAt` splat rebuilt only if an
+  item flipped, and a grass repack (no chunk regeneration) only if a grass ratio moved.
 
 Emitted:
 * `props:changed { x0,z0,x1,z1 }` — after `scatter`, `place`, `remove`-driven region changes, or a
@@ -100,13 +123,69 @@ Emitted:
 
 ## Presets
 
-`overview`, `grass`, `acacia`, `kopje`, `riverine`, `close`, `night`, `plants` — see the table above
+`overview`, `grass`, `acacia`, `kopje`, `riverine`, `close`, `night`, `plants`, `unburnt`, `burnt` — see the table above
 for what each shows; full camera/tod/description data is in `showcase.js`. `stage()` calls
 `terrain.generate()` first if the terrain hasn't produced features yet, reads the real kopje/river
 positions to place cameras sensibly for whatever seed is active, then calls `scatter()` — so every
 preset is populated by the same rules the full game uses, not hand-placed set dressing (except
 `acacia`/`close`, which clear a small radius and hand-place a few props for a controlled,
 readable close-up, and `plants`, see below).
+
+## Vegetation grid (natural scatter ↔ `world.vegetation`)
+
+simulation owns `world.vegetation.cover` and snapshots its seeded state in `.natural`. The biome
+scatter + `GrassField` are the drawing of that natural state, so they now follow the grid in both
+directions (no second layer, no new positions):
+
+* **Trees/shrubs.** Each scattered item stores its vegetation cell, a ratio slot and a fixed threshold
+  `u ∈ [0,1)` (hash of its position — stable across clear/re-scatter). It is drawn only while
+  `ratio > u`, `ratio = clamp(cover / natural, 0, 1)` for its slot. 30 % of natural → ~30 % of the
+  same trees; regrowth brings the same ones back.
+
+  | scatter kind | slot | fallback when that slot's natural cover is 0 in the cell |
+  |---|---|---|
+  | acacia | `umbrella_thorn` | cell's total tree ratio → 5×5-cell (80 m) tree ratio → 80 m woody ratio → 1 |
+  | baobab | `baobab` | same chain |
+  | fever | cell's total tree cover (no catalogue entry) | 80 m tree ratio → 80 m woody ratio → 1 |
+  | shrub | aloe + sour plum together (the scatter's generic thorn scrub is neither exactly) | 80 m shrub ratio → 80 m woody ratio → 1 |
+  | dead, boulder, termite, log | never change | — |
+
+  The neighbourhood fallback exists because simulation seeds trees sparsely (P = site × treeDensity):
+  measured in the full game (seed 1) **1,586** grid-bound items sat in a cell with no woody baseline of
+  their own and would have survived a fire; with the 80 m fallback that is **0** (`vegNoBaseline`).
+  natural = 0 all the way out → ratio 1 → drawn as before (e.g. the showcase, where simulation isn't
+  loaded; `burnt`/`unburnt` stage a baseline themselves).
+* **Grass.** Per cell `Σ grass cover / Σ natural grass cover` (1 where natural is 0), sampled
+  bilinearly so a burn edge fades over one 16 m cell instead of stepping. Every tuft candidate carries a
+  keep threshold (`grass.js` stride slot 10, derived from already-drawn hash values so today's field is
+  byte-identical) tested at **pack** time — a cover change costs a repack, never a chunk regeneration.
+  While every ratio is 1 the pack loops skip the lookup (`veg.active`).
+* `coverAt()` (habitat shade) drops hidden trees.
+* Budget: 0 extra draw calls (hidden items are simply not packed), no per-frame allocations (the
+  apply iterates `S.items` only when a throttled rect is pending). Whole-world apply measured
+  1.3–5.0 ms (`vegApplyMs`, SwiftShader, 4,788 items), once at start-up and after a reseed.
+* Proof: `burnt` vs `unburnt` presets, and an in-game test burn — `--game --preset close --tod 14`
+  with an `--eval` that zeroes all cover in a 60 m disc at the rig target (`tools/shots/a2-game-close-14-burnt.png`
+  vs `a2-game-close-14.png`): 17 trees + 46 shrubs hidden, grass gone in the disc, 0 errors.
+
+### Measured (P2-prerequisite pass, 2026-09-26, seed 1, SwiftShader 1920×1080, same commands before/after)
+
+| capture | draws before → after | triangles before → after | errors | `props.updateMs` / `updatePeakMs` before → after |
+|---|---|---|---:|---|
+| `--game --preset overview --tod 14` | 336 → 336 | 4,499,309 → 4,539,265 (+0.9 %) | 0 | 12.00 / 28.8 → 13.20 / 42.9 |
+| same, 2 repeats each (stash vs tree) | 336 / 336 | 4.52–4.53 M / 4.49–4.54 M | 0 | before 13.15 / 30.3, 12.25 / 25.8 · after 12.19 / 31.5, 13.05 / 37.9 |
+| `--game --preset close --tod 14` | 408 → 408 | 5,678,126 → 5,629,392 | 0 | 9.47 / 13.2 → 9.52 / 16.4 |
+| `--module props --preset overview` | 134 → 134 | 3,879,710 → 3,879,710 | 0 | 0.004 / 0.1 → 0.005 / 0.1 |
+| `--module props --preset acacia` | 135 → 135 | 3,495,573 → 3,495,573 | 0 | 0.008 / 0.2 → 0.004 / 0.1 |
+| `--module props --preset plants` | 182 → 182 | 3,824,827 → 3,824,827 | 0 | 0.005 / 0.1 → 0 / 0 |
+| `--module props --preset unburnt` / `burnt` | 145 / 145 | 3,629,956 / 2,921,842 | 0 | 0.006 / 0.1, 0.016 / 0.1 (33 trees + 96 shrubs hidden) |
+
+Mean `updateMs` is unchanged within run-to-run noise (it is dominated by grass chunk streaming, still
+in progress at capture: 90–120 pending chunks). **`updatePeakMs` on game overview was higher in all
+three after-runs (31.5–42.9) than the three before-runs (25.8–30.3)**; in the game every grass ratio
+is 1, so the new per-frame work is one flag test in the grass pack loop and a timer — I believe this
+is SwiftShader streaming noise but have not proven it. Whole-world grid apply: 1.6–1.8 ms in game,
+17–31 ms in showcase captures (measured during page start-up contention; one-shot).
 
 ## P1 vegetation layer (`world.vegetation`, `plants.js`)
 
@@ -244,6 +323,15 @@ particularly on first load or after a large camera jump (e.g. a showcase preset 
   rebuild; it and everything it calls (`biomeRowAt`, `biomeAtFast`, `cellIndexAt`, `macroAt`) write
   into shared scratch objects/arrays instead of `world.cellAt`/`world.biomeAt` (which both
   allocate). Keep it that way.
+* **Lit imposters (2026-09-26, blind critics round 6+7 issue 3).** Each view (side card, top crown
+  card) is baked twice: unlit albedo, and a normal + occlusion card (`imposter.js: normalBakeMaterial`):
+  rgb = world normal (leaf-card normal blended 70 % toward an ellipsoid fitted to the crown's bounding
+  box — raw card normals are noise at 5–20 px), a = occlusion (how far behind the crown's front surface
+  along the view the visible foliage sits, × a darker underside). The billboard's shading normal comes
+  from that card (side card rotated into the cylindrical billboard frame, mirrored with the instance's
+  signed width), so at overview a crown has a sun side, a shadow side and darker gaps between clumps
+  instead of a flat disc. Empty texels clear to an encoded +Y normal so mips don't drift toward 0.
+  Same geometry, same draw calls; +2 small render targets per tree variant (9 variants).
 * **Imposters are per-variant.** Each tree species bakes one billboard imposter per geometry
   variant (not one per species) and packs distant instances with a signed x-scale that mirrors
   ~half of them, so the LOD2 ring along a horizon does not repeat the same cut-out at regular
@@ -251,6 +339,19 @@ particularly on first load or after a large camera jump (e.g. a showcase preset 
 
 ## Known gaps (honest)
 
+* **Imposters still have no cast shadow and one silhouette per view.** The overview crowns now shade
+  as volumes, but they don't drop a shadow on the ground (the LOD geometry does), and the crown card is
+  one top-down bake, so every tree of a variant has the same outline from above (mirroring halves the
+  repetition). An octahedral multi-view bake would fix the silhouette; a ground-shadow quad in the same
+  draw call would fix the missing shadow. Not done.
+* **Vegetation grid gaps.** (1) Dead trees, boulders, termite mounds and logs never react — a fire
+  leaves them standing (by design, per the task; P2 may want charred dead trees). (2) The terrain's
+  ground colour doesn't change: a burnt disc shows unburnt photo ground with no grass on it — terrain's
+  job. (3) A burn is cell-granular (16 m): tree visibility steps per cell, only grass is bilinear.
+  (4) Trees with no woody natural cover within 80 m are still drawn unconditionally (0 in the seed-1
+  game; could be non-zero on other seeds). (5) Fever trees and shrubs use aggregate slots, not a
+  catalogue plant. (6) `plants.js` still draws its own individuals for cover above natural, placed
+  independently of the scatter, so regrowth *above* the baseline adds new trees at new positions.
 * **Integration with the simulation's seeding (integrator, 2026-09-26).** Once `simulation` seeded
   natural cover across the whole map, this additive layer redrew what the biome scatter already
   draws: game `close` 14 h went from 4.99 M to 12.6 M triangles and read as closed-canopy forest with
@@ -258,8 +359,8 @@ particularly on first load or after a large camera jump (e.g. a showcase preset 
   snapshot, written by simulation) and by guaranteeing an individual only at ≥ ½ of a plant's
   `maxCover`, so slow natural regrowth stays probabilistic. Re-measured: `close` 14 h 408 draws /
   5.04 M tris, `overview` 14 h 336 / 4.48 M, 0 errors; the park's demo planting shows 20 plant cells.
-  Consequence: grazing **below** the natural baseline does not visibly thin anything — the two
-  layers are still separate (spec §props.3's unified scatter is not done).
+  Grazing/burning **below** the natural baseline is now drawn by the scatter itself (see "Vegetation
+  grid"); above it is still `plants.js`'s additive layer.
 
 * **Triangle budget.** The spec's "≤ 3 M tris at overview" is exceeded (≈ 4.0 M measured). The
   grass field is the largest contributor (3 draw calls but up to ~250k instances × ~40–70 tris per
@@ -327,7 +428,8 @@ particularly on first load or after a large camera jump (e.g. a showcase preset 
 
 ### P1 vegetation layer (`plants.js`) known gaps
 
-* **Additive, not merged into `scatter()`/`GrassField`.** The spec allows this ("if too invasive,
+* **Additive above the baseline only.** Below the natural baseline the scatter/grass now follow the
+  grid (see "Vegetation grid"); above it this layer still draws independently. The spec allows this ("if too invasive,
   draw additively and document why"). Both existing systems are tuned, critic-passed, and keyed on
   biome/macro-noise rather than per-plant cover; re-deriving grass tuft density or tree placement
   from `world.vegetation` inside `RULES`/`grassSample()` — while also keeping the existing look
