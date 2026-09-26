@@ -931,7 +931,20 @@
         "removePrey": "lag 16 d, lions 0 by day 19, control 3",
         "spread": "extra cover 0.025 -> 0.066 ha / 30 d, drought 0.033"
       },
-      "note": "gameplayFidelity score left at 8 (not re-scored by a critic). Concern: demo woodland elephants exceed food capacity by ~day 30; starvation collapse is abrupt (3 days)."
+      "note": "Follow-ups applied (full-habitat demo planting, starveRate 0.03, rootReserve 0.1). gameplayFidelity score left at 8 (not re-scored by a critic).",
+      "followUps": {
+        "date": "2026-09-26",
+        "breakEven15": 433.13,
+        "organic100d": {
+          "animals": 95,
+          "elephants": 5,
+          "lions": 3
+        },
+        "woodlandElephantCapDay30": 5,
+        "plantAloe": "5 vs 2",
+        "removePrey": "lions 3->2 day 8, 0 by day 18",
+        "note": "opening park economy identical to pre-P1 to the cent: planting makes food non-binding at the start"
+      }
     }
   },
   "history": [

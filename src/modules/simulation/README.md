@@ -154,6 +154,27 @@ punished; the regression tests in test.mjs pin it).
 
 ## Measured
 
+### P1 follow-ups (integrator, 2026-09-26; seed 1, live park, SwiftShader)
+
+Changes: the park demo now plants the whole woodland (aloe 0.3 + marula 0.25) and the whole wetland
+(sedge 0.9 + red oat 0.6); `CONST.starveRate` 0.08 → 0.03; `VEG.rootReserve` 0.1 (grazing never takes
+a cell below 10 % of its ceiling). Tests 110/110; harness baseline, determinism, poaching, price-sweep,
+plant-aloe, remove-prey all OK, 0 console errors, determinism identical.
+
+| | P1 as merged | after follow-ups |
+|---|---|---|
+| $15 net/day | +$505.90 | **+$433.13** |
+| baseline $25 net/day | −$1,513.27 | −$2,496.83 |
+| poaching 100 d: animals end · elephants · lions | 71–79 · 2–3 · 1 | **95 · 5 · 3** |
+| woodland elephant capacity day 30 (demo park) | 2–3 | **5** (food cap 11) |
+| plant-aloe (demo planting stripped for both runs) | 5 vs 2 | 5 vs 2 (food cap 11 vs 2) |
+| remove-prey lions | 3 held to day 15, 0 by day 19 | 3 → 2 on day 8, 1 on day 16, 0 by day 18 |
+
+The opening-park economy is back to the pre-P1 numbers **to the cent**: with the planting, every demo
+habitat's food capacity is at or above its space capacity, so `min(space, food)` = space and the
+starvation step never draws rng. The food web binds only once the player overstocks or stops
+planting — the opening park shows no food pressure.
+
 ### Wave P1 food web (2026-09-26, seed 1, tod 10, same machine for old and new)
 
 * Tests: **110 passed, 0 failed** — the 89 existing (unchanged; in the synthetic parks only `bust`
@@ -228,13 +249,13 @@ tiny (Plains 2.2 ha, Acacia Woodland 3.0 ha, River Wetland 0.43 ha, Pride Kopje 
 * **Food web (Wave P1):**
   * **No insectivores** among our 12 species, so the original's "insects come free with grass/shrub
     cover" rule does not apply this wave.
-  * **Overgrazing has no floor.** Cover can be grazed to 0, and grass only regrows from neighbours,
+  * **Overgrazing floor added after merge** (`VEG.rootReserve` 0.1, see P1 follow-ups). Previously: Cover can be grazed to 0, and grass only regrows from neighbours,
     so an overstocked habitat never recovers until the herd shrinks. The demo's River Wetland does
     exactly this (see Measured). A root-reserve floor (e.g. ≥ 10 % of the site ceiling) would be more
     realistic. It was not added this wave because it would need another full harness run.
   * **Herbivores over their food capacity only get unhappy** (the existing over-capacity happiness
     penalty, then migration or unhappy mortality). There is no starvation death for them. Predators
-    do starve (0.08/day per animal over capacity), because happiness alone stalled lions at exactly
+    do starve (0.03/day per animal over capacity; 0.08 at merge), because happiness alone stalled lions at exactly
     0.30 on the live park, just short of the < 0.30 migration threshold.
   * **Habitat `grass` stat is still biome-derived**, not read from `world.vegetation`. Overgrazing
     lowers capacity, not the grass-preference term of quality.
