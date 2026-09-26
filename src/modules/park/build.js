@@ -483,7 +483,9 @@ export async function buildPark(ctx, opts = {}) {
         } catch (err) { log.warn('[park] plant failed: ' + err.message); }
       }
     };
-    plantHabitat('browsers', [['aloe', 0.3], ['marula', 0.25]]);
+    // browse mostly as aloe understorey: marula at its ceiling drew two trees per 16 m cell and closed the
+    // woodland into forest (game close 14 h, 2026-09-26); a sparse marula scatter keeps it open
+    plantHabitat('browsers', [['aloe', 0.35], ['marula', 0.06]]);
     plantHabitat('wetland', [['sedge', 0.9], ['red_oat', 0.6]]);
   }
   if (sim) { try { sim.markStart(); } catch {} }
