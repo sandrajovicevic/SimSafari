@@ -251,6 +251,16 @@ particularly on first load or after a large camera jump (e.g. a showcase preset 
 
 ## Known gaps (honest)
 
+* **Integration with the simulation's seeding (integrator, 2026-09-26).** Once `simulation` seeded
+  natural cover across the whole map, this additive layer redrew what the biome scatter already
+  draws: game `close` 14 h went from 4.99 M to 12.6 M triangles and read as closed-canopy forest with
+  trunk-only baobabs. Fixed by drawing only cover **above** `world.vegetation.natural` (the seeded
+  snapshot, written by simulation) and by guaranteeing an individual only at ≥ ½ of a plant's
+  `maxCover`, so slow natural regrowth stays probabilistic. Re-measured: `close` 14 h 408 draws /
+  5.04 M tris, `overview` 14 h 336 / 4.48 M, 0 errors; the park's demo planting shows 20 plant cells.
+  Consequence: grazing **below** the natural baseline does not visibly thin anything — the two
+  layers are still separate (spec §props.3's unified scatter is not done).
+
 * **Triangle budget.** The spec's "≤ 3 M tris at overview" is exceeded (≈ 4.0 M measured). The
   grass field is the largest contributor (3 draw calls but up to ~250k instances × ~40–70 tris per
   tuft including the ground mat). Reducing segment count on the LOD1/LOD2 tuft geometries or
