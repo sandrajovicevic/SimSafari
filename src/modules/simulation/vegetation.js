@@ -188,6 +188,7 @@ export class Vegetation {
     const iz0 = Math.max(0, Math.floor((z - R + half) / c)), iz1 = Math.min(r - 1, Math.floor((z + R + half) / c));
     let cells = 0;
     let bx0 = r, bz0 = r, bx1 = -1, bz1 = -1;
+    const prev = dryRun ? null : []; // [k, cover, site] per touched cell, for undo (restore())
     for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
       const cx = (ix + 0.5) * c - half, cz = (iz + 0.5) * c - half;
       const dx = cx - x, dz = cz - z;
@@ -196,13 +197,28 @@ export class Vegetation {
       cells++;
       if (dryRun) continue;
       const k = t * N + iz * r + ix;
+      prev.push(k, this.cover[k], this.site[k]);
       if (this.site[k] < VEG.plantSite) this.site[k] = VEG.plantSite;
       if (this.cover[k] < target) this.cover[k] = target;
       if (ix < bx0) bx0 = ix; if (ix > bx1) bx1 = ix; if (iz < bz0) bz0 = iz; if (iz > bz1) bz1 = iz;
     }
     if (!cells || dryRun) return { cells, ha: cells * this.cellHa, rect: null };
     this.world.vegetation.version++;
-    return { cells, ha: cells * this.cellHa, rect: this.rectOf(bx0, bz0, bx1, bz1) };
+    return { cells, ha: cells * this.cellHa, rect: this.rectOf(bx0, bz0, bx1, bz1), prev };
+  }
+
+  /** Undo a plant(): restore the cover/site values it recorded. → dirty rect or null. */
+  unplant(prev) {
+    if (!prev || !prev.length) return null;
+    const r = this.res, N = this.nCells;
+    let bx0 = r, bz0 = r, bx1 = -1, bz1 = -1;
+    for (let j = 0; j < prev.length; j += 3) {
+      const k = prev[j], i = k % N, ix = i % r, iz = (i - ix) / r;
+      this.cover[k] = prev[j + 1]; this.site[k] = prev[j + 2];
+      if (ix < bx0) bx0 = ix; if (ix > bx1) bx1 = ix; if (iz < bz0) bz0 = iz; if (iz > bz1) bz1 = iz;
+    }
+    this.world.vegetation.version++;
+    return this.rectOf(bx0, bz0, bx1, bz1);
   }
 
   /** { [plantId]: cover } at world (x, z). */

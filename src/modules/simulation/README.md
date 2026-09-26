@@ -91,6 +91,8 @@ plant(type, x, z, radius, cover=0.25)             // plant a core/Plants.js id i
                                                   //   charged) when cash < cost; emits vegetation:changed
 getVegetation(x, z) → { [plantId]: cover }         // the 16 m cell at (x, z)
 getFoodReport(habitatId) → { [species]: {n, food, need, perAnimal, capacity, foodCapacity, spaceCapacity} }
+plantQuote(type, x, z, radius) → { cells, ha, cost, affordable }   // prices a plant() without writing (2026-09-26)
+unplant(token) → boolean   // undo: plant() now also returns `undo`; restores exact prior cover/site, refunds
                                                   //   herbivores: food units/day (core/Plants.js unit);
                                                   //   predators: kg/day prey offtake (lagged biomass × 0.05)
 species(name) → row / allSpecies() → row[]        // sim-side table: price, feed, vet, space, prefs

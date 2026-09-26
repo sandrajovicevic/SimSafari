@@ -12,23 +12,26 @@ import { RoadTool } from './RoadTool.js';
 import { ZoneTool } from './ZoneTool.js';
 import { BuildingTool } from './BuildingTool.js';
 import { AnimalTool } from './AnimalTool.js';
+import { PlantTool } from './PlantTool.js';
+import { VegetationOverlay } from './vegoverlay.js';
 import { presets, stage } from './showcase.js';
 
 const TOOLS = {
-  select: SelectTool, terrain: TerrainTool, road: RoadTool, zone: ZoneTool, building: BuildingTool, animal: AnimalTool,
+  select: SelectTool, terrain: TerrainTool, road: RoadTool, zone: ZoneTool, building: BuildingTool, animal: AnimalTool, plant: PlantTool,
 };
 
 let ctx = null;
 const S = {
   group: null, undo: null, ring: null, ribbon: null, marker: null,
   current: 'select', toolObj: null, options: {},
+  vegOverlay: null, vegOverlaySticky: false, plantQuote: null,
   road: { points: [], lastClickT: 0, lastClickPt: null },
   stroke: null, zoneStroke: null,
   pendingDelete: null, // { kind, id, expires }
 };
 S.select = (kind, id) => setSelection(kind, id);
 
-let offDown, offUp, offKey, offReq;
+let offDown, offUp, offKey, offReq, offOverlay, offVeg;
 let markerTarget = null;
 
 function setSelection(kind, id) {
@@ -154,6 +157,7 @@ function handleToolRequest(req = {}) {
   }
   if (cat === 'building') { activate('building', { ...o, bulldoze: false }); return; }
   if (cat === 'animal') { activate('animal', o); return; }
+  if (cat === 'plant') { activate('plant', { ...o, plant: sub || o.plant || 'red_oat' }); return; }
   if (TOOLS[cat]) { activate(cat, o); return; }
   ctx.log.warn(`[tools] tool:request: unknown tool "${name}"`);
 }
@@ -236,7 +240,9 @@ export default {
     S.ring = new RingCursor();
     S.ribbon = new RoadRibbon();
     S.marker = new SelectionMarker();
-    S.group.add(S.ring.mesh, S.ribbon.group, S.marker.mesh);
+    S.vegOverlay = new VegetationOverlay();
+    S.vegOverlaySticky = false;
+    S.group.add(S.ring.mesh, S.ribbon.group, S.marker.mesh, S.vegOverlay.mesh);
     S.current = 'select'; S.options = {}; S.toolObj = null;
     S.pendingDelete = null;
     markerTarget = null;
@@ -247,6 +253,14 @@ export default {
       try { handleGlobalKey(e); } catch (err) { ctx.log.error('[tools] global key handler threw', err); }
       try { S.toolObj?.key?.(ctx, S, e); } catch (err) { ctx.log.error(`[tools] ${S.current}.key threw`, err); }
     });
+
+    // ui's View → "Vegetation" overlay (sticky until another overlay is chosen); recolour on writes
+    offOverlay = ctx.events.on('ui:overlay', (p) => {
+      S.vegOverlaySticky = p?.overlay === 'vegetation';
+      if (S.vegOverlaySticky) S.vegOverlay.show(ctx.world, S.current === 'plant' ? S.options.plant : null);
+      else if (S.current !== 'plant') S.vegOverlay.hide();
+    });
+    offVeg = ctx.events.on('vegetation:changed', () => { if (S.vegOverlay?.visible) S.vegOverlay.recolor(); });
 
     offReq = ctx.events.on('tool:request', (r) => { try { handleToolRequest(r); } catch (err) { ctx.log.error('[tools] tool:request handler threw', err); } });
 
@@ -265,8 +279,8 @@ export default {
 
   dispose() {
     if (!ctx) return;
-    offDown?.(); offUp?.(); offKey?.(); offReq?.();
-    S.ring?.dispose(); S.ribbon?.dispose(); S.marker?.dispose();
+    offDown?.(); offUp?.(); offKey?.(); offReq?.(); offOverlay?.(); offVeg?.();
+    S.ring?.dispose(); S.ribbon?.dispose(); S.marker?.dispose(); S.vegOverlay?.dispose(); S.vegOverlay = null;
     S.group?.removeFromParent();
     S.group = null; S.undo = null; S.ring = null; S.ribbon = null; S.marker = null;
     S.toolObj = null; markerTarget = null;

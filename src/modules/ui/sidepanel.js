@@ -2,6 +2,7 @@
 import { el, clear, fmtMoney, fmtInt, fmtPct, fmtDist, fmtArea, titleCase, clamp01, scoreColor } from './dom.js';
 import { icon, animalIconName } from './icons.js';
 import { speciesFacts, BUILDINGS } from './species.js';
+import { PLANTS } from '../../core/Plants.js';
 
 const NEEDS = [
   { k: 'food', name: 'Food', icon: 'food' },
@@ -158,6 +159,12 @@ export function createSidePanel(root, s) {
       });
       body.appendChild(section('Fit per species', null, ...rows));
     }
+    const foodSec = foodSection(h, sim);
+    if (foodSec) {
+      body.appendChild(foodSec.node);
+      let day = s.world.time?.day;
+      live.push(() => { const d = s.world.time?.day; if (d !== day) { day = d; foodSec.update(); } }); // re-read once per sim day
+    }
     body.appendChild(el('div.actions', null,
       el('button.btn.primary', { onclick: () => { const c = habitatCenter(h); focusAt(c.x, c.z, 220, 45); } }, icon('focus'), 'Focus'),
       el('button.btn', { onclick: () => s.requestTool('zone.habitat', null, { name: 'Habitat', icon: 'habitat' }) }, icon('paint'), 'Edit zone')));
@@ -181,6 +188,39 @@ export function createSidePanel(root, s) {
       el('button.btn', { onclick: () => s.requestTool('road.paved', null, { name: 'Paved road', icon: 'roadPaved' }) }, icon('roadPaved'), 'Upgrade'),
       el('button.btn.danger', { onclick: () => s.ctx.events.emit('tool:request', { tool: 'bulldoze', options: { id } }) }, icon('bulldoze'), 'Remove')));
     return true;
+  }
+
+  /** Food web (Wave P1): per resident species, daily food vs need and the carrying capacity it allows. */
+  function foodSection(h, sim) {
+    if (!sim?.getFoodReport) return null;
+    const animals = s.ctx.modules.get('animals');
+    const wrap = el('div');
+    const node = section('Food', 'food', wrap);
+    const update = () => {
+      let rep = null;
+      try { rep = sim.getFoodReport(h.id); } catch { rep = null; }
+      clear(wrap);
+      const rows = rep ? Object.entries(rep).filter(([, r]) => r.n > 0) : [];
+      if (!rows.length) { wrap.appendChild(el('p.desc', { text: 'No animals here yet. Plants set how many each species can support.', style: 'margin:0' })); return; }
+      let short = null;
+      for (const [sid, r] of rows) {
+        const name = speciesFacts(sid, animals).name;
+        const ratio = r.need > 0 && r.food != null ? r.food / r.need : 1;
+        const bar = barRow(animalIconName(sid), name, Math.min(1, ratio / 1.5), { color: ratio >= 1.2 ? 'var(--good)' : ratio >= 1 ? 'var(--accent)' : 'var(--bad)' });
+        bar.querySelector('.val').textContent = r.n + ' / ' + (r.capacity ?? '—');
+        bar.setAttribute('data-tip', r.food != null ? `${name}: food ${r.food.toFixed(1)} vs need ${r.need.toFixed(1)} per day · room for ${r.capacity} (space ${r.spaceCapacity}, food ${r.foodCapacity ?? '—'})` : name);
+        wrap.appendChild(bar);
+        if (r.foodCapacity != null && r.n > r.foodCapacity && !short) short = sid;
+      }
+      if (short) {
+        const feeds = PLANTS.filter((p) => p.attracts.includes(short)).sort((a, b) => b.food - a.food);
+        const name = speciesFacts(short, animals).name;
+        wrap.appendChild(el('p.desc.warn', { text: `${name} are short of food.` + (feeds.length ? ` Plant ${feeds.slice(0, 2).map((p) => p.name).join(' or ')} here.` : ''), style: 'margin:6px 0 0' }));
+        if (feeds.length) wrap.appendChild(el('div.actions', null, el('button.btn', { 'data-tip': 'Open the Plant tool with ' + feeds[0].name, onclick: () => s.requestTool('plant.' + feeds[0].id, { plant: feeds[0].id }, null) }, icon(feeds[0].form), 'Plant ' + feeds[0].name)));
+      }
+    };
+    update();
+    return { node, update };
   }
 
   // ---------- helpers ----------

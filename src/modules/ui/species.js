@@ -33,6 +33,7 @@ export const OVERLAYS = [
   { id: 'none',      name: 'No overlay',       icon: 'eye',    desc: 'Plain view.' },
   { id: 'habitat',   name: 'Habitat quality',  icon: 'layers', desc: 'Colours each habitat by how well it fits the species living there.' },
   { id: 'happiness', name: 'Happiness heat',   icon: 'heat',   desc: 'Heat map of animal happiness across the park.' },
+  { id: 'vegetation', name: 'Vegetation',      icon: 'grass',  desc: 'Forage on the ground: brown is bare, green is lush. With a plant selected, that plant\'s cover.' },
   { id: 'traffic',   name: 'Road usage',       icon: 'traffic', desc: 'Shows how busy each road segment is with safari vehicles.' },
 ];
 
