@@ -75,6 +75,12 @@ vertex-coloured sheet showing that plant's cover / `maxCover`; ui's View → Veg
 game: aloe disc quoted and charged $92.16 for 0.10 ha, undo refunds to the cent, redo re-charges, 0 console
 errors (`tools/shots/p1ui-plant-hover.png`, `p1ui-planted.png`, `p1ui-veg-overlay.png`).
 
+### Held terrain stroke cost (2026-09-26)
+The P2 prerequisite "held-stroke cost under budget" is met by the terrain/zoning changes (rect-limited
+uploads, deferred habitat/fence/overlay/water rebuilds; see terrain and zoning READMEs), not by tools code:
+60-frame raise stroke, radius 10, SwiftShader container — tools update **0.71 ms mean, p95 1.2 ms, max
+1.3 ms** (was 49 / 68 / 90 ms). Budget ≤ 1.5 ms (ARCHITECTURE §7).
+
 ## Tool framework mechanics
 
 * Every tool implements a shared shape: `activate(ctx,S,opts)`, `deactivate(ctx,S)`,

@@ -50,6 +50,19 @@ BIOME, BIOME_NAMES                       // { grass:0, dryGrass:1, dirt:2, rock:
 Every edit call is a localized falloff (`(1-t²)²` over radius `r`), updates only the touched chunks
 and the control textures, calls `world.updateHeightStats()`, and emits `terrain:modified {x0,z0,x1,z1}`.
 
+### Edit cost (P2 prerequisite, 2026-09-26)
+Every edit (`raise/flatten/smooth/paintBiome/clearPaint` and the new `refreshRegion(x0, z0, x1, z1)`) now
+touches only its own sample rect: the height texture and the three control textures upload just the edited
+rows (three's texture update ranges), and each overlapping chunk rewrites and uploads just the edited rows of
+its position/normal buffers (`mesh.js refreshChunkRect`). The whole-map water mesh rebuild is coalesced to
+6 frames after the last near-water edit. **Callers that write `world.terrain.heights`/`biome` directly must
+call `refreshRegion()` over what they wrote** — roads' conform does (it probed for this API; before, it
+relied on edits refreshing whole chunks). Verified exact: after a 40-step stroke + paint + flatten, every
+texel of all four textures read back from the GPU equals the CPU arrays, and all 266k chunk normals equal
+`normalAt()` (0 mismatches). Measured (SwiftShader container, radius 8–10): one `raise()` including every
+`terrain:modified` listener **39 ms → 0.73 ms**; held tools stroke **49 ms → 0.71 ms** per frame
+(p95 68 → 1.2 ms) together with zoning's deferral below.
+
 ## Events
 
 | event | direction | payload |

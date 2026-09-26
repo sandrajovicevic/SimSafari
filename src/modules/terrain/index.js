@@ -4,18 +4,21 @@ import { BIOME } from '../../core/World.js';
 import { presets, stage } from './showcase.js';
 import { buildLayerArrays, buildWaterNormal, applyPhotoLayers } from './textures.js';
 import { generateSavannah, classifyRange, classifyAll, packControl, packControlRect, sampleMoisture, BIOME_NAMES, normalAt } from './generate.js';
-import { buildChunks, refreshChunk, chunkAt } from './mesh.js';
-import { createTerrainMaterial, createControlTextures, createHeightTexture, updateHeightTexture } from './material.js';
+import { buildChunks, refreshChunk, refreshChunkRect, chunkAt } from './mesh.js';
+import { createTerrainMaterial, createControlTextures, createHeightTexture, updateHeightTexture, updateHeightTextureRect } from './material.js';
 import { buildWaterGeometry, createWaterMaterial, updateWaterSky } from './water.js';
 import { buildApronGeometry, createApronMaterial } from './apron.js';
 
 const CHUNKS = 4;
+// frames without a near-water edit before the (whole-map) water mesh is rebuilt
+const WATER_SETTLE_FRAMES = 6;
 const _n = [0, 0, 0];
 
 const S = {
   ctx: null, group: null, layers: null, control: null, heightTex: null, waterNormal: null,
   material: null, chunks: [], water: null, waterMat: null, apron: null, apronMat: null,
   gen: null, ctlBytes: null, generated: false, textureSize: 1024,
+  waterDirty: false, waterQuiet: 0,
 };
 
 function log(...a) { S.ctx?.log?.info?.(...a); }
@@ -74,12 +77,35 @@ function rebuildApron() {
   } catch (err) { ctx.log.warn('[terrain] apron build failed: ' + (err?.message || err)); }
 }
 
+/**
+ * Upload only rows iz0..iz1 (columns ix0..ix1) of a res² DataTexture on its next use, through three's
+ * texture update ranges (one texSubImage2D per row) instead of re-sending the whole texture. three's
+ * range path counts in RGBA components (stride 4) for every format, so start/count are pixel × 4 for the
+ * single-channel height texture as well. A texture not yet on the GPU gets a full upload instead.
+ */
+function markRows(tex, ix0, iz0, ix1, iz1) {
+  const res = S.ctx.world.terrain.res;
+  const onGpu = !!S.ctx.renderer?.properties?.get(tex)?.__webglTexture;
+  if (!onGpu) { tex.clearUpdateRanges(); tex.needsUpdate = true; return; }
+  const w = (ix1 - ix0 + 1) * 4;
+  for (let iz = iz0; iz <= iz1; iz++) tex.addUpdateRange((iz * res + ix0) * 4, w);
+  tex.needsUpdate = true;
+}
+
 /** Repack the control textures: the whole map, or only sample rect {ix0,iz0,ix1,iz1} after an edit. */
 function uploadControl(rect) {
   const world = S.ctx.world;
-  if (rect) packControlRect(world, S.gen, S.ctx.noise, S.ctlBytes.ctl0, S.ctlBytes.ctl1, S.ctlBytes.aux, rect.ix0, rect.iz0, rect.ix1, rect.iz1);
-  else packControl(world, S.gen, S.ctx.noise, S.ctlBytes.ctl0, S.ctlBytes.ctl1, S.ctlBytes.aux);
-  S.control.tCtl0.needsUpdate = true; S.control.tCtl1.needsUpdate = true; S.control.tAux.needsUpdate = true;
+  const C = S.control;
+  if (rect) {
+    const res = world.terrain.res;
+    // packControlRect pads by one sample (blur kernel); upload the same padded rows
+    const ix0 = Math.max(0, rect.ix0 - 1), iz0 = Math.max(0, rect.iz0 - 1), ix1 = Math.min(res - 1, rect.ix1 + 1), iz1 = Math.min(res - 1, rect.iz1 + 1);
+    packControlRect(world, S.gen, S.ctx.noise, S.ctlBytes.ctl0, S.ctlBytes.ctl1, S.ctlBytes.aux, rect.ix0, rect.iz0, rect.ix1, rect.iz1);
+    markRows(C.tCtl0, ix0, iz0, ix1, iz1); markRows(C.tCtl1, ix0, iz0, ix1, iz1); markRows(C.tAux, ix0, iz0, ix1, iz1);
+    return;
+  }
+  packControl(world, S.gen, S.ctx.noise, S.ctlBytes.ctl0, S.ctlBytes.ctl1, S.ctlBytes.aux);
+  for (const t of [C.tCtl0, C.tCtl1, C.tAux]) { t.clearUpdateRanges(); t.needsUpdate = true; }
 }
 
 // ---------- generation ------------------------------------------------------------------------------------
@@ -136,8 +162,12 @@ function afterEdit(rect, { heights = true } = {}) {
   const ix0 = rect.ix0 - pad, ix1 = rect.ix1 + pad, iz0 = rect.iz0 - pad, iz1 = rect.iz1 + pad;
   if (heights) {
     world.updateHeightStats();
-    updateHeightTexture(world, S.heightTex);
-    for (const c of S.chunks) if (!(c.ix1 < ix0 || c.ix0 > ix1 || c.iz1 < iz0 || c.iz0 > iz1)) refreshChunk(world, c);
+    // rect-limited: re-encode + upload only the edited rows of the height texture and the chunks' vertex
+    // buffers (was: the whole 513² texture and every overlapping chunk's full buffers, every edit)
+    const res = T.res, cx0 = Math.max(0, ix0), cz0 = Math.max(0, iz0), cx1 = Math.min(res - 1, ix1), cz1 = Math.min(res - 1, iz1);
+    updateHeightTextureRect(world, S.heightTex, cx0, cz0, cx1, cz1);
+    markRows(S.heightTex, cx0, cz0, cx1, cz1);
+    for (const c of S.chunks) if (!(c.ix1 < ix0 || c.ix0 > ix1 || c.iz1 < iz0 || c.iz0 > iz1)) refreshChunkRect(world, c, cx0, cz0, cx1, cz1);
     // wetness / slope may have changed → reclassify (painted samples are preserved)
     classifyRange(world, S.gen, ix0, iz0, ix1, iz1);
     // rebuild water if the edited region is anywhere near a water level
@@ -145,7 +175,8 @@ function afterEdit(rect, { heights = true } = {}) {
     for (let iz = Math.max(0, iz0); iz <= Math.min(T.res - 1, iz1) && !near; iz++) for (let ix = Math.max(0, ix0); ix <= Math.min(T.res - 1, ix1); ix++) {
       const i = iz * T.res + ix; if (T.heights[i] < S.gen.localLevel[i] + 1.5) { near = true; break; }
     }
-    if (near) rebuildWater();
+    // the water mesh is a whole-map rebuild (~20 ms): during a drag, coalesce to once the brush pauses
+    if (near) { S.waterDirty = true; S.waterQuiet = 0; }
   }
   uploadControl({ ix0, iz0, ix1, iz1 });
   const x0 = Math.max(0, ix0) * cell - half, z0 = Math.max(0, iz0) * cell - half, x1 = Math.min(T.res - 1, ix1) * cell - half, z1 = Math.min(T.res - 1, iz1) * cell - half;
@@ -182,6 +213,18 @@ const api = {
     afterEdit(rect);
   },
   lower(x, z, r, amount) { api.raise(x, z, r, -amount); },
+  /**
+   * Refresh everything derived from world.terrain.heights/biome inside world rect [x0,x1]×[z0,z1] after a
+   * caller wrote those arrays directly (roads' conform, tools' undo): height texture rows, chunk vertices,
+   * classification, control textures, water, and a `terrain:modified` event. Edits are rect-limited since
+   * 2026-09-26, so a direct write outside an edit's own rect is only picked up through this.
+   */
+  refreshRegion(x0, z0, x1, z1) {
+    const world = S.ctx.world, T = world.terrain, cell = T.cell, half = world.half, res = T.res;
+    const ix0 = Math.max(0, Math.floor((Math.min(x0, x1) + half) / cell)), ix1 = Math.min(res - 1, Math.ceil((Math.max(x0, x1) + half) / cell));
+    const iz0 = Math.max(0, Math.floor((Math.min(z0, z1) + half) / cell)), iz1 = Math.min(res - 1, Math.ceil((Math.max(z0, z1) + half) / cell));
+    afterEdit({ ix0, ix1, iz0, iz1 });
+  },
   flatten(x, z, r, targetH) {
     const H = S.ctx.world.terrain.heights;
     const h = targetH ?? S.ctx.world.getHeight(x, z);
@@ -267,6 +310,7 @@ export default {
   },
 
   update(dt, t) {
+    if (S.waterDirty && ++S.waterQuiet >= WATER_SETTLE_FRAMES) { S.waterDirty = false; rebuildWater(); }
     if (S.waterMat) updateWaterSky(S.waterMat, S.ctx.world, S.ctx.renderer);
   },
 

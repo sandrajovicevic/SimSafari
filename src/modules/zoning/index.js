@@ -22,13 +22,26 @@ let speciesRefreshFrames = 0;
 // guarantee that matters here is "not every frame", not the exact wall-clock interval.
 const SPECIES_REFRESH_INTERVAL = 72;
 
+// Terrain edits arrive every frame of a brush stroke. A habitat's region only changes when a cell flips
+// to/from NO_BUILD, so that case still rebuilds at once (topology must be right for whoever reads it
+// next); a pure height change only moves fence posts and habitat stats, which are coalesced into one
+// rebuild after TERRAIN_SETTLE_FRAMES frames without an edit (was: full rebuild on every edit, 8–12 ms).
+const TERRAIN_SETTLE_FRAMES = 8;
+let terrainDirty = false, terrainQuiet = 0;
+
 function onTerrainModified(p) {
   const rect = (p && Number.isFinite(p.x0)) ? rectFromWorld(p.x0, p.z0, p.x1, p.z1, 1) : undefined;
-  recomputeNoBuild(rect);
-  rebuildHabitats();
-  rebuildFences();
+  if (recomputeNoBuild(rect) || !rect) { rebuildHabitats(); rebuildFences(); terrainDirty = false; }
+  else { terrainDirty = true; terrainQuiet = 0; }
   markOverlayDirty();
   markOverlayHeightsDirty();
+}
+
+/** Run a pending terrain-driven habitat/fence rebuild now (callers that read habitat stats right after an edit). */
+function flushTerrain() {
+  if (!terrainDirty) return false;
+  terrainDirty = false; rebuildHabitats(); rebuildFences();
+  return true;
 }
 
 function onRoadChanged() {
@@ -51,6 +64,8 @@ const api = {
   ZONE,
   // ---- painting ----
   paint, paintCells, erase, fill, getZone,
+  /** Apply a pending terrain-edit habitat/fence rebuild now (otherwise it runs a few frames after the last edit). */
+  flushTerrain,
   // ---- queries ----
   cellsInRadius, isBuildable, nearestHabitat,
   // ---- habitats ----
@@ -110,6 +125,7 @@ export default {
   },
 
   update(dt, t) {
+    if (terrainDirty && ++terrainQuiet >= TERRAIN_SETTLE_FRAMES) flushTerrain();
     updateOverlay(dt);
     if (pendingSpeciesRefresh) {
       speciesRefreshFrames++;
