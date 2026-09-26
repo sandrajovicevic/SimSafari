@@ -154,7 +154,55 @@ punished; the regression tests in test.mjs pin it).
 
 ## Measured
 
-* Tests: **89 passed, 0 failed** (`node src/modules/simulation/test.mjs`; 58 pre-round-3 — all
+### Wave P1 food web (2026-09-26, seed 1, tod 10, same machine for old and new)
+
+* Tests: **110 passed, 0 failed** — the 89 existing (unchanged; in the synthetic parks only `bust`
+  moves: pop d90 93 → 77, traced to the predator hunger lag) plus 21 food-web tests: biome seeding,
+  spread + drought, `plant()` cost/refusal, capacity coupling, overgrazing (3000 zebra: grass cover
+  0.99 → 0.06 in 5 days, food capacity 706 → 33), prey-removal lag, diet-only predation, determinism
+  (**same seed → bit-identical 64 × 64 × 10 cover array after 60 days; different seed differs**), budget.
+* Daily vegetation step: **0.76 ms mean, 0.88 ms max** in Node (41k cell-plants); 0.8 ms in the live
+  page (SwiftShader container). Budget 5 ms. Per-frame cost 0 (it runs only at day end).
+* Fidelity harness, full run, old = P1 base commit `592b50d`, new = this module. 0 console errors in
+  both; every old scenario still runs.
+
+| scenario | old | new |
+|---|---|---|
+| **$15 break-even** (30-day mean net) | **+$433.13/d**, 11 born, 3 died | **+$505.90/d**, 3 born, 7 died (5 predation) |
+| $10 / $12 / $20 net | −$747.70 / −$207.77 / −$1,225.90 | −$671.10 / −$130.23 / −$1,073.17 |
+| $25 baseline net · births | −$2,496.83 · 11 | −$1,513.27 · 10 |
+| $40 / $60 net | −$4,665.33 / −$5,922.67 | −$4,482.27 / −$5,830.57 |
+| arrivals $10/12/15/20/25/40/60 | 274/274/267/186/143/80/49 | 275/275/267/189/163/83/50 |
+| water −6 m: wetland hippo quality | 0.19 | 0.19 |
+| sightings tours vs none | 16 vs 0 | 16 vs 0 |
+| bankruptcy day | 17 | 17 |
+| determinism (30 d re-run) | identical | identical |
+| poaching (100 d, rangers fired) | 2 poached, animals 80 → 100, lions 2, elephants 5 | 10 poached, animals 80 → 71, lions 1, elephants 2 |
+| drought 14 d: deaths during / after | 1 / 0 (over by day 28) | 0 / 4 (a second, naturally rolled drought active on day 28) |
+| disease impala: vet × · deaths | ×1.31 · 4 | ×1.23 · 11 |
+| prosperity rich vs starved | 0.85 vs 0.44, chain holds | 0.86 vs 0.44, chain holds |
+| **plant-aloe** (new) | — | elephant capacity day 30: **5 planted vs 2 control** (food cap 11 vs 2), $4,523.52 |
+| **remove-prey** (new) | — | lion capacity 4 → 1 by day 6; lions first below control on **day 16**, 0 by day 19 (control 3) |
+| **spread** (new) | — | extra red-oat cover 0.025 → **0.066 ha** in 30 d, **0.033 ha under drought**; reach stays 9 cells |
+
+**Why the numbers moved.** Carrying capacity is now food-coupled and the live demo's habitats are
+tiny (Plains 2.2 ha, Acacia Woodland 3.0 ha, River Wetland 0.43 ha, Pride Kopje 3.6 ha):
+* **River Wetland overgrazes to zero.** 3 hippo + 3 buffalo need 11.4 food units/day against a
+  seeded yield of ~10: P > 1, the sedge/red-oat runs away to 0 by day ~20, and both species' capacity
+  falls to 1 (happiness ~0.5). This is the main reason births at $15 fell 11 → 3. The change also
+  shifts the rng stream, so which days get a kill or a birth differs from the old run.
+* **Acacia Woodland is overbrowsed.** 5 elephants + 4 giraffes strip the trees: elephant food
+  capacity goes 4 → 2 in 30 days. The `plant-aloe` scenario shows planting reversing it.
+* The **$15 break-even survives** and is higher (+$505.90/d vs +$433.13/d). Fewer births means a
+  smaller feed bill, and arrivals are unchanged (267/d). It is not a better park: the herds are
+  shrinking toward what the food allows. Over the poaching run's 100 days that shows as 80 → 71
+  animals vs 80 → 100 before. Fixing it is a park-side call (bigger wetland/woodland, or the
+  integrator's "park demo planting" of sedge/trees), not a simulation retune — I did not lower
+  hippo/buffalo/elephant needs to protect the old numbers.
+
+### Before Wave P1
+
+* Tests (pre-P1): **89 passed, 0 failed** (`node src/modules/simulation/test.mjs`; 58 pre-round-3 — all
   still passing — plus 22 round-3 tests for the births mechanics, room cap, replan(), spend() and
   injectEvent, plus 9 staged-population reconciliation tests: the ledger-only write-off, the
   mirrored showcase park (193 staged → 219 on day 30, every animal accounted: born/died/left),
@@ -176,6 +224,34 @@ punished; the regression tests in test.mjs pin it).
   other modules.
 
 ## Known gaps (honest)
+
+* **Food web (Wave P1):**
+  * **No insectivores** among our 12 species, so the original's "insects come free with grass/shrub
+    cover" rule does not apply this wave.
+  * **Overgrazing has no floor.** Cover can be grazed to 0, and grass only regrows from neighbours,
+    so an overstocked habitat never recovers until the herd shrinks. The demo's River Wetland does
+    exactly this (see Measured). A root-reserve floor (e.g. ≥ 10 % of the site ceiling) would be more
+    realistic. It was not added this wave because it would need another full harness run.
+  * **Herbivores over their food capacity only get unhappy** (the existing over-capacity happiness
+    penalty, then migration or unhappy mortality). There is no starvation death for them. Predators
+    do starve (0.08/day per animal over capacity), because happiness alone stalled lions at exactly
+    0.30 on the live park, just short of the < 0.30 migration threshold.
+  * **Habitat `grass` stat is still biome-derived**, not read from `world.vegetation`. Overgrazing
+    lowers capacity, not the grass-preference term of quality.
+  * **Partial terrain edits don't touch the plant layer.** A road or flattening leaves the vegetation
+    under it until the next whole-world reseed. Only `terrain:ready` and a whole-world
+    `terrain:modified` reseed it.
+  * **Spread is capped by the soil.** Neighbour seeding only fills a cell up to that cell's own site
+    ceiling. On the live map the free ground around a planted red-oat patch already sits near its
+    ceiling, so `spread` shows the patch maturing but not advancing: its reach stays at the 9 planted
+    cells. The unit test shows real outward spread (9 → 21 cells) on cleared grassland.
+  * The **predator lag is long in big herds**. Lion Ridge (synthetic, 56 prey) takes 20 days before
+    lions fall; the live Pride Kopje (14 impala) takes 16. It is driven by the prey-biomass EMA
+    (0.15/day) plus the capacity/starvation step.
+  * Food units and needs are ours and scaled to the demo's 2–4 ha habitats, not real-world kg/ha.
+  * **Staged showcase presets were not re-captured.** The synthetic-park tests give byte-identical
+    numbers for baseline/boom, so they are expected to hold, but the README preset table is
+    unverified for this wave.
 
 * **The $20 overview park is not profitable day to day** (median −$284/day); its 60-day cash gain is
   event windfalls. Not tuned yet: the fidelity harness says $15 is the break-even price.
