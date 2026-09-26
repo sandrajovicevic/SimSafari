@@ -427,6 +427,10 @@ async function scenarioPlantAloe(browser) {
       for (const idx of h.cells) { const ix = idx % g.res, iz = (idx - ix) / g.res; const c = world.cellCenter(ix, iz); sx += c.x; sz += c.z; }
       const cx = sx / h.cells.length, cz = sz / h.cells.length, radius = Math.sqrt(h.area / Math.PI) * 0.7;
       const ele = () => { const f = sim.getFoodReport(h.id)?.elephant || {}; return { n: f.n ?? 0, food: f.food ?? 0, capacity: f.capacity ?? 0, foodCapacity: f.foodCapacity ?? 0, spaceCapacity: f.spaceCapacity ?? 0 }; };
+      // the park demo already plants aloe/marula over the woodland (park/build.js §8c): strip those two
+      // back to the seeded natural cover in both runs, so the control is the unplanted woodland again
+      const v = world.vegetation, N = v.res * v.res;
+      for (const id of ['aloe', 'marula']) { const t = v.types.indexOf(id); for (let i = 0; i < N; i++) { const k = t * N + i; if (v.cover[k] > v.natural[k]) v.cover[k] = v.natural[k]; } }
       const cash0 = world.economy.cash; // cashSpent is read right after planting, before any day runs
       const plantings = planted ? [sim.plant('aloe', cx, cz, radius, 0.3), sim.plant('marula', cx, cz, radius, 0.25)] : [];
       const cashAfterPlant = world.economy.cash;
