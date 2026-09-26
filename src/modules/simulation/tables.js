@@ -105,7 +105,8 @@ export const CONST = Object.freeze({
   sightingK: 0.12,            // P(see species) = 1 - exp(-n * visibility * roadFactor * K)
   seasonLength: 90,           // days per season in the internal fallback calendar (dry, wet alternate)
   historyCap: 400,
-  starveRate: 0.08,          // predators above their prey capacity: deaths/day per excess animal (hunger → deaths)
+  starveRate: 0.03,          // predators above their prey capacity: deaths/day per excess animal (hunger → deaths);
+                             // 0.08 collapsed 3 lions to 0 in 3 days on the live park — 0.03 spreads it over ~2–4 weeks
   hungerRate: 0.15,          // EMA rate of predators' perceived prey (count + biomass): ~6-day lag to a prey crash
 });
 
@@ -170,6 +171,7 @@ export const VEG = Object.freeze({
   // overgrazing: at P > 1 the herd bites into the standing stock, cover × (1 − overgraze[form] × (P − 1))
   overgraze: Object.freeze({ grass: 0.10, shrub: 0.05, tree: 0.02 }),
   maxLoss: 0.5,            // at most half a cell's cover of one plant eaten per day
+  rootReserve: 0.1,        // grazing never takes cover below this share of the cell's ceiling (roots/rootstock regrow)
   treeDensity: 0.6,        // seeding: P(tree/shrub present in a cell) = site × treeDensity (cover then 50–100 % of its ceiling)
   rainDry: 0.4, rainWet: 0.8, droughtRain: 0.35, weatherRain: 0.2,
   emitThreshold: 0.02,     // a cell counts as changed for vegetation:changed when a cover moved this much

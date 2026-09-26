@@ -462,20 +462,29 @@ export async function buildPark(ctx, opts = {}) {
     report.staff = staffed;
   }
   // ---- 8c. food-web demo planting (P1, docs/specs/p1-food-web.md) --------------------------------------
-  // The woodland gets browse for its elephants/giraffe (aloe understorey + a marula stand) and the
-  // wetland a sedge fringe; bought before markStart() so reset() returns to the planted park.
+  // The demo habitats are small (woodland ~3 ha, wetland ~0.4 ha): unplanted, 5 elephants + 4 giraffe
+  // overbrowse the woodland (elephant food capacity 4 → 2 in 30 days) and 3 hippo + 3 buffalo graze the
+  // wetland to its root reserve. The opening park is planted to carry its own herds: browse (aloe
+  // understorey + marula) over the whole woodland and a dense sedge sward over the whole wetland — the
+  // tools/fidelity.mjs plant-aloe footprint (centroid, 0.7 × equal-area radius). Bought before
+  // markStart() so reset() returns to the planted park.
   if (simulation?.plant) {
-    const plantAt = (key, type, dx, dz, r, cover) => {
-      const h = habitatDefs.find((d) => d.key === key);
-      if (!h?.habitatId) return;
-      try {
-        const res = simulation.plant(type, h.anchor.x + dx, h.anchor.z + dz, r, cover);
-        if (res?.ok) { report.planted = report.planted || []; report.planted.push({ habitat: h.name, type, cells: res.cells, cost: Math.round(res.cost) }); }
-      } catch (err) { log.warn('[park] plant failed: ' + err.message); }
+    const plantHabitat = (key, list) => {
+      const d = habitatDefs.find((x) => x.key === key);
+      const h = d?.habitatId != null ? world.habitats.get(d.habitatId) : null;
+      if (!h?.cells?.size && !h?.cells?.length) return;
+      const g = world.grid; let sx = 0, sz = 0, n = 0;
+      for (const idx of h.cells) { const ix = idx % g.res, iz = (idx - ix) / g.res; const c = world.cellCenter(ix, iz); sx += c.x; sz += c.z; n++; }
+      const cx = sx / n, cz = sz / n, radius = Math.sqrt(h.area / Math.PI) * 0.7;
+      for (const [type, cover] of list) {
+        try {
+          const res = simulation.plant(type, cx, cz, radius, cover);
+          if (res?.ok) { report.planted = report.planted || []; report.planted.push({ habitat: d.name, type, cells: res.cells, cost: Math.round(res.cost) }); }
+        } catch (err) { log.warn('[park] plant failed: ' + err.message); }
+      }
     };
-    plantAt('browsers', 'aloe', -20, 10, 28, 0.3);
-    plantAt('browsers', 'marula', 25, -15, 24, 0.25);
-    plantAt('wetland', 'sedge', 0, 0, 30, 0.6);
+    plantHabitat('browsers', [['aloe', 0.3], ['marula', 0.25]]);
+    plantHabitat('wetland', [['sedge', 0.9], ['red_oat', 0.6]]);
   }
   if (sim) { try { sim.markStart(); } catch {} }
 

@@ -110,7 +110,7 @@ export class Vegetation {
     const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
     const r = this.res, N = this.nCells, cover = this.cover, site = this.site, P = this.pressure, S = this._scratch;
     this.lastRain = rain;
-    const nb = VEG.neighbourSeed, damp = VEG.grazeDamp, maxLoss = VEG.maxLoss;
+    const nb = VEG.neighbourSeed, damp = VEG.grazeDamp, maxLoss = VEG.maxLoss, reserve = VEG.rootReserve;
     for (let t = 0; t < NT; t++) {
       const p = PLANTS[t], fit = rainfallFit(p.rainfall, rain);
       this._fit[t] = fit;
@@ -134,6 +134,9 @@ export class Vegetation {
           else {
             let loss = lossK * (pr - 1); if (loss > maxLoss) loss = maxLoss;
             nc = c * (1 - loss) + (g < 0 ? g : 0);
+            // root reserve: an overgrazed stand bottoms out and can recover once the herd shrinks
+            const fl = reserve * K < c ? reserve * K : c;
+            if (nc < fl) nc = fl;
           }
           cover[k] = nc < 1e-4 ? 0 : nc > 1 ? 1 : nc;
         }
