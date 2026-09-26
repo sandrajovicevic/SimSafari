@@ -1,5 +1,6 @@
 // Shared world data model. See ARCHITECTURE.md §3 for ownership. Everyone reads; owners write + emit.
 import * as THREE from 'three';
+import { PLANT_IDS } from './Plants.js';
 
 export const BIOME = Object.freeze({
   GRASS: 0, DRY_GRASS: 1, DIRT: 2, ROCK: 3, SAND: 4, WETLAND: 5, RIVERBED: 6, ROAD_DUST: 7,
@@ -32,6 +33,20 @@ export class World {
       version: 0,
     };
 
+    // Vegetation stock (ideas phase P1, docs/specs/p1-food-web.md): per plant type, fractional cover
+    // 0..1 of each 16 m cell, plant-major: cover[t * res * res + iz * res + ix]. Owner: simulation
+    // (spread, grazing, planting). Readers: props (drawing), zoning/ui (stats). Bump `version` and
+    // emit 'vegetation:changed' {x0,z0,x1,z1} after writes.
+    const vres = 64;
+    this.vegetation = {
+      res: vres, cell: size / vres, types: PLANT_IDS,
+      cover: new Float32Array(PLANT_IDS.length * vres * vres),
+      // `natural`: the cover simulation seeded from biomes (same layout). props' biome scatter already
+      // draws that baseline, so the plant layer draws only cover above it (planting, spread, regrowth).
+      natural: new Float32Array(PLANT_IDS.length * vres * vres),
+      version: 0,
+    };
+
     this.habitats = new Map();
     this.roads = { nodes: new Map(), edges: new Map(), version: 0 };
     this.buildings = new Map();
@@ -48,6 +63,18 @@ export class World {
   }
 
   nextId(prefix = 'e') { return `${prefix}_${this._nextId++}`; }
+
+  /** Vegetation cell index for world (x,z), clamped (cell-major; add t * res² for plant type t). */
+  vegCell(x, z) {
+    const v = this.vegetation, r = v.res;
+    let ix = Math.floor((x + this.half) / v.cell), iz = Math.floor((z + this.half) / v.cell);
+    ix = ix < 0 ? 0 : ix >= r ? r - 1 : ix;
+    iz = iz < 0 ? 0 : iz >= r ? r - 1 : iz;
+    return iz * r + ix;
+  }
+
+  /** Cover 0..1 of plant type index t at world (x,z). */
+  vegCover(t, x, z) { const v = this.vegetation; return v.cover[t * v.res * v.res + this.vegCell(x, z)]; }
 
   inBounds(x, z) { return x >= -this.half && x <= this.half && z >= -this.half && z <= this.half; }
 

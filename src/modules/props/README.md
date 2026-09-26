@@ -6,6 +6,9 @@ boulders, termite mounds and fallen logs. Owns the `props` scene group and nothi
 `world` except its own bookkeeping (grazing state, tree-cover field) — placement respects
 `world.grid.occupancy` and `world.terrain.biome`/heights but never writes them.
 
+It also draws a second, additive layer (`plants.js`) from `world.vegetation` — the P1 food-web
+plant catalogue (`core/Plants.js`, `docs/specs/p1-food-web.md`). See "P1 vegetation layer" below.
+
 ## What it looks like
 
 | preset | screenshot | shows |
@@ -17,6 +20,7 @@ boulders, termite mounds and fallen logs. Owns the `props` scene group and nothi
 | `riverine` | `tools/shots/props-riverine-auto.png` | Dense fever-tree gallery forest along the river in morning light, lime-yellow bark |
 | `close` | `tools/shots/props-close-auto.png` | Ground detail: termite mound, thorn bush, fallen log, dead tree and boulder against dry grass |
 | `night` | `tools/shots/props-night-auto.png` | Moonlit acacia silhouettes over grass and a kopje (very dark after `environment`'s auto-exposure ceiling was tightened from 60→4 for physical realism — see Known gaps) |
+| `plants` | `tools/shots/props-plants-auto.png` | All 10 P1 food-web plants laid out with staged test cover (docs/specs/p1-food-web.md): four grass tussocks and the sour-plum bush/aloe row in front, umbrella thorn/knobthorn/marula/baobab spaced out behind — see "P1 vegetation layer" below |
 
 `tools/shots/diag-noprops.png` is a controlled test with the whole `props` group hidden
 (`scene.getObjectByName('props').visible = false`), used during development to prove that the
@@ -96,13 +100,72 @@ Emitted:
 
 ## Presets
 
-`overview`, `grass`, `acacia`, `kopje`, `riverine`, `close`, `night` — see the table above for what
-each shows; full camera/tod/description data is in `showcase.js`. `stage()` calls
+`overview`, `grass`, `acacia`, `kopje`, `riverine`, `close`, `night`, `plants` — see the table above
+for what each shows; full camera/tod/description data is in `showcase.js`. `stage()` calls
 `terrain.generate()` first if the terrain hasn't produced features yet, reads the real kopje/river
 positions to place cameras sensibly for whatever seed is active, then calls `scatter()` — so every
 preset is populated by the same rules the full game uses, not hand-placed set dressing (except
 `acacia`/`close`, which clear a small radius and hand-place a few props for a controlled,
-readable close-up).
+readable close-up, and `plants`, see below).
+
+## P1 vegetation layer (`world.vegetation`, `plants.js`)
+
+Draws the P1 food-web plant catalogue (`core/Plants.js`, `docs/specs/p1-food-web.md`) from
+`world.vegetation` cover — **additive** to the biome-driven `scatter()`/`GrassField` above, not
+merged into them (see Known gaps for why). props only ever *reads* `world.vegetation`: it rebuilds
+placement for whatever cells are in a `vegetation:changed` event's rect (plus the initial state on
+init), and never writes the grid itself, anywhere outside `showcase.js`'s staged test values for the
+`plants` preset (the simulation builder's real seeding/spread is on another branch and not landed
+here, so the grid is all zeros in the actual game today).
+
+| plant | form | mesh | reused generator |
+|---|---|---|---|
+| Red-oat grass, couch, weeping lovegrass, river sedge | grass | one shared tuft geometry, tinted per species via `instanceColor` | `grass.js: buildTuft` |
+| Aloe | shrub | rosette of tapered blade cards | new (`plants.js: buildAloeGeo`) |
+| Sour plum | shrub | stem + foliage-card dome | `rocks.js: buildShrub` |
+| Umbrella thorn | tree | flat crown, bark+leaf | `trees.js` acacia species (same geometry/material as the regular scatter's `acacia` — it's the same tree) |
+| Knobthorn | tree | wider, less-flat crown, bark+leaf | `trees.js: growCanopy/bakeBark/bakeLeafDisc`, new params; reuses `fever`'s bark and the broadleaf material |
+| Marula | tree | round dome crown, bark+leaf | `trees.js: growCanopy/bakeBark/bakeLeafDisc`, new params; reuses `baobab`'s bark and the broadleaf material |
+| Baobab | tree | fat lathe trunk, bark+leaf | `trees.js` baobab species (same geometry/material as the regular scatter's `baobab`) |
+
+Placement is deterministic per 16 m vegetation cell: instance count is `round(cover × maxPerCell)`
+(grass 8/cell/species, shrub 3/cell, tree 2/cell), with at least one instance whenever a cell's
+cover for that plant is above a small noise floor (a flat `cover × maxPerCell` rounds to 0 almost
+everywhere for a low-ceiling species like baobab, whose `maxCover` is 0.15 — see `Plants.js`).
+Position within the cell, rotation and scale come from `ctx.rng.fork('plants:cell:' + cellIndex)`,
+so the same cover always reproduces the same instances. Ground-conformed via `world.getHeight`.
+
+Budget: 12 `InstancedMesh` draw calls total (grass 1, aloe 1, the five two-part species — sour
+plum/umbrella thorn/knobthorn/marula/baobab — 2 each), fixed capacities (not grown dynamically,
+unlike the main scatter's `ensureGroups()`), no per-frame allocations, hard-culled beyond 300 m
+(no LOD tiers — see Known gaps). `rebuildRect()` (cell-record recomputation, scoped to the changed
+rect) is cheap and runs immediately; the GPU repack (which also re-culls by camera distance, so it
+re-runs on camera movement past the same 8 m threshold `index.js`'s own pack loop uses) is throttled
+to at most once per 0.5 s of accumulated `dirty` time, per the contract.
+
+Measured (`node tools/screenshot.mjs --module props --preset plants --w 1280 --h 720`, seed 1,
+`quality=high`, SwiftShader): **182 draw calls, 3,824,827 triangles, 0 console errors** — plants
+contribute at most 12 of those draw calls; the rest is the regular scatter/grass field still running
+underneath. `getStats()` after settling: `plantsCells: 10` (one live cell per staged plant — the 20 m
+stage spacing keeps every species in its own vegetation cell), `plantsRepackMs: 0.2`.
+
+Regression check, before vs. after this layer was added (clean-tree baseline via `git stash`, same
+capture commands):
+
+| capture | draw calls | triangles | `modules.props.updateMs` | `updatePeakMs` |
+|---|---:|---:|---:|---:|
+| `props overview tod=15`, before | 134 | 3,879,710 | — | — |
+| `props overview tod=15`, after | 134 | 3,879,710 | 0.008 | 0.1 |
+| `--game --preset low --tod 14`, before | 381 | 5,666,767 | 10.259 | 27.4 |
+| `--game --preset low --tod 14`, after | 381 | 5,813,247 | 9.967 | 14.8 |
+
+No regression: draw calls are identical (the real game's `world.vegetation` is all zeros until the
+simulation builder's seeding lands, so `plants.js` has nothing to pack there), and `updateMs`/
+`updatePeakMs` are within normal SwiftShader run-to-run noise (both slightly *lower* after — the
+pre-existing grass-streaming cost this module already carries, see the design notes below, dominates
+either way). The small triangle delta in the `--game` row (+2.6%) is scatter/grass chunk-timing
+variance between runs, not the new layer (it contributes 0 triangles when `world.vegetation` is
+empty).
 
 ## Measured performance
 
@@ -188,6 +251,16 @@ particularly on first load or after a large camera jump (e.g. a showcase preset 
 
 ## Known gaps (honest)
 
+* **Integration with the simulation's seeding (integrator, 2026-09-26).** Once `simulation` seeded
+  natural cover across the whole map, this additive layer redrew what the biome scatter already
+  draws: game `close` 14 h went from 4.99 M to 12.6 M triangles and read as closed-canopy forest with
+  trunk-only baobabs. Fixed by drawing only cover **above** `world.vegetation.natural` (the seeded
+  snapshot, written by simulation) and by guaranteeing an individual only at ≥ ½ of a plant's
+  `maxCover`, so slow natural regrowth stays probabilistic. Re-measured: `close` 14 h 408 draws /
+  5.04 M tris, `overview` 14 h 336 / 4.48 M, 0 errors; the park's demo planting shows 20 plant cells.
+  Consequence: grazing **below** the natural baseline does not visibly thin anything — the two
+  layers are still separate (spec §props.3's unified scatter is not done).
+
 * **Triangle budget.** The spec's "≤ 3 M tris at overview" is exceeded (≈ 4.0 M measured). The
   grass field is the largest contributor (3 draw calls but up to ~250k instances × ~40–70 tris per
   tuft including the ground mat). Reducing segment count on the LOD1/LOD2 tuft geometries or
@@ -232,9 +305,10 @@ particularly on first load or after a large camera jump (e.g. a showcase preset 
 * **Species list is short of the full spec.** `docs/specs/props.md` asks for sausage tree, doum
   palm, candelabra euphorbia and marula in addition to what's built. Acacia, fever tree, baobab and
   dead tree were prioritised as the four with the most silhouette impact per the module brief's
-  emphasis on grass + acacia; the other four are not implemented. `anthills` and `bones` (also
-  named in the spec) are not implemented either — `termite` mounds cover the anthill role visually
-  but are not a distinct smaller prop.
+  emphasis on grass + acacia; the other three (not marula — see the P1 vegetation layer above,
+  which does have a marula generator, just not wired into the base `scatter()`/`RULES`) are not
+  implemented. `anthills` and `bones` (also named in the spec) are not implemented either —
+  `termite` mounds cover the anthill role visually but are not a distinct smaller prop.
 * **`graze()`'s `regrowAcc`/`grazeRect` bookkeeping only invalidates grass chunks every ~2 game
   hours**, batching grass-visual regrowth rather than updating it continuously; grass density
   values read through `grassDensityAt`/habitat scoring update immediately, only the *rendered*
@@ -250,3 +324,40 @@ particularly on first load or after a large camera jump (e.g. a showcase preset 
   LOD0/LOD1 only (`PROP_CULL` hard-cuts them beyond a fixed radius instead of falling back to an
   impostor); acceptable given their much lower crown/triangle cost relative to trees, but a
   boulder-heavy kopje scene at long range gets a harder pop than trees do.
+
+### P1 vegetation layer (`plants.js`) known gaps
+
+* **Additive, not merged into `scatter()`/`GrassField`.** The spec allows this ("if too invasive,
+  draw additively and document why"). Both existing systems are tuned, critic-passed, and keyed on
+  biome/macro-noise rather than per-plant cover; re-deriving grass tuft density or tree placement
+  from `world.vegetation` inside `RULES`/`grassSample()` — while also keeping the existing look
+  those systems were scored on — was judged too large a change for this wave. The two layers can
+  currently place a `world.vegetation` tree and a `RULES`-scattered acacia within metres of each
+  other; not addressed here.
+* **Single LOD, hard 300 m cull, no billboards.** Unlike the main scatter (imposters past ~330 m)
+  or grass (three LOD rings), the P1 layer draws one quality level and simply stops drawing past
+  300 m — satisfies the letter of "LOD beyond 300 m" (nothing draws past it) but not really its
+  intent (no falloff). Not a problem yet: `world.vegetation` is all zeros in the real game until
+  the simulation builder's seeding/spread lands, so there is nothing to cull today.
+* **Fixed, ungrown `InstancedMesh` capacities** (grass 8000, aloe/sour-plum/tree species 150–400 —
+  see `CAPS` in `plants.js`), unlike the main scatter's `ensureGroups()` which grows on demand.
+  Sized for plausible cover densities; a world with sustained high cover for every plant type in
+  every cell simultaneously (not realistic given the catalogue's `maxCover` ceilings, but not
+  impossible) would silently drop instances past the cap rather than grow to fit, same failure mode
+  as any other capped `InstancedMesh` in this file.
+* **Knobthorn and marula reuse existing bark/leaf textures** (fever's bark + the broadleaf material
+  for both) rather than getting their own — only their skeleton geometry (crown shape, trunk
+  proportions) is species-specific. Umbrella thorn and baobab are the real thing (literally the same
+  geometry/material as the main scatter's `acacia`/`baobab`), so 2 of 4 tree species in this layer
+  have bespoke textures and 2 don't.
+* **Per-cell jitter spans the whole 16 m cell**, so an instance can render up to ~11 m from its
+  cell's centre. Fine for gameplay (cover is what's authoritative, not exact position), but it
+  means the `plants` showcase preset's staged test cells need to be spaced well apart (≥ 20 m, see
+  `PLANT_STAGE_OFFSETS` in `showcase.js`) so two adjacent staged species can't jitter into visually
+  overlapping/occluding each other — found during development when a first, tighter layout (13 m
+  spacing) intermittently hid the aloe and one tree behind their neighbours.
+* **Density-to-instance-count is a flat heuristic**, not derived from the spec's real ecology
+  (`spread`/`food`/hectare terms belong to `simulation`, not `props`). `round(cover × maxPerCell)`
+  with a floor of 1 instance for any non-trivial cover is a placeholder that looks reasonable at the
+  cover values used for staging; it has not been tuned against real simulation-seeded cover (that
+  data doesn't exist on this branch yet).

@@ -3,7 +3,9 @@
 // seeded random events; daily report. Pure JS: runs in Node (test.mjs) and in the browser (index.js wrapper).
 // No three, no DOM, no Math.random — every random draw goes through the injected Rng.
 import { Rng } from '../../core/Rng.js';
-import { SPECIES, SPECIES_ORDER, HABITAT_WEIGHTS, BUILDINGS, ROADS, STAFF, STAFF_ORDER, CONST } from './tables.js';
+import { SPECIES, SPECIES_ORDER, HABITAT_WEIGHTS, BUILDINGS, ROADS, STAFF, STAFF_ORDER, CONST, FOOD, DIET, PREY_YIELD } from './tables.js';
+import { PLANTS, PLANT_INDEX } from '../../core/Plants.js';
+import { Vegetation, PLANT_COUNT } from './vegetation.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -49,6 +51,13 @@ function arrivalProfile() {
 }
 const ARRIVAL_PROFILE = arrivalProfile();
 
+/** species → indices of the plants that attract it (core/Plants.js `attracts`). */
+const EATS = (() => {
+  const m = {};
+  PLANTS.forEach((p, t) => { for (const s of p.attracts) (m[s] || (m[s] = [])).push(t); });
+  return m;
+})();
+
 export class Simulation {
   /**
    * @param {object} world  shared world model (World instance or a plain object with the same shape)
@@ -72,7 +81,22 @@ export class Simulation {
     this._speciesCache = new Map();
     this._buildingCache = new Map();
     this.initialPopulation = null;
+    this._vegStart = null;
+    this._food = new Map();                 // habitatId → { version, Y: Float64Array(plants) } yield cache
+    this._Pt = new Float64Array(PLANT_COUNT);
+    this.veg = new Vegetation(world, this.seed);
+    this.seedVegetation();
     this._init();
+  }
+
+  /** (Re)seed natural vegetation from the terrain biomes — on construction, and again when the terrain
+   * finishes generating (index.js: terrain:ready / whole-world terrain:modified). Emits vegetation:changed. */
+  seedVegetation() {
+    try {
+      this.veg.seedFromBiomes();
+      this._food.clear();
+      this._emit('vegetation:changed', this.veg.wholeRect());
+    } catch (e) { this._log('vegetation seeding failed: ' + e.message); }
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -112,7 +136,8 @@ export class Simulation {
     this.lastReport = null;
     this.reports = [];
     this.habitatStats = new Map();
-    this.totals = { born: 0, died: 0, left: 0, poached: 0, predation: 0, adopted: 0, unmanaged: 0 };
+    this.totals = { born: 0, died: 0, left: 0, poached: 0, predation: 0, adopted: 0, unmanaged: 0, planted: 0, plantCost: 0 };
+    this.vegToday = { rain: 0, stepMs: 0, changed: null };
     if (w.visitors) {
       w.visitors.count = 0; w.visitors.inPark = 0;
       if (!(w.visitors.seenSpecies instanceof Map)) w.visitors.seenSpecies = new Map();
@@ -136,6 +161,8 @@ export class Simulation {
     const staff = this.staff;
     this._init();
     for (const r of STAFF_ORDER) if (staff[r]) this.staff[r] = { ...staff[r] };
+    if (this._vegStart) { this.veg.restore(this._vegStart); this._food.clear(); this._emit('vegetation:changed', this.veg.wholeRect()); }
+    else this.seedVegetation();
     if (this.initialPopulation) for (const [hid, m] of this.initialPopulation) for (const [s, n] of m) this.setPopulation(hid, s, n);
   }
 
@@ -145,6 +172,14 @@ export class Simulation {
     for (const [hid, m] of this.pop) this.initialPopulation.set(hid, new Map([...m].map(([s, r]) => [s, r.n])));
     this._startCash = this.world.economy?.cash;
     this._startLoans = this.world.economy?.loans;
+    this._vegStart = this.veg.snapshot();
+    // seed the predators' hunger memory from today's prey (never overwrite a running memory), so prey
+    // removed after this point reaches them with the lag instead of being their first impression
+    for (const [hid, m] of this.pop) for (const [s, r] of m) {
+      if (!DIET[s] || Number.isFinite(r.preyN)) continue;
+      const live = this._preyIn(hid, s);
+      r.preyN = live.n; r.preyKg = live.kg;
+    }
   }
 
   // ------------------------------------------------------------------ species / buildings
@@ -406,11 +441,103 @@ export class Simulation {
     return n ? near / n : 0;
   }
 
+  /** Prey head count a predator perceives in a habitat: its diet's prey (DIET table), lagged by the
+   * hunger EMA once the record has one; predators outside the table see every non-predator (`prey`). */
+  _perceivedPrey(hid, species, prey) {
+    if (!DIET[species]) return prey;
+    const rec = this._rec(hid, species, false);
+    return rec && Number.isFinite(rec.preyN) ? rec.preyN : this._preyIn(hid, species).n;
+  }
+
   _habitatCounts(hid) {
     const m = this.pop.get(hid);
     let predators = 0, prey = 0;
     if (m) for (const [s, r] of m) { if (r.n <= 0) continue; if (this.species(s).diet === 'predator') predators += r.n; else prey += r.n; }
     return { predators, prey };
+  }
+
+  // ------------------------------------------------------------------ food web
+
+  /** Daily food yield per plant for a habitat (cached until the vegetation layer changes). */
+  _habitatYield(h) {
+    const v = this.world.vegetation.version;
+    let f = this._food.get(h.id);
+    if (!f) { f = { version: -1, Y: new Float64Array(PLANT_COUNT) }; this._food.set(h.id, f); }
+    if (f.version !== v) { this.veg.habitatYield(h, f.Y); f.version = v; }
+    return f.Y;
+  }
+
+  /** Food units/day available to one herbivore species in a habitat: Σ plants attracting it. */
+  _foodFor(h, species) {
+    const eats = EATS[species];
+    if (!eats || !h) return 0;
+    const Y = this._habitatYield(h);
+    let s = 0;
+    for (let j = 0; j < eats.length; j++) s += Y[eats[j]];
+    return s;
+  }
+
+  /** Live biomass (kg) of a predator's prey species in a habitat, and their head count. */
+  _preyIn(hid, predator) {
+    const d = DIET[predator], m = this.pop.get(hid);
+    let kg = 0, n = 0;
+    if (d && m) for (const s of d.prey) { const r = m.get(s); if (r && r.n > 0) { kg += r.n * (FOOD[s]?.mass ?? 100); n += r.n; } }
+    return { kg, n };
+  }
+
+  /**
+   * Carrying capacity of a habitat for a species: min(space ceiling, food term), at least 1.
+   *   herbivores (FOOD table): food term = food units/day ÷ need per animal (docs/specs/p1-food-web.md §3)
+   *   predators  (DIET table): food term = LAGGED prey biomass × PREY_YIELD ÷ kg need per animal (§4)
+   * Species in neither table keep the space term alone. Returns {capacity, space, food, foodCap}.
+   */
+  _capacity(h, species, st = null) {
+    const sp = this.species(species);
+    st = st || this.habitatStat(h);
+    const space = Math.max(1, Math.floor(st.area / sp.space));
+    let food = null, foodCap = Infinity;
+    if (DIET[species]) {
+      const rec = this._rec(h.id, species, false);
+      const kg = rec && Number.isFinite(rec.preyKg) ? rec.preyKg : this._preyIn(h.id, species).kg;
+      food = kg * PREY_YIELD;
+      foodCap = Math.floor(food / DIET[species].needKg);
+    } else if (FOOD[species] && EATS[species]) {
+      food = this._foodFor(h, species);
+      foodCap = Math.floor(food / FOOD[species].need);
+    }
+    return { capacity: Math.max(1, Math.min(space, foodCap)), space, food, foodCap: Number.isFinite(foodCap) ? foodCap : null };
+  }
+
+  /**
+   * Daily vegetation step (before the population step): herd demand → grazing pressure per plant →
+   * growth/overgrazing of world.vegetation → vegetation:changed for the rect that moved. Pressure on a
+   * plant in a habitat is P = Σ over the species eating it of (herd need ÷ that species' food), i.e. the
+   * share of the plant's yield the herds take when each species spreads its demand over its plants by
+   * yield. P ≤ 1 slows regrowth; P > 1 eats into the standing cover (overgrazing).
+   */
+  _vegetationStep() {
+    const w = this.world, veg = this.veg, Pt = this._Pt;
+    veg.clearPressure();
+    const hids = [...this.pop.keys()].sort();
+    for (const hid of hids) {
+      const h = w.habitats?.get(hid), m = this.pop.get(hid);
+      if (!h || !m) continue;
+      Pt.fill(0);
+      let any = false;
+      for (const [s, r] of m) {
+        if (r.n <= 0 || !FOOD[s] || !EATS[s] || DIET[s]) continue;
+        const F = this._foodFor(h, s);
+        const D = r.n * FOOD[s].need;
+        const share = F > 0 ? D / F : 4; // nothing to eat: the maximum bite on whatever grows back
+        for (const t of EATS[s]) Pt[t] += share;
+        any = true;
+      }
+      if (any) veg.addPressure(h, Pt);
+    }
+    const rain = veg.rainfall(this._season(), this._eventStrength('drought'), this.dayPlan.weather?.rain ?? 0);
+    const rect = veg.step(rain);
+    this.vegToday = { rain: +rain.toFixed(3), changed: rect }; // timing lives in getState(), not the (deterministic) report
+    if (rect) this._emit('vegetation:changed', rect);
   }
 
   /**
@@ -428,11 +555,11 @@ export class Simulation {
     const waterScore = st.water >= p.water ? 1 : clamp01(st.water / Math.max(0.05, p.water)) ** 1.5;
     const rec = this._rec(h.id, species, false);
     const n = Number.isFinite(opts.n) ? opts.n : rec ? rec.n : 0;
-    const capacity = Math.max(1, Math.floor(st.area / sp.space));
+    const capacity = this._capacity(h, species, st).capacity;
     const spaceScore = n <= 0 ? 1 : clamp01(capacity / n) ** 0.7;
     const { predators, prey } = this._habitatCounts(h.id);
     let predScore;
-    if (sp.diet === 'predator') predScore = clamp01(prey / Math.max(1, predators * 8)); // 8 prey per predator
+    if (sp.diet === 'predator') predScore = clamp01(this._perceivedPrey(h.id, species, prey) / Math.max(1, predators * 8)); // 8 prey per predator
     else { const pressure = clamp01(predators * 3 / Math.max(1, prey)); predScore = 1 - pressure * (1 - sp.predatorTolerance); }
     const q = W.grass * match(p.grass, st.grass) + W.trees * match(p.trees, st.shade) + W.water * waterScore
       + W.roughness * match(p.roughness, st.roughness) + W.cover * match(p.cover, st.cover) + W.space * spaceScore + W.predator * predScore;
@@ -450,14 +577,14 @@ export class Simulation {
     const { predators, prey } = this._habitatCounts(h.id);
     const rec = this._rec(h.id, species, false);
     const n = rec ? rec.n : 0;
-    const capacity = Math.max(1, Math.floor(st.area / sp.space));
+    const cap = this._capacity(h, species, st), capacity = cap.capacity;
     const water = st.water >= p.water ? 1 : clamp01(st.water / Math.max(0.05, p.water)) ** 1.5;
-    const predator = sp.diet === 'predator' ? clamp01(prey / Math.max(1, predators * 8)) : 1 - clamp01(predators * 3 / Math.max(1, prey)) * (1 - sp.predatorTolerance);
+    const predator = sp.diet === 'predator' ? clamp01(this._perceivedPrey(h.id, species, prey) / Math.max(1, predators * 8)) : 1 - clamp01(predators * 3 / Math.max(1, prey)) * (1 - sp.predatorTolerance);
     return {
       grass: match(p.grass, st.grass), trees: match(p.trees, st.shade), water,
       roughness: match(p.roughness, st.roughness), cover: match(p.cover, st.cover), space: n <= 0 ? 1 : clamp01(capacity / n) ** 0.7,
       predator, vital: Math.pow(0.3 + 0.7 * water, p.water) * (sp.diet === 'predator' ? 0.4 + 0.6 * predator : 1),
-      weights: HABITAT_WEIGHTS, capacity, n, stats: st, total: this.scoreHabitat(h, species),
+      weights: HABITAT_WEIGHTS, capacity, spaceCapacity: cap.space, foodCapacity: cap.foodCap, food: cap.food, n, stats: st, total: this.scoreHabitat(h, species),
     };
   }
 
@@ -576,7 +703,9 @@ export class Simulation {
     this.reconcileFromWorld();
     // 1. visitors of the day → satisfaction → reputation
     const vis = this._visitorsEndDay();
-    // 2. habitats → happiness → births/deaths/migration
+    // 2a. vegetation: herd grazing pressure → growth / overgrazing (food web, docs/specs/p1-food-web.md)
+    try { this._vegetationStep(); } catch (e) { this._log('vegetation step failed: ' + e.message); }
+    // 2b. habitats → happiness → births/deaths/migration
     const popInfo = this._populationStep(day);
     // 3. staff morale, upkeep efficiency, village prosperity
     this._staffStep(vis);
@@ -596,6 +725,7 @@ export class Simulation {
       morale: +this.morale.toFixed(3), prosperity: +this.prosperity.toFixed(3), efficiency: +this.efficiency.toFixed(3),
       spend: Object.fromEntries(Object.entries(this.spendToday).map(([k, v]) => [k, Math.round(v)])),
       season: this.dayPlan.season, weather: this.dayPlan.weather, loans: Math.round(w.economy?.loans || 0), bankrupt: this.bankrupt,
+      vegetation: { ...this.vegToday },
       events: this.eventsToday.slice(), activeEvents: this.activeEvents.map((e) => ({ type: e.type, daysLeft: e.until - day, species: e.species })),
     };
     this.lastReport = report;
@@ -734,8 +864,25 @@ export class Simulation {
       const m = this.pop.get(hid);
       const h = w.habitats?.get(hid);
       const st = h ? this.habitatStat(h) : null;
-      const { predators, prey } = this._habitatCounts(hid);
-      // predation: each predator takes CONST.predationRate prey per day, spread over prey species by count
+      const { predators, prey: prey0 } = this._habitatCounts(hid);
+      // hunger: each diet-table predator's perceived prey (count + biomass) follows the live prey after a lag
+      // (EMA, CONST.hungerRate) — a prey crash reaches the predators' capacity and happiness days later
+      const inDiet = new Set();
+      for (const [s, r] of m) {
+        const d = DIET[s];
+        if (!d || r.n <= 0) continue;
+        for (const q of d.prey) inDiet.add(q);
+        const live = this._preyIn(hid, s);
+        r.preyN = Number.isFinite(r.preyN) ? lerp(r.preyN, live.n, CONST.hungerRate) : live.n;
+        r.preyKg = Number.isFinite(r.preyKg) ? lerp(r.preyKg, live.kg, CONST.hungerRate) : live.kg;
+      }
+      // predators outside the DIET table (unknown species) keep the old rule: every non-predator is prey
+      let untabled = false;
+      for (const [s, r] of m) if (r.n > 0 && this.species(s).diet === 'predator' && !DIET[s]) untabled = true;
+      let prey = 0;
+      for (const [s, r] of m) if (r.n > 0 && this.species(s).diet !== 'predator' && (untabled || inDiet.has(s))) prey += r.n;
+      if (!predators) prey = prey0;
+      // predation: each predator takes CONST.predationRate prey per day, spread over the prey species in its diet by count
       const kills = predators > 0 && prey > 0 ? poisson(this.rng, Math.min(prey, predators * CONST.predationRate)) : 0;
       let killsLeft = kills;
       const info = { id: hid, name: h?.name || String(hid), species: {} };
@@ -747,7 +894,8 @@ export class Simulation {
         // quality + happiness
         const Q = h ? this.scoreHabitat(h, s) : 0.4;
         r.quality = Q;
-        r.capacity = st ? Math.max(1, Math.floor(st.area / sp.space)) : 1;
+        const cap = h ? this._capacity(h, s, st) : null;
+        r.capacity = cap ? cap.capacity : 1;
         const disease = this._diseaseFor(s);
         // happiness = habitat quality, modulated by keeper care (a well-kept animal in a bad habitat is still unhappy)
         const care = clamp01(keeperCov) * (0.6 + 0.4 * this.morale);
@@ -773,8 +921,15 @@ export class Simulation {
         if (disease) mort += 0.03 * (1 - 0.5 * Math.min(1, bld.vet)) * (1 - 0.3 * keeperCov);
         if (st && st.drought > 0 && sp.prefs.water > 0.6) mort += 0.004 * st.drought;
         let d = Math.min(r.n, poisson(this.rng, r.n * mort));
+        // starvation: a predator herd above what its (lagged) prey can feed loses the excess — the direct
+        // hunger path; happiness alone can stall at the migration threshold when the animals module's own
+        // happiness is blended in (measured on the live park: lions held at exactly 0.30 with no prey)
+        if (DIET[s] && cap && cap.foodCap !== null && r.n > cap.foodCap) {
+          const starved = Math.min(r.n - d, poisson(this.rng, (r.n - Math.max(0, cap.foodCap)) * CONST.starveRate));
+          if (starved > 0) { d += starved; this._notify('warn', `${starved} ${s} starved in ${info.name}: not enough prey`); }
+        }
         // predation share for prey
-        if (killsLeft > 0 && sp.diet !== 'predator' && prey > 0) {
+        if (killsLeft > 0 && sp.diet !== 'predator' && prey > 0 && (untabled || inDiet.has(s))) {
           const share = Math.min(killsLeft, Math.round(kills * r.n / prey));
           d = Math.min(r.n, d + share); killsLeft -= share; predation += share;
         }
@@ -792,7 +947,7 @@ export class Simulation {
         if (b > 0) this._spawn(s, hid, b);
         if (d + l > 0) this._remove(s, hid, Math.min(n0, d + l));
         if (b > 0 && sp.rarity >= 0.8) this._notify('info', `A ${s} was born in ${info.name}`);
-        info.species[s] = { n: r.n, happiness: +r.happiness.toFixed(3), quality: +Q.toFixed(3), capacity: r.capacity, born: b, died: d, left: l, unhappyDays: r.unhappyDays };
+        info.species[s] = { n: r.n, happiness: +r.happiness.toFixed(3), quality: +Q.toFixed(3), capacity: r.capacity, spaceCapacity: cap?.space ?? null, foodCapacity: cap?.foodCap ?? null, food: cap?.food != null ? +cap.food.toFixed(2) : null, born: b, died: d, left: l, unhappyDays: r.unhappyDays };
       }
       habitats[hid] = info;
     }
@@ -1086,6 +1241,57 @@ export class Simulation {
     }
     return null;
   }
+  /**
+   * Plant `type` (core/Plants.js id) in a disc of `radius` m at (x, z): cells get cover ≥ `cover` (capped at
+   * the plant's maxCover) on prepared ground. Charges cost × planted hectares through spend(…, 'plant')
+   * and emits vegetation:changed for the planted rect. Refused (nothing written) when the park cannot
+   * afford it. Returns {ok, cost, cells, ha}.
+   */
+  plant(type, x, z, radius, cover = 0.25) {
+    const t = PLANT_INDEX[type];
+    if (t === undefined) return { ok: false, cost: 0, cells: 0, error: `unknown plant "${type}"` };
+    const p = PLANTS[t];
+    // price the disc before writing: count the cells the planting would touch
+    const est = this.veg.plant(type, x, z, radius, 0, true);
+    const cost = Math.round(p.cost * est.ha * 100) / 100;
+    const eco = this.world.economy;
+    if (!est.cells) return { ok: false, cost: 0, cells: 0, error: 'no plantable cells in the disc' };
+    if (eco && eco.cash < cost) { this._notify('warn', `Cannot afford planting ${p.name} ($${Math.round(cost).toLocaleString()})`); return { ok: false, cost, cells: est.cells }; }
+    const res = this.veg.plant(type, x, z, radius, cover);
+    this.spend(cost, 'plant');
+    this.totals.planted += res.ha; this.totals.plantCost += cost;
+    this._food.clear();
+    if (res.rect) this._emit('vegetation:changed', res.rect);
+    return { ok: true, cost, cells: res.cells, ha: +res.ha.toFixed(4) };
+  }
+
+  /** { [plantId]: cover 0..1 } at world (x, z). */
+  getVegetation(x, z) { return this.veg.at(x, z); }
+
+  /**
+   * Food report for a habitat: per species present (and every herbivore the habitat's plants attract)
+   * { n, food, need, capacity, foodCapacity, spaceCapacity } — food/need in plant food units per day for
+   * herbivores, kg/day of prey offtake (lagged biomass × PREY_YIELD) for predators.
+   */
+  getFoodReport(habitatId) {
+    const h = this.world.habitats?.get(habitatId);
+    if (!h) return null;
+    const st = this.habitatStat(h);
+    const m = this.pop.get(habitatId);
+    const out = {};
+    const names = new Set(m ? [...m.keys()] : []);
+    for (const s in FOOD) if (this._foodFor(h, s) > 0) names.add(s);
+    for (const s of [...names].sort()) {
+      const r = m?.get(s);
+      const n = r ? r.n : 0;
+      const cap = this._capacity(h, s, st);
+      const per = DIET[s] ? DIET[s].needKg : FOOD[s]?.need ?? null;
+      out[s] = { n, food: cap.food != null ? +cap.food.toFixed(2) : null, need: per != null ? +(n * per).toFixed(2) : null, perAnimal: per,
+        capacity: cap.capacity, foodCapacity: cap.foodCap, spaceCapacity: cap.space };
+    }
+    return out;
+  }
+
   hire(role, n = 1) { if (!this.staff[role]) return 0; this.staff[role].n = Math.max(0, this.staff[role].n + Math.round(n)); return this.staff[role].n; }
   fire(role, n = 1) { if (!this.staff[role]) return 0; this.staff[role].n = Math.max(0, this.staff[role].n - Math.round(n)); return this.staff[role].n; }
   setWage(role, wage) { if (!this.staff[role]) return 0; this.staff[role].wage = clamp(+wage || 0, 0, 1000); return this.staff[role].wage; }
@@ -1104,6 +1310,7 @@ export class Simulation {
       morale: this.morale, prosperity: this.prosperity, efficiency: this.efficiency,
       season: this._season(), activeEvents: this.activeEvents.map((e) => ({ type: e.type, until: e.until, species: e.species })),
       totals: { ...this.totals }, speed: this.speedValue,
+      vegetation: { version: this.world.vegetation?.version ?? 0, rain: this.vegToday.rain, stepMs: +this.veg.lastStepMs.toFixed(3) },
     };
   }
   getHistory(days = 60) { return (this.world.economy?.history || []).slice(-days); }

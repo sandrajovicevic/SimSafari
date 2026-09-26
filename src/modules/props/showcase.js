@@ -1,6 +1,7 @@
 // Showcase presets for props. stage() generates the terrain first (so props land on real heights and
 // biomes), scatters the whole park with the module's own rules, then moves the preset cameras onto the
 // features the seeded terrain actually produced.
+import { PLANTS, PLANT_INDEX } from '../../core/Plants.js';
 
 export const presets = {
   overview: {
@@ -31,7 +32,47 @@ export const presets = {
     camera: { target: [120, 300], distance: 120, pitch: 12, yaw: 210 }, tod: 21.5,
     description: 'Moonlit savannah at 21:30: acacia silhouettes against the star field, grass reading as blue-grey texture',
   },
+  plants: {
+    camera: { target: [120, 300], distance: 145, pitch: 28, yaw: 200 }, tod: 13,
+    description: 'All 10 P1 food-web plants side by side: four grass tussocks (red-oat, couch, '
+      + 'lovegrass, sedge), aloe rosette and sour-plum bush, then umbrella thorn, knobthorn, marula '
+      + 'and baobab, drawn from world.vegetation cover — staged test values (docs/specs/p1-food-web.md), '
+      + 'not gameplay data',
+  },
 };
+
+// STAGING ONLY — see stageVegetationTestCover below. Local offsets (m) from the preset's camera
+// target. Placement within a 16 m vegetation cell jitters across the WHOLE cell (real gameplay
+// placement, not simplified for the showcase), so offsets are spaced ≥ 20 m apart — comfortably
+// wider than one cell — to keep the ten plants in separate cells and stop worst-case jitter from
+// dropping one species behind another (grass/shrub row in front, spaced-out tree row behind it).
+const PLANT_STAGE_OFFSETS = {
+  red_oat: [-50, -14], couch: [-30, -14], lovegrass: [-10, -14], sedge: [10, -14],
+  aloe: [30, -14], sour_plum: [50, -14],
+  umbrella_thorn: [-39, 14], knobthorn: [-13, 14], marula: [13, 14], baobab: [39, 14],
+};
+
+/**
+ * STAGING ONLY. The simulation builder's world.vegetation seeding is on another branch and has not
+ * landed here, so the grid is all zeros in the real game — props only ever READS world.vegetation
+ * (docs/specs/p1-food-web.md §props). This writes test cover directly into it so the `plants` preset
+ * has something to draw; it exists only in showcase.js, for this preset, and nowhere else in the
+ * module.
+ */
+function stageVegetationTestCover(ctx, w, cx, cz) {
+  const v = w.vegetation, res = v.res;
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (const p of PLANTS) {
+    const [dx, dz] = PLANT_STAGE_OFFSETS[p.id];
+    const x = cx + dx, z = cz + dz;
+    const idx = w.vegCell(x, z);
+    v.cover[PLANT_INDEX[p.id] * res * res + idx] = p.maxCover;
+    x0 = Math.min(x0, x - 10); x1 = Math.max(x1, x + 10);
+    z0 = Math.min(z0, z - 10); z1 = Math.max(z1, z + 10);
+  }
+  v.version++;
+  ctx.events.emit('vegetation:changed', { x0, z0, x1, z1 });
+}
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const degOf = (nx, nz) => (Math.atan2(nx, nz) * 180) / Math.PI;
@@ -85,6 +126,7 @@ export async function stage(ctx, presetName) {
   presets.night.camera.target = [plain[0], plain[1]];
   presets.close.camera.target = [plain[0] - 30, plain[1] - 25];
   presets.acacia.camera.target = [plain[0] + 40, plain[1] - 40];
+  presets.plants.camera.target = [plain[0], plain[1] + 70];
 
   if (f) {
     const kop = [...f.kopjes].sort((a, b) => b.h - a.h)[0];
@@ -137,6 +179,12 @@ export async function stage(ctx, presetName) {
       rules: { boulder: { density: 2.4 }, shrub: { density: 1.6 } },
       clear: false,
     });
+  }
+
+  if (presetName === 'plants') {
+    const [px, pz] = presets.plants.camera.target;
+    props.clear({ x0: px - 65, z0: pz - 35, x1: px + 65, z1: pz + 35 });
+    stageVegetationTestCover(ctx, ctx.world, px, pz);
   }
 
   if (presetName === 'riverine') {
