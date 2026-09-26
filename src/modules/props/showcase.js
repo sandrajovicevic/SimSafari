@@ -39,7 +39,43 @@ export const presets = {
       + 'and baobab, drawn from world.vegetation cover — staged test values (docs/specs/p1-food-web.md), '
       + 'not gameplay data',
   },
+  unburnt: {
+    camera: { target: [120, 300], distance: 230, pitch: 34, yaw: 200 }, tod: 14,
+    description: 'Control for `burnt`: same view, same staged natural baseline, cover = natural everywhere '
+      + '(the scatter drawn exactly as today)',
+  },
+  burnt: {
+    camera: { target: [120, 300], distance: 230, pitch: 34, yaw: 200 }, tod: 14,
+    description: 'Vegetation grid test: cover staged to 0 in a 60 m disc and to 35 % of natural in a ring out '
+      + 'to 95 m — the biome scatter\'s trees, shrubs and grass follow world.vegetation (P2 fire prerequisite)',
+  },
 };
+
+// STAGING ONLY (burnt / unburnt). Without `simulation` loaded the showcase has no natural baseline
+// (world.vegetation.natural is all zeros → the scatter is drawn unchanged), so these presets stage a
+// uniform baseline in BOTH natural and cover, then (burnt) cut cover in a disc + partial ring. props
+// never writes world.vegetation anywhere else.
+const BURN_BASE = { red_oat: 0.55, couch: 0.25, umbrella_thorn: 0.12, baobab: 0.05, knobthorn: 0.05, marula: 0.04, sour_plum: 0.1, aloe: 0.05 };
+const BURN_R0 = 60, BURN_R1 = 95, BURN_RING = 0.35;
+
+function stageBurn(ctx, w, cx, cz, burnt) {
+  const v = w.vegetation, res = v.res, N = res * res, half = w.half;
+  v.cover.fill(0);
+  if (v.natural) v.natural.fill(0);
+  for (let iz = 0; iz < res; iz++) for (let ix = 0; ix < res; ix++) {
+    const c = iz * res + ix;
+    const x = (ix + 0.5) * v.cell - half, z = (iz + 0.5) * v.cell - half;
+    const d = Math.hypot(x - cx, z - cz);
+    const k = !burnt ? 1 : d < BURN_R0 ? 0 : d < BURN_R1 ? BURN_RING : 1;
+    for (const [id, base] of Object.entries(BURN_BASE)) {
+      const t = PLANT_INDEX[id];
+      if (v.natural) v.natural[t * N + c] = base;
+      v.cover[t * N + c] = base * k;
+    }
+  }
+  v.version++;
+  ctx.events.emit('vegetation:changed', { x0: -half, z0: -half, x1: half, z1: half });
+}
 
 // STAGING ONLY — see stageVegetationTestCover below. Local offsets (m) from the preset's camera
 // target. Placement within a 16 m vegetation cell jitters across the WHOLE cell (real gameplay
@@ -127,6 +163,8 @@ export async function stage(ctx, presetName) {
   presets.close.camera.target = [plain[0] - 30, plain[1] - 25];
   presets.acacia.camera.target = [plain[0] + 40, plain[1] - 40];
   presets.plants.camera.target = [plain[0], plain[1] + 70];
+  presets.burnt.camera.target = [plain[0] + 20, plain[1] - 20];
+  presets.unburnt.camera.target = presets.burnt.camera.target;
 
   if (f) {
     const kop = [...f.kopjes].sort((a, b) => b.h - a.h)[0];
@@ -145,6 +183,8 @@ export async function stage(ctx, presetName) {
   // 3. scatter the whole park with the module's own rules
   const rules = {};
   if (presetName === 'overview' || presetName === 'night') rules.acacia = { density: 1.35 };
+  // a wooded patch so the burn reads in one frame (same RULES, higher density)
+  if (presetName === 'burnt' || presetName === 'unburnt') { rules.acacia = { density: 2.4 }; rules.shrub = { density: 1.6 }; }
   props.scatter({ rules });
 
   // 4. preset extras
@@ -185,6 +225,11 @@ export async function stage(ctx, presetName) {
     const [px, pz] = presets.plants.camera.target;
     props.clear({ x0: px - 65, z0: pz - 35, x1: px + 65, z1: pz + 35 });
     stageVegetationTestCover(ctx, ctx.world, px, pz);
+  }
+
+  if (presetName === 'burnt' || presetName === 'unburnt') {
+    const [bx, bz] = presets.burnt.camera.target;
+    stageBurn(ctx, ctx.world, bx, bz, presetName === 'burnt');
   }
 
   if (presetName === 'riverine') {

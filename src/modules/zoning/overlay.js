@@ -274,6 +274,9 @@ export function updateOverlay(dt) {
   o.material.uniforms.uNightAmount.value = env ? env.getNightAmount() : 0;
   o.material.uniforms.uExposure.value = env ? env.getExposure() : 1;
   const rebuild = o.dirty || o.heightsDirty;
+  // hidden overlay: keep the dirty flags and rebuild when it is next shown (a terrain brush stroke
+  // marks it dirty every frame; the whole-grid re-drape cost ~10 ms/frame for an invisible mesh)
+  if (rebuild && !Z.overlayOn) return;
   if (o.dirty) { fillZoneData(Z.world, o.data); o.dataTex.needsUpdate = true; o.dirty = false; }
   if (o.heightsDirty) {
     const newGeo = buildGeometry(Z.world, o.segs);

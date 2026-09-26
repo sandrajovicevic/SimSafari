@@ -195,8 +195,15 @@ export function createHeightTexture(world) {
   return t;
 }
 
+/** Re-encode only sample rect [ix0..ix1]×[iz0..iz1] of the height texture (caller marks the upload rows). */
+export function updateHeightTextureRect(world, tex, ix0, iz0, ix1, iz1) {
+  const H = world.terrain.heights, d = tex.image.data, res = world.terrain.res;
+  for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) { const i = iz * res + ix; d[i] = THREE.DataUtils.toHalfFloat(H[i]); }
+}
+
 export function updateHeightTexture(world, tex) {
   const H = world.terrain.heights, d = tex.image.data;
   for (let i = 0; i < H.length; i++) d[i] = THREE.DataUtils.toHalfFloat(H[i]);
+  tex.clearUpdateRanges();
   tex.needsUpdate = true;
 }
