@@ -3,7 +3,7 @@
 // seeded random events; daily report. Pure JS: runs in Node (test.mjs) and in the browser (index.js wrapper).
 // No three, no DOM, no Math.random — every random draw goes through the injected Rng.
 import { Rng } from '../../core/Rng.js';
-import { SPECIES, SPECIES_ORDER, HABITAT_WEIGHTS, BUILDINGS, ROADS, STAFF, STAFF_ORDER, CONST, FOOD, DIET, PREY_YIELD } from './tables.js';
+import { SPECIES, SPECIES_ORDER, HABITAT_WEIGHTS, BUILDINGS, ROADS, STAFF, STAFF_ORDER, CONST, FOOD, DIET, PREY_YIELD, VEG } from './tables.js';
 import { PLANTS, PLANT_INDEX } from '../../core/Plants.js';
 import { Vegetation, PLANT_COUNT } from './vegetation.js';
 
@@ -538,6 +538,66 @@ export class Simulation {
     const rect = veg.step(rain);
     this.vegToday = { rain: +rain.toFixed(3), changed: rect }; // timing lives in getState(), not the (deterministic) report
     if (rect) this._emit('vegetation:changed', rect);
+    this._fireStep(rain);
+  }
+
+  /**
+   * Daily fire step (Wave P2): natural ignition roll in the dry season, spread/burn-out on the
+   * vegetation grid, then building loss — a burnt cell that carries a building emits 'fire:building'
+   * once per fire (the buildings/park side owns the burnt state and rebuild). Deterministic: the
+   * natural roll uses this.rng, spread uses vegetation's per-cell/day hash.
+   */
+  _fireStep(rain) {
+    const veg = this.veg, w = this.world, season = this._season();
+    const drought = this._eventStrength('drought');
+    const wind = w.weather?.wind || { x: 1, z: 0 };
+    // natural strike: dry season, essentially rainless day, none recently
+    if (season === 'dry' && rain <= VEG.fire.naturalRain && this.clock.day - (this._lastNaturalFire ?? -999) >= VEG.fire.minInterval
+      && this.rng.float() < VEG.fire.naturalP) {
+      const spot = veg.pickFireSite(this.rng.float());
+      if (spot) {
+        this._lastNaturalFire = this.clock.day;
+        const r = veg.ignite(spot.x, spot.z, spot.radius ?? 24, VEG.fire.stamina);
+        if (r.cells) {
+          this.firesIgnited = (this.firesIgnited ?? 0) + 1;
+          this._addEvent(this.clock.day, { type: 'fire', level: 'error', text: `Wildfire ignited by lightning near ${Math.round(spot.x)}, ${Math.round(spot.z)} — about ${r.ha} ha alight!` });
+        }
+      }
+    }
+    const before = veg.fireVersion;
+    veg.stepFire({ rain, drought, windX: wind.x ?? 0, windZ: wind.z ?? 0, day: this.clock.day });
+    if (veg.fireVersion !== before) this._emit('fire:changed', { version: veg.fireVersion, stats: veg.fireStats() });
+    this._fireBuildings();
+  }
+
+  /** Burnt buildings: any burning cell whose footprint carries a building emits fire:building once. */
+  _fireBuildings() {
+    const veg = this.veg, w = this.world;
+    if (!w.buildings?.size || !w.grid?.occupancy) return;
+    if (!this._fireSeenBuildings) this._fireSeenBuildings = new Set();
+    const B = veg.burn, N = veg.nCells, grid = w.grid, gres = grid.res, gcell = grid.cell;
+    const half = w.half ?? w.size / 2;
+    for (let i = 0; i < N; i++) {
+      if (B[i] !== 1) continue;
+      const iz = (i / veg.res) | 0, ix = i - iz * veg.res;
+      const cx = (ix + 0.5) * veg.cell - half, cz = (iz + 0.5) * veg.cell - half;
+      // the 4 m grid cells under this vegetation cell
+      for (let gz = Math.floor((cz + half) / gcell); gz <= Math.floor((cz + 0.5 * veg.cell + half - 0.01) / gcell); gz++) {
+        for (let gx = Math.floor((cx + half) / gcell); gx <= Math.floor((cx + 0.5 * veg.cell + half - 0.01) / gcell); gx++) {
+          if (gx < 0 || gz < 0 || gx >= gres || gz >= gres) continue;
+          if (grid.occupancy[gz * gres + gx] !== 1) continue;
+          for (const b of w.buildings.values()) {
+            if (this._fireSeenBuildings.has(b.id) || b.state === 'burnt') continue;
+            const hw = (b.w ?? 8) / 2 + 1, hd = (b.d ?? 8) / 2 + 1;
+            if (cx >= b.x - hw && cx <= b.x + hw && cz >= b.z - hd && cz <= b.z + hd) {
+              this._fireSeenBuildings.add(b.id);
+              this._emit('fire:building', { id: b.id, type: b.type, x: b.x, z: b.z, day: this.clock.day });
+              this._addEvent(this.clock.day, { type: 'fire', level: 'error', text: `The ${b.type} at ${Math.round(b.x)}, ${Math.round(b.z)} caught fire and burned down!` });
+            }
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -1224,6 +1284,16 @@ export class Simulation {
       const s = opts.species && present.includes(opts.species) ? opts.species : rng.pick(present);
       const d = opts.duration ?? rng.int(7, 14);
       this._addEvent(day, { type: 'disease', level: 'warn', species: s, duration: d, text: `Disease outbreak among the ${s} (vet costs up, ${d} days)` });
+      return record();
+    }
+    if (type === 'fire') {
+      const spot = opts.x === undefined
+        ? (this.veg.pickFireSite(this.rng.float()) || { x: (this.rng.float() - 0.5) * this.world.size * 0.8, z: (this.rng.float() - 0.5) * this.world.size * 0.8, radius: opts.radius })
+        : { x: opts.x, z: opts.z, radius: opts.radius };
+      const r = this.veg.ignite(spot.x, spot.z, spot.radius ?? (opts.radius ?? 24));
+      if (!r.cells) return null;
+      this.firesIgnited = (this.firesIgnited ?? 0) + 1;
+      this._addEvent(day, { type: 'fire', level: 'error', text: `Fire! About ${r.ha} ha are alight near ${Math.round(spot.x)}, ${Math.round(spot.z)}.` });
       return record();
     }
     if (type === 'poachers') {
