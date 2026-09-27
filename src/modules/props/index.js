@@ -13,6 +13,7 @@ import { buildBoulder, buildTermiteMound, buildLog, buildShrub } from './rocks.j
 import { GrassField } from './grass.js';
 import { bakeImposter, imposterMaterial, imposterGeometry } from './imposter.js';
 import { buildPlantAssets, VegetationLayer } from './plants.js';
+import { PLANTS, PLANT_INDEX } from '../../core/Plants.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -55,6 +56,9 @@ const S = {
   camX: 1e9, camZ: 1e9, dirty: true, ready: false, scattered: false,
   stats: { trees: 0, props: 0, grass: 0, drawGroups: 0 },
   _t: 0, _grassMs: 0, _packMs: 0,
+  // natural vegetation ↔ world.vegetation (see "Vegetation grid" below)
+  vegRatio: null, vegGrass: null, vegSums: null, vegNoBase: null, vegRect: { x0: 0, z0: 0, x1: 0, z1: 0 }, vegDirty: false, vegSince: 1e9,
+  vegStats: { hiddenTrees: 0, hiddenShrubs: 0, noBaseline: 0, applyMs: 0, applies: 0 },
 };
 
 // ---------------------------------------------------------------------------------------------------------
@@ -353,10 +357,163 @@ function buildImposters() {
       try { baked = bakeImposter(S.ctx, meshes, { size: S.ctx.quality === 'low' ? 128 : 256 }); }
       catch (err) { S.ctx.log.warn(`[props] imposter bake failed for ${kind} v${vi}: ${err?.message || err}`); }
       if (!baked) continue;
-      v.imposter = { ...baked, mat: imposterMaterial(S.ctx, baked.texture, kind + vi, baked.top, baked.topExtent, baked.crownY, baked.width), geo: S.imposterGeo, refHeight: v.height };
+      v.imposter = { ...baked, mat: imposterMaterial(S.ctx, baked.texture, kind + vi, baked.top, baked.topExtent, baked.crownY, baked.width, baked.sideN, baked.topN), geo: S.imposterGeo, refHeight: v.height };
     }
     sp.hasImposter = sp.variants.some((v) => !!v.imposter);
   }
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// vegetation grid — the scatter's trees/shrubs and the grass field follow world.vegetation
+// ---------------------------------------------------------------------------------------------------------
+//
+// simulation owns world.vegetation.cover (per 16 m cell per plant) and snapshots its seeded state in
+// .natural. The biome scatter below IS the drawing of that natural state, so each scattered tree/shrub
+// is tied to a vegetation cell + a ratio slot and drawn only while ratio = cover / natural > u, u being
+// a fixed per-instance threshold. Grazed or burnt to 30 % → ~30 % of the same trees; regrowth brings
+// the same trees back. Grass tufts do the same against the cell's grass ratio (grass.js). natural = 0
+// means "no baseline to compare against": the ratio is 1 and today's scatter is drawn unchanged.
+
+const VEG_THROTTLE = 0.5;    // s — rebuild at most this often (contract §props.4)
+const VEG_EPS = 1e-4;
+const NPLANT = PLANTS.length;
+const SLOT_TREES = NPLANT, SLOT_SHRUBS = NPLANT + 1, SLOT_GRASS = NPLANT + 2, NSLOT = NPLANT + 3;
+const TREE_T = PLANTS.map((p, i) => (p.form === 'tree' ? i : -1)).filter((i) => i >= 0);
+const SHRUB_T = PLANTS.map((p, i) => (p.form === 'shrub' ? i : -1)).filter((i) => i >= 0);
+const GRASS_T = PLANTS.map((p, i) => (p.form === 'grass' ? i : -1)).filter((i) => i >= 0);
+// scatter kind → ratio slot. fever tree has no catalogue entry: it follows the cell's total tree
+// cover. Shrubs (the scatter's generic thorn scrub) follow aloe + sour plum together. Dead trees,
+// boulders, termite mounds and logs never change (-1).
+const KIND_SLOT = {
+  acacia: PLANT_INDEX.umbrella_thorn, baobab: PLANT_INDEX.baobab, fever: SLOT_TREES, shrub: SLOT_SHRUBS,
+  dead: -1, boulder: -1, termite: -1, log: -1,
+};
+
+/** Fixed per-instance threshold in [0, 1) from the item's position (stable across clear/re-scatter). */
+function hashU(x, z) {
+  let h = (Math.imul(Math.round(x * 64) | 0, 0x27d4eb2d) ^ Math.imul(Math.round(z * 64) | 0, 0x165667b1)) >>> 0;
+  h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d) >>> 0; h ^= h >>> 12; h = Math.imul(h, 0x297a2d39) >>> 0; h ^= h >>> 15;
+  return (h >>> 0) / 4294967296;
+}
+
+function vegRatioOf(sum, nat) { if (nat <= VEG_EPS) return -1; const r = sum / nat; return r < 0 ? 0 : r > 1 ? 1 : r; }
+
+const VEG_NB = 2;   // neighbourhood radius in cells (5×5 = 80 m) for woody fallbacks
+
+/**
+ * Recompute the ratio slots for vegetation cells [i0..i1]×[j0..j1] (and the VEG_NB halo whose
+ * neighbourhood sums they feed). Fallback chain for a woody slot whose own natural cover is 0:
+ * cell's total trees (or shrubs) → the 5×5 neighbourhood's trees (or shrubs) → the neighbourhood's
+ * woody total → 1 (no baseline anywhere near: drawn as today). simulation seeds trees sparsely, so
+ * most scattered trees sit in a cell with no natural tree cover of their own; the neighbourhood is
+ * what makes a burnt / browsed patch thin them. Returns true if any grass ratio moved.
+ */
+function computeVegRatios(i0, j0, i1, j1) {
+  const v = S.world.vegetation, res = v.res, N = res * res, cov = v.cover, nat = v.natural;
+  const R = S.vegRatio, G = S.vegGrass, W = S.vegSums;   // W: [tc, tn, sc, sn] × N
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+    const c = j * res + i;
+    let tc = 0, tn = 0, sc = 0, sn = 0;
+    for (const t of TREE_T) { tc += cov[t * N + c]; tn += nat ? nat[t * N + c] : 0; }
+    for (const t of SHRUB_T) { sc += cov[t * N + c]; sn += nat ? nat[t * N + c] : 0; }
+    W[c] = tc; W[N + c] = tn; W[2 * N + c] = sc; W[3 * N + c] = sn;
+  }
+  let grassMoved = false;
+  const a0 = Math.max(0, i0 - VEG_NB), a1 = Math.min(res - 1, i1 + VEG_NB);
+  const b0 = Math.max(0, j0 - VEG_NB), b1 = Math.min(res - 1, j1 + VEG_NB);
+  for (let j = b0; j <= b1; j++) for (let i = a0; i <= a1; i++) {
+    const c = j * res + i;
+    let ntc = 0, ntn = 0, nsc = 0, nsn = 0;
+    const q0 = Math.max(0, i - VEG_NB), q1 = Math.min(res - 1, i + VEG_NB);
+    for (let jj = Math.max(0, j - VEG_NB), jz = Math.min(res - 1, j + VEG_NB); jj <= jz; jj++) {
+      for (let ii = q0; ii <= q1; ii++) {
+        const k = jj * res + ii;
+        ntc += W[k]; ntn += W[N + k]; nsc += W[2 * N + k]; nsn += W[3 * N + k];
+      }
+    }
+    let rw = vegRatioOf(ntc + nsc, ntn + nsn);
+    S.vegNoBase[c] = rw < 0 ? 1 : 0;
+    if (rw < 0) rw = 1;
+    let rtn = vegRatioOf(ntc, ntn); if (rtn < 0) rtn = rw;
+    let rsn = vegRatioOf(nsc, nsn); if (rsn < 0) rsn = rw;
+    let rt = vegRatioOf(W[c], W[N + c]); if (rt < 0) rt = rtn;
+    let rs = vegRatioOf(W[2 * N + c], W[3 * N + c]); if (rs < 0) rs = rsn;
+    let gc = 0, gn = 0;
+    for (const t of GRASS_T) { gc += cov[t * N + c]; gn += nat ? nat[t * N + c] : 0; }
+    let rg = vegRatioOf(gc, gn); if (rg < 0) rg = 1;
+    for (let t = 0; t < NPLANT; t++) {
+      const r = vegRatioOf(cov[t * N + c], nat ? nat[t * N + c] : 0);
+      const form = PLANTS[t].form;
+      R[t * N + c] = r >= 0 ? r : form === 'tree' ? rt : form === 'shrub' ? rs : 1;
+    }
+    R[SLOT_TREES * N + c] = rt; R[SLOT_SHRUBS * N + c] = rs; R[SLOT_GRASS * N + c] = rg;
+    if (G[c] !== rg) { G[c] = rg; grassMoved = true; }
+  }
+  return grassMoved;
+}
+
+function itemHidden(it) {
+  if (it.slot < 0 || !S.vegRatio) return false;
+  const v = S.world.vegetation;
+  return S.vegRatio[it.slot * v.res * v.res + it.vc] <= it.u;
+}
+
+/** Queue a vegetation rect (union with anything pending); applied from update(), throttled. */
+function markVegetation(x0, z0, x1, z1) {
+  const r = S.vegRect;
+  if (!S.vegDirty) { r.x0 = x0; r.z0 = z0; r.x1 = x1; r.z1 = z1; S.vegDirty = true; return; }
+  if (x0 < r.x0) r.x0 = x0; if (z0 < r.z0) r.z0 = z0; if (x1 > r.x1) r.x1 = x1; if (z1 > r.z1) r.z1 = z1;
+}
+
+/** Apply the pending rect: ratios for its cells, visibility for the items in them, grass repack. */
+function applyVegetation() {
+  const t0 = performance.now();
+  const v = S.world.vegetation, cell = v.cell, half = S.world.half, res = v.res, r = S.vegRect;
+  const i0 = clamp(Math.floor((r.x0 + half) / cell), 0, res - 1), i1 = clamp(Math.floor((r.x1 + half) / cell), 0, res - 1);
+  const j0 = clamp(Math.floor((r.z0 + half) / cell), 0, res - 1), j1 = clamp(Math.floor((r.z1 + half) / cell), 0, res - 1);
+  S.vegDirty = false;
+  S.vegSince = 0;
+  const grassMoved = computeVegRatios(i0, j0, i1, j1);
+  let flips = 0;
+  for (const it of S.items.values()) {
+    if (it.slot < 0) continue;
+    const ci = it.vc % res, cj = (it.vc - ci) / res;
+    if (ci < i0 - VEG_NB || ci > i1 + VEG_NB || cj < j0 - VEG_NB || cj > j1 + VEG_NB) continue;
+    const h = itemHidden(it);
+    if (h !== it.hidden) { it.hidden = h; flips++; }
+  }
+  if (flips) { rebuildCover(); S.dirty = true; }
+  if (grassMoved && S.grass) {
+    let active = false;
+    for (let k = 0; k < S.vegGrass.length; k++) if (S.vegGrass[k] < 1) { active = true; break; }
+    S.grass.veg.active = active;
+    S.grass.requestRepack();
+  }
+  countHidden();
+  S.vegStats.applyMs = performance.now() - t0;
+  S.vegStats.applies++;
+}
+
+function countHidden() {
+  let ht = 0, hs = 0, nb = 0;
+  for (const it of S.items.values()) {
+    if (it.slot < 0) continue;
+    if (it.hidden) { if (it.kind === 'shrub') hs++; else ht++; }
+    if (S.vegNoBase[it.vc]) nb++;   // no woody baseline within 80 m: drawn unconditionally
+  }
+  S.vegStats.hiddenTrees = ht; S.vegStats.hiddenShrubs = hs; S.vegStats.noBaseline = nb;
+}
+
+/** Grass ratio 0..1 at (x, z), bilinear across vegetation cells (same lookup the grass field uses). */
+function grassRatioAt(x, z) {
+  const G = S.vegGrass;
+  if (!G) return 1;
+  const v = S.world.vegetation, res = v.res;
+  let fx = (x + S.world.half) / v.cell - 0.5, fz = (z + S.world.half) / v.cell - 0.5;
+  fx = clamp(fx, 0, res - 1); fz = clamp(fz, 0, res - 1);
+  const ix = Math.floor(fx), iz = Math.floor(fz), ix1 = ix < res - 1 ? ix + 1 : ix, iz1 = iz < res - 1 ? iz + 1 : iz;
+  const tx = fx - ix, tz = fz - iz;
+  return (G[iz * res + ix] * (1 - tx) + G[iz * res + ix1] * tx) * (1 - tz) + (G[iz1 * res + ix] * (1 - tx) + G[iz1 * res + ix1] * tx) * tz;
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -376,7 +533,7 @@ const _mtx = new THREE.Matrix4();
 const _euler = new THREE.Euler();
 
 function addCover(item) {
-  if (!S.cover) return;
+  if (!S.cover || item.hidden) return;
   const sp = S.species.get(item.kind);
   if (!sp || sp.type !== 'tree') return;
   const R = (sp.variants[item.vi].crownR || 3) * item.scale;
@@ -412,7 +569,10 @@ function placeItem(kind, x, z, opts = {}) {
     rotY: opts.rotY ?? rng.range(0, Math.PI * 2),
     tiltX: 0, tiltZ: 0,
     mirror: rng.bool(0.5),
+    // vegetation grid binding (see "vegetation grid" above)
+    vc: S.world.vegCell(x, z), slot: KIND_SLOT[kind] ?? -1, u: hashU(x, z), hidden: false,
   };
+  item.hidden = itemHidden(item);
   if (kind === 'boulder') {
     item.scale = opts.scale ?? rng.range(0.55, 3.1);
     item.tiltX = rng.range(-0.5, 0.5); item.tiltZ = rng.range(-0.5, 0.5);
@@ -487,6 +647,7 @@ function pack(cx, cz) {
     const cull = PROP_CULL[sp.kind] ?? Infinity;
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
+      if (it.hidden) continue;
       const dx = it.x - cx, dz = it.z - cz;
       const d = Math.sqrt(dx * dx + dz * dz);
       const variant = sp.variants[it.vi];
@@ -820,7 +981,10 @@ const api = {
   },
 
   /** Grazeable grass density 0..1 at (x, z), including the current grazing/regrowth state. */
-  grassDensityAt(x, z) { return grassSample(x, z); },
+  grassDensityAt(x, z) { const d = grassSample(x, z); return d > 0 ? d * grassRatioAt(x, z) : 0; },
+
+  /** Grass ratio 0..1 (Σ grass cover / Σ natural grass cover, bilinear) the grass field is drawn at. */
+  grassRatioAt(x, z) { return grassRatioAt(x, z); },
 
   /** Animals eat: reduce grass in a disc. amount 0..1. Regrows in tick(). */
   graze(x, z, r, amount = 0.25) {
@@ -873,6 +1037,8 @@ const api = {
       grassPackMs: +(S.grass?.lastPackMs || 0).toFixed(2),
       grassPendingChunks: S.grass ? S.grass._genQueue.length : 0,
       plantsCells: S.plants ? S.plants.cells.size : 0,
+      vegHiddenTrees: S.vegStats.hiddenTrees, vegHiddenShrubs: S.vegStats.hiddenShrubs,
+      vegNoBaseline: S.vegStats.noBaseline, vegApplyMs: +S.vegStats.applyMs.toFixed(2), vegApplies: S.vegStats.applies,
       plantsRepackMs: +(S.plants?.lastRepackMs || 0).toFixed(2),
     };
   },
@@ -910,6 +1076,11 @@ export default {
       const gres = S.world.grid.res;
       S.cover = new Float32Array(gres * gres);
       S.graze = new Float32Array(gres * gres).fill(1);
+      const vr = S.world.vegetation.res;
+      S.vegRatio = new Float32Array(NSLOT * vr * vr).fill(1);
+      S.vegGrass = new Float32Array(vr * vr).fill(1);
+      S.vegSums = new Float32Array(4 * vr * vr);
+      S.vegNoBase = new Uint8Array(vr * vr).fill(1);
       buildMacro();
       buildMaterials();
       // scanned granite over the procedural one (awaited: boulders must not pop on frame 1)
@@ -923,6 +1094,7 @@ export default {
       buildSpecies();
       buildImposters();
       S.grass = new GrassField(ctx, S.group, grassSample);
+      S.grass.veg = { grid: S.vegGrass, res: vr, cell: S.world.vegetation.cell, half: S.world.half, active: false };
       try {
         const { assets, ownedGeo, ownedMat } = buildPlantAssets(ctx, S.mats, S.species);
         S.plants = new VegetationLayer(ctx, S.group, assets);
@@ -947,7 +1119,9 @@ export default {
     // props never writes world.vegetation — only reads it, on the initial state and on every
     // simulation-driven change (docs/specs/p1-food-web.md §props.3).
     ctx.events.on('vegetation:changed', (p) => {
-      if (p) S.plants?.rebuildRect(p.x0, p.z0, p.x1, p.z1);
+      if (!p) return;
+      S.plants?.rebuildRect(p.x0, p.z0, p.x1, p.z1);
+      markVegetation(p.x0, p.z0, p.x1, p.z1);
     });
 
     // In the full game the terrain is generated during its own init(), i.e. before ours, so the
@@ -958,6 +1132,7 @@ export default {
     // pick up whatever world.vegetation already holds (all-zero until the simulation builder's
     // seeding lands; showcase presets stage their own test cover in showcase.js).
     if (S.plants) { try { S.plants.rebuildRect(-S.world.half, -S.world.half, S.world.half, S.world.half); } catch (err) { ctx.log.error('[props] initial vegetation rebuild failed', err); } }
+    markVegetation(-S.world.half, -S.world.half, S.world.half, S.world.half);
   },
 
   update(dt, t) {
@@ -969,6 +1144,9 @@ export default {
     // low eye-level view and a tilted overview keep grass in the foreground.
     const gx = tgt ? cam.position.x * 0.45 + tgt.x * 0.55 : cam.position.x;
     const gz = tgt ? cam.position.z * 0.45 + tgt.z * 0.55 : cam.position.z;
+    // vegetation grid: throttled to VEG_THROTTLE, except the first apply and the one-shot showcase
+    S.vegSince += dt;
+    if (S.vegDirty && (S.vegSince >= VEG_THROTTLE || S.vegStats.applies === 0 || S.ctx.isShowcase)) applyVegetation();
     const g0 = performance.now();
     S.grass?.update(gx, gz, 14, S.ctx.isShowcase);
     S._grassMs = performance.now() - g0;
@@ -1015,6 +1193,8 @@ export default {
         if (!v.imposter) continue;
         v.imposter.texture?.userData?.renderTarget?.dispose();
         v.imposter.top?.userData?.renderTarget?.dispose();
+        v.imposter.sideN?.userData?.renderTarget?.dispose();
+        v.imposter.topN?.userData?.renderTarget?.dispose();
         S.ctx.materials.untrack(v.imposter.mat); v.imposter.mat.dispose();
       }
     }
@@ -1025,6 +1205,7 @@ export default {
     S.imposterGeo?.dispose(); S.imposterGeo = null;
     S.species.clear(); S.items.clear(); S.byKind.clear();
     S.mats = {}; S.cover = null; S.graze = null; S.grazed.clear(); S.macro = null;
+    S.vegRatio = null; S.vegGrass = null; S.vegSums = null; S.vegNoBase = null; S.vegDirty = false; S.vegStats.applies = 0;
     S.group?.removeFromParent(); S.group = null;
     S.ready = false; S.scattered = false;
   },

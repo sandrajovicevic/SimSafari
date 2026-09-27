@@ -409,6 +409,14 @@ console.log('food web + vegetation (Wave P1)');
     `plant('aloe', r 40 m) charges cost × ha: ${pr.cells} cells = ${(pr.cells * 0.0256).toFixed(2)} ha × $900 = $${pr.cost}`);
   assert(pw.sim.getSpendLog(1)[0].reason === 'plant' && pw.events.some((e) => e.n === 'vegetation:changed' && e.p.x0 <= -290 && e.p.x1 >= -210), 'plant() books spend reason "plant" and emits vegetation:changed for the planted rect');
   assert(Math.abs(pw.sim.getVegetation(-250, 250).aloe - 0.3) < 1e-6, 'planted cells carry the requested cover');
+  // plantQuote() prices without writing; unplant() restores cover bit-for-bit and refunds
+  const q = pw.sim.plantQuote('marula', 250, -250, 30);
+  const coverSnap = Float32Array.from(pw.world.vegetation.cover), cashQ = pw.world.economy.cash;
+  assert(q.cells > 0 && q.cost > 0 && q.affordable && pw.world.economy.cash === cashQ, `plantQuote('marula', r 30 m) = ${q.cells} cells, $${q.cost}, nothing charged`);
+  const pu = pw.sim.plant('marula', 250, -250, 30, 0.25);
+  assert(pu.ok && Math.abs(pu.cost - q.cost) < 0.01, 'plant() charges exactly the quoted cost');
+  pw.sim.unplant(pu.undo);
+  assert(pw.world.vegetation.cover.every((c, i) => c === coverSnap[i]) && Math.abs(pw.world.economy.cash - cashQ) < 0.01, 'unplant() restores every cover value exactly and refunds the cost');
   pw.world.economy.cash = 10;
   const before = pw.sim.getVegetation(250, 250).marula;
   const poor = pw.sim.plant('marula', 250, 250, 40);

@@ -57,6 +57,15 @@ isEnabled() → bool
 | `animal:spawned`, `building:placed` | consumes | toast + minimap markers |
 | `core:ready` | consumes | initial population of all surfaces |
 
+### Plants and food (Wave P1, 2026-09-26)
+* Toolbar category **Plants** (key 6; View moved to 7) — one card per `core/Plants.js` plant with form tag,
+  $/ha and a tooltip naming the species it feeds; shown only when `simulation.plant` exists. The active-tool pill
+  shows the live quote from `tool:preview` (`$92 · 0.10 ha`, or "can't afford").
+* View → **Vegetation** overlay (drawn by `tools`).
+* Habitat panel → **Food** section: per resident species `n / capacity` and a bar of food ÷ need (green ≥ 1.2,
+  amber ≥ 1, red below), re-read once per sim day from `simulation.getFoodReport`; when a species is over its food
+  capacity it names the best plants for it with a "Plant …" button that opens the Plant tool.
+
 ## Modules consumed (all optional, all null-checked)
 
 `simulation` (top bar + report), `animals` (species panel), `buildings` (park name), `tools`

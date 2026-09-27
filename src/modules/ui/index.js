@@ -152,6 +152,7 @@ export default {
       // ---- events
       const ev = ctx.events;
       ev.on('ui:notify', (p) => parts && parts.notifications.push(p?.level || 'info', p?.text ?? '', p || {}));
+      ev.on('tool:preview', (p) => { if (!parts) return; s.toolPreview = p || null; parts.toolbar.refresh(); });
       ev.on('tool:selected', (p) => { if (!parts) return; const tool = p?.tool ?? null; s.activeTool = tool ? { tool, options: p.options ?? (s.activeTool?.tool === tool ? s.activeTool.options : null), item: s.activeTool?.tool === tool ? s.activeTool.item : null } : null; parts.toolbar.refresh(); });
       ev.on('economy:updated', () => parts && parts.topbar.refresh());
       ev.on('weather:changed', () => parts && parts.topbar.refresh());

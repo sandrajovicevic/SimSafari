@@ -27,7 +27,7 @@ const MUL_XZ = [1.0, 1.10, 2.4];
 
 const NEAR_CHUNK = 16;
 const FAR_CHUNK = 64;
-const STRIDE = 11;   // x,y,z, sx,sy, r,g,b, key, tilt, spare
+const STRIDE = 11;   // x,y,z, sx,sy, r,g,b, key, tilt, vegU (vegetation-grid keep threshold)
 
 /**
  * One grass tuft: `blades` tapered strips leaning outward from the origin.
@@ -131,6 +131,11 @@ export class GrassField {
     this._genQueue = [];
     this._genBudgetMs = 3;   // wall-time budget per update() call for chunk generation
     this._genPerFrame = 24;  // hard cap alongside the time budget (a chunk can be cheap if sparse)
+    // Vegetation grid (index.js): per-16 m-cell grass ratio = Σ grass cover / Σ natural grass cover.
+    // Applied at PACK time — a tuft is kept while the bilinear ratio at its position is > its vegU —
+    // so a cover change only needs a repack, never a chunk regeneration. `active` is false while every
+    // ratio is 1 (the pack loops then skip the lookup entirely).
+    this.veg = null;
 
     const rng = ctx.rng.fork('grass-geo');
     const geos = [
@@ -192,6 +197,20 @@ export class GrassField {
 
   clearCache() { this.near.clear(); this.far.clear(); this.center.set(1e9, 0, 1e9); }
 
+  /** Repack on the next update() without dropping any cached chunk (vegetation ratio changed). */
+  requestRepack() { this.center.set(1e9, 0, 1e9); }
+
+  /** Bilinear vegetation grass ratio at (x, z); 1 when the grid is inactive. */
+  _vegRatio(x, z) {
+    const v = this.veg;
+    const G = v.grid, res = v.res;
+    let fx = (x + v.half) / v.cell - 0.5, fz = (z + v.half) / v.cell - 0.5;
+    fx = fx < 0 ? 0 : fx > res - 1 ? res - 1 : fx; fz = fz < 0 ? 0 : fz > res - 1 ? res - 1 : fz;
+    const ix = Math.floor(fx), iz = Math.floor(fz), ix1 = ix < res - 1 ? ix + 1 : ix, iz1 = iz < res - 1 ? iz + 1 : iz;
+    const tx = fx - ix, tz = fz - iz;
+    return (G[iz * res + ix] * (1 - tx) + G[iz * res + ix1] * tx) * (1 - tz) + (G[iz1 * res + ix] * (1 - tx) + G[iz1 * res + ix1] * tx) * tz;
+  }
+
   _genChunk(ix, iz, chunkSize, spacing) {
     const out = [];
     const s = this.sample;
@@ -219,11 +238,14 @@ export class GrassField {
         const sy = o.height * (0.62 + 0.85 * rh);
         const sx = 0.75 + 0.55 * ra;
         const cv = 0.86 + 0.28 * rc;
+        // keep threshold for the vegetation grid, decorrelated from `key` (which drives LOD picks) and
+        // derived from already-drawn values so the hash stream — and today's field — is unchanged
+        const vu = (rx * 97.31 + rz * 57.17 + ra * 13.71) % 1;
         out.push(
           x, o.y, z,
           sx, sy,
           o.r * cv, o.g * cv * (0.96 + 0.08 * rk), o.b * cv,
-          rk, ra * 6.2831853, 0,
+          rk, ra * 6.2831853, vu,
         );
       }
     }
@@ -320,6 +342,7 @@ export class GrassField {
     const CA = this.meshes[0].instanceColor.array, CB = this.meshes[1].instanceColor.array, CC = this.meshes[2].instanceColor.array;
     const capA = q.cap[0], capB = q.cap[1], capC = q.cap[2];
     let nA = 0, nB = 0, nC = 0;
+    const vegOn = !!(this.veg && this.veg.active);
 
     const write = (M, colArr, n, p, i, mulXZ, mulY) => {
       const o = n * 16;
@@ -355,6 +378,7 @@ export class GrassField {
           const dx = p[i] - cx, dz = p[i + 2] - cz;
           const d = Math.sqrt(dx * dx + dz * dz);
           if (d > r1) continue;
+          if (vegOn && p[i + 10] >= this._vegRatio(p[i], p[i + 2])) continue;
           const key = p[i + 8];
           // LOD0 probability ramps down over the last 14 m of its ring
           // 26 m cross-fade, and the LOD1 keep ratio barely drops, so the handover is invisible
@@ -392,6 +416,7 @@ export class GrassField {
           const dx = p[i] - cx, dz = p[i + 2] - cz;
           const d = Math.sqrt(dx * dx + dz * dz);
           if (d > r2 || d < rin) continue;
+          if (vegOn && p[i + 10] >= this._vegRatio(p[i], p[i + 2])) continue;
           const fin = Math.min(1, (d - rin) / 30);
           // outer edge: a band ~40 % of the ring radius that THINS the field (per-tuft random key vs
           // the fade) as well as shrinking it. The old 55 m shrink-only band left a hard-edged disc of

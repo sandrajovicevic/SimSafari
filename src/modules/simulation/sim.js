@@ -1262,7 +1262,28 @@ export class Simulation {
     this.totals.planted += res.ha; this.totals.plantCost += cost;
     this._food.clear();
     if (res.rect) this._emit('vegetation:changed', res.rect);
-    return { ok: true, cost, cells: res.cells, ha: +res.ha.toFixed(4) };
+    return { ok: true, cost, cells: res.cells, ha: +res.ha.toFixed(4), undo: { prev: res.prev, cost, ha: res.ha } };
+  }
+
+  /** Price a planting without doing it: → { cells, ha, cost, affordable }. */
+  plantQuote(type, x, z, radius) {
+    const t = PLANT_INDEX[type];
+    if (t === undefined) return { cells: 0, ha: 0, cost: 0, affordable: false };
+    const est = this.veg.plant(type, x, z, radius, 0, true);
+    const cost = Math.round(PLANTS[t].cost * est.ha * 100) / 100;
+    const cash = this.world.economy?.cash;
+    return { cells: est.cells, ha: +est.ha.toFixed(4), cost, affordable: est.cells > 0 && (cash == null || cash >= cost) };
+  }
+
+  /** Undo a plant() with the `undo` token it returned: restores cover, refunds the cost. */
+  unplant(token) {
+    if (!token?.prev) return false;
+    const rect = this.veg.unplant(token.prev);
+    this.spend(-token.cost, 'plant');
+    this.totals.planted -= token.ha; this.totals.plantCost -= token.cost;
+    this._food.clear();
+    if (rect) this._emit('vegetation:changed', rect);
+    return true;
   }
 
   /** { [plantId]: cover 0..1 } at world (x, z). */

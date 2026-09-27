@@ -63,6 +63,24 @@ group                                     // (getter) THREE.Group 'tools' — ri
 | `animal` | `species` (a species id or `null` — `null` means "click an animal to inspect instead of releasing") | `null` |
 | `select` | (none) | |
 
+### Plant tool (Wave P1, 2026-09-26)
+`plant` (`PlantTool.js`, needs `simulation`), options `{ plant: <core/Plants.js id>, radius: 16 }`; ui asks for it
+as `tool:request {tool: 'plant.<id>'}`. Click plants one disc through `simulation.plant()` at 60 % of the plant's
+`maxCover`; `[`/`]` resize 8–64 m. The ring is green when `simulation.plantQuote()` says the disc is affordable,
+red otherwise; each quote (re-priced only when the disc moves by half a 16 m cell) is emitted as
+`tool:preview {tool:'plant', plant, cost, ha, affordable}` for ui's pill. Undo calls `simulation.unplant(token)`
+(exact prior cover restored, cost refunded); redo plants again. While active, `vegoverlay.js` drapes a
+vertex-coloured sheet showing that plant's cover / `maxCover`; ui's View → Vegetation (`ui:overlay
+{overlay:'vegetation'}`) keeps it on with total forage (Σ cover × food) instead. Verified 2026-09-26 in the live
+game: aloe disc quoted and charged $92.16 for 0.10 ha, undo refunds to the cent, redo re-charges, 0 console
+errors (`tools/shots/p1ui-plant-hover.png`, `p1ui-planted.png`, `p1ui-veg-overlay.png`).
+
+### Held terrain stroke cost (2026-09-26)
+The P2 prerequisite "held-stroke cost under budget" is met by the terrain/zoning changes (rect-limited
+uploads, deferred habitat/fence/overlay/water rebuilds; see terrain and zoning READMEs), not by tools code:
+60-frame raise stroke, radius 10, SwiftShader container — tools update **0.71 ms mean, p95 1.2 ms, max
+1.3 ms** (was 49 / 68 / 90 ms). Budget ≤ 1.5 ms (ARCHITECTURE §7).
+
 ## Tool framework mechanics
 
 * Every tool implements a shared shape: `activate(ctx,S,opts)`, `deactivate(ctx,S)`,
@@ -212,6 +230,13 @@ draw call) and the building ghost (drawn by `buildings.preview()`, not this modu
 calls and a few hundred triangles, well inside any reasonable per-module soft cap.
 
 ## Known gaps (honest)
+
+* **Plant tool:** click-per-disc only (no drag strokes — `plant()` charges every cell in the disc, so a drag
+  would re-charge overlapping cells); the overlay is draped at 8 m vertex spacing and can clip into steep
+  slopes; on the untouched map the forage overlay is mostly uniform straw (the seeded savannah is uniform) —
+  it becomes informative after grazing, drought or planting.
+* **ui's other View overlays (Habitat quality, Happiness heat, Road usage) have no renderer**: nothing listens
+  to `ui:overlay` except the vegetation sheet here. Found 2026-09-26; not fixed.
 
 - **Terrain drags are still over the 1.5 ms guide**, but no longer pathological. Every held frame calls
   `terrain.raise()`, which runs terrain's `afterEdit()`. Profiled 2026-09-25 (CPU profile of a held

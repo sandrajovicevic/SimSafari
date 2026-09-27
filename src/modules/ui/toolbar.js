@@ -2,6 +2,7 @@
 import { el, clear, append, fmtMoney, titleCase } from './dom.js';
 import { icon, hasIcon, animalIconName } from './icons.js';
 import { SPECIES_ORDER, BUILDINGS, OVERLAYS, speciesFacts } from './species.js';
+import { PLANTS } from '../../core/Plants.js';
 
 const DIET_TAG = { predator: 'predator', browser: 'browser', grazer: 'grazer', mixed: 'mixed' };
 
@@ -55,7 +56,17 @@ export function defaultCategories(s) {
     return { id: sid, name: f.name, icon: animalIconName(sid), tool: 'animal.place', options: { species: sid }, cost: f.cost, tag: DIET_TAG[f.diet] || null, tagCls: f.diet === 'predator' ? 'warn' : '', desc: f.desc };
   }) });
 
-  cats.push({ id: 'view', name: 'View', icon: 'eye', key: '6', hint: 'Overlays are drawn on the terrain. They do not cost anything.', items: OVERLAYS.map((o) => ({
+  // plants (Wave P1 food web) — only when the simulation can plant
+  if (get('simulation')?.plant) {
+    const RAIN = { drought: 'drought-hardy', low: 'dry', medium: 'moderate rain', high: 'wet ground' };
+    cats.push({ id: 'plants', name: 'Plants', icon: 'grass', key: '6', hint: 'Click to plant a disc; [ ] resize. Plants feed the species listed and spread on their own.', items: PLANTS.map((p) => {
+      const eaters = p.attracts.map((sid) => speciesFacts(sid, animals).name).join(', ');
+      return { id: p.id, name: p.name, icon: p.form, tool: 'plant.' + p.id, options: { plant: p.id }, cost: fmtMoney(p.cost) + '/ha', tag: p.form,
+        desc: `${p.latin}. Feeds ${eaters}. Prefers ${RAIN[p.rainfall] || p.rainfall}; ${p.form === 'tree' ? 'slow to spread' : p.form === 'shrub' ? 'spreads slowly' : 'spreads quickly'}.` };
+    }) });
+  }
+
+  cats.push({ id: 'view', name: 'View', icon: 'eye', key: '7', hint: 'Overlays are drawn on the terrain. They do not cost anything.', items: OVERLAYS.map((o) => ({
     id: o.id, name: o.name, icon: o.icon, tool: 'overlay', options: { overlay: o.id }, cost: '', desc: o.desc, sticky: true,
   })) });
   return cats;
@@ -145,7 +156,9 @@ export function createToolbar(root, s) {
     if (t && t.tool) {
       clear(pill);
       const item = activeItem;
-      const cost = item ? (typeof item.cost === 'number' ? fmtMoney(item.cost) : item.cost) : '';
+      let cost = item ? (typeof item.cost === 'number' ? fmtMoney(item.cost) : item.cost) : '';
+      const pv = s.toolPreview; // live quote from the active tool (plant: cost of the disc under the cursor)
+      if (pv && pv.tool === t.tool && pv.ha > 0) cost = fmtMoney(pv.cost) + ' · ' + pv.ha.toFixed(2) + ' ha' + (pv.affordable ? '' : ' · can\'t afford');
       // pill is a raw DOM element — native Element.append() stringifies a null/undefined argument
       // into a literal "null"/"undefined" text node instead of skipping it (confirmed by the
       // independent critic pass, 2026-09-22: DOM readback showed `...<span>Building.Place</span>
@@ -170,7 +183,7 @@ export function createToolbar(root, s) {
     // echoing what was requested (e.g. 'building.place' comes back as 'building' with extra rot/bulldoze
     // fields) — fall back to matching the catalogue by the option that actually identifies the item.
     if (options) {
-      for (const key of ['type', 'species', 'overlay', 'biome']) {
+      for (const key of ['type', 'species', 'overlay', 'biome', 'plant']) {
         if (options[key] === undefined) continue;
         for (const c of categories) for (const it of c.items || []) if (it.options?.[key] === options[key]) return it;
       }

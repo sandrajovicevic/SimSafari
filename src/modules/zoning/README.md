@@ -92,6 +92,13 @@ getOverlay()                            // -> bool
 Consumed: `terrain:modified`, `terrain:ready`, `road:changed`, `building:placed`, `building:removed`,
 `animal:spawned`, `animal:died` (species-set changes are batched — see Known gaps).
 
+### Terrain edits (2026-09-26)
+`terrain:modified` still recomputes NO_BUILD over the edited rect at once, and rebuilds habitats + fences at
+once only when a cell flipped to/from NO_BUILD (topology). A pure height change (brush strokes) marks them
+dirty and rebuilds 8 frames after the last edit (`flushTerrain()` forces it); habitat stats and fence posts
+therefore lag a stroke by those frames. The hidden zone overlay no longer re-drapes on every edit — it
+rebuilds when next shown. Was 8–12 ms per edit (listener) + ~10 ms per frame (hidden overlay re-drape).
+
 ## Rendering
 
 - **Overlay** (`overlay.js` + `boundaries.js`, 2 draw calls): a terrain-conforming fill mesh (128×128

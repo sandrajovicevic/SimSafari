@@ -97,6 +97,10 @@ const api = {
   /** Plant a core/Plants.js plant in a disc: charges cost × ha via spend(…, 'plant'), writes
    * world.vegetation, emits vegetation:changed. → {ok, cost, cells, ha} (docs/specs/p1-food-web.md §5). */
   plant: (type, x, z, radius, cover = 0.25) => sim?.plant(type, x, z, radius, cover) ?? { ok: false, cost: 0, cells: 0 },
+  /** Price a planting without doing it → { cells, ha, cost, affordable }. */
+  plantQuote: (type, x, z, radius) => sim?.plantQuote(type, x, z, radius) ?? { cells: 0, ha: 0, cost: 0, affordable: false },
+  /** Undo a plant() using the `undo` token it returned (restores cover, refunds). → boolean. */
+  unplant: (token) => sim?.unplant(token) ?? false,
   /** { [plantId]: cover 0..1 } of the 16 m vegetation cell at world (x, z). */
   getVegetation: (x, z) => sim?.getVegetation(x, z) ?? null,
   /** Per species in a habitat: { n, food, need, perAnimal, capacity, foodCapacity, spaceCapacity }. */

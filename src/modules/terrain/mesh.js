@@ -75,6 +75,42 @@ export function refreshChunk(world, chunk) {
   chunk.mesh.castShadow = (mx - mn) > 18 || maxSlope > 0.35;
 }
 
+/**
+ * Recompute only the vertices of `chunk` inside sample rect [ix0..ix1]×[iz0..iz1] (grown by 1 for the
+ * normals), uploading just those rows through BufferAttribute update ranges instead of the whole chunk.
+ * Height bounds only grow here (a dig can leave them slightly loose until the next full refresh; they
+ * feed culling and the shadow flag, both conservative when loose).
+ */
+export function refreshChunkRect(world, chunk, ix0, iz0, ix1, iz1) {
+  const T = world.terrain, res = T.res, cell = T.cell, half = world.half, H = T.heights;
+  const cells = chunk.cells, n = cells + 1;
+  const i0 = Math.max(0, ix0 - 1 - chunk.ix0), i1 = Math.min(cells, ix1 + 1 - chunk.ix0);
+  const j0 = Math.max(0, iz0 - 1 - chunk.iz0), j1 = Math.min(cells, iz1 + 1 - chunk.iz0);
+  if (i0 > i1 || j0 > j1) return;
+  const posA = chunk.geo.attributes.position, nrmA = chunk.geo.attributes.normal;
+  const pos = posA.array, nrm = nrmA.array;
+  let mn = chunk.minH, mx = chunk.maxH, maxSlope = chunk.maxSlope || 0;
+  for (let j = j0; j <= j1; j++) {
+    const iz = chunk.iz0 + j;
+    for (let i = i0; i <= i1; i++) {
+      const ix = chunk.ix0 + i, o = (j * n + i) * 3;
+      const h = H[iz * res + ix];
+      pos[o] = ix * cell - half; pos[o + 1] = h; pos[o + 2] = iz * cell - half;
+      normalAt(H, res, cell, ix, iz, _n);
+      nrm[o] = _n[0]; nrm[o + 1] = _n[1]; nrm[o + 2] = _n[2];
+      if (h < mn) mn = h; if (h > mx) mx = h;
+      const sl = 1 - _n[1]; if (sl > maxSlope) maxSlope = sl;
+    }
+    const start = (j * n + i0) * 3, count = (i1 - i0 + 1) * 3;
+    posA.addUpdateRange(start, count); nrmA.addUpdateRange(start, count);
+  }
+  posA.needsUpdate = true; nrmA.needsUpdate = true;
+  chunk.minH = mn; chunk.maxH = mx; chunk.maxSlope = maxSlope;
+  const bb = chunk.geo.boundingBox;
+  if (bb) { if (mn < bb.min.y) bb.min.y = mn; if (mx > bb.max.y) bb.max.y = mx; bb.getBoundingSphere(chunk.geo.boundingSphere); }
+  chunk.mesh.castShadow = (mx - mn) > 18 || maxSlope > 0.35;
+}
+
 export function chunkAt(chunks, chunksPerSide, world, x, z) {
   const T = world.terrain, cell = T.cell, half = world.half;
   const cells = (T.res - 1) / chunksPerSide;

@@ -1,8 +1,7 @@
 // plants.js — draws the P1 food-web plant catalogue (core/Plants.js, docs/specs/p1-food-web.md)
-// from `world.vegetation` cover. Additive layer: coexists with index.js's own biome-driven
-// scatter()/GrassField rather than replacing them — see README "Known gaps" for why merging cover
-// into RULES/GrassField was judged too invasive for this wave (both are tuned, critic-passed
-// systems keyed on biome/macro-noise, not per-plant cover).
+// from `world.vegetation` cover ABOVE `natural` (planting, spread, regrowth past the seeded state).
+// Cover at or below natural is drawn by index.js's biome scatter()/GrassField, which follow the grid
+// themselves (README "Vegetation grid"); this layer only adds individuals on top.
 //
 // Placement is deterministic per 16 m vegetation cell: `_rebuildCell` forks a cell-keyed RNG from
 // `ctx.rng` and re-derives that cell's instances from cover alone, so re-running it for the same
