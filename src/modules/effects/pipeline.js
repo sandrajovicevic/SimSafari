@@ -25,6 +25,13 @@ export const TIERS = {
   low: { msaa: 0, ao: false, aoSamples: 0, aoScale: 0.5, bloom: false, haze: false, aa: 'fxaa' },
 };
 
+// scene-linear radiance of the scotopic floor, per unit of environment's getNightFloor() (round 9).
+// 0.13 × the full-moon floor (~0.048) puts the floor at ~10/255-equivalent — just below the moonlit-
+// field level in the same frames, so shadowed geometry lifts to legible without inverting (shadows
+// must never read brighter than moonlit ground, or the frame stops reading as night). Calibrated on
+// the real GPU against the blind-round-8 gates; art-directed, see GradePass shader note.
+const NIGHT_FLOOR_GAIN = 0.13;
+
 const VERT = /* glsl */ `
 varying vec2 vUv;
 void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
@@ -233,11 +240,12 @@ void main() {
 }
 
 class GradePass extends Pass {
-  constructor(bloomTexture) {
+  constructor(bloomTexture, aoTexture) {
     super();
     this.needsSwap = true;
     this.uniforms = {
       tDiffuse: { value: null }, tBloom: { value: bloomTexture }, uBloom: { value: 0 },
+      tAO: { value: aoTexture }, uFloor: { value: 0 }, uFloorTint: { value: new THREE.Vector3(0.45, 0.58, 1.0) },
       uExposure: { value: 1 }, uPivot: { value: 0.18 }, uContrast: { value: 1 }, uSaturation: { value: 1 }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uLift: { value: 0 },
       uVignette: { value: 0 }, uGrain: { value: 0 }, uTime: { value: 0 }, uResolution: { value: new THREE.Vector2(1, 1) }, uNight: { value: 0 },
     };
@@ -245,6 +253,7 @@ class GradePass extends Pass {
       uniforms: this.uniforms, vertexShader: VERT, depthTest: false, depthWrite: false, blending: THREE.NoBlending,
       fragmentShader: /* glsl */ `
 uniform sampler2D tDiffuse; uniform sampler2D tBloom; uniform float uBloom;
+uniform sampler2D tAO; uniform float uFloor; uniform vec3 uFloorTint;
 uniform float uExposure; uniform float uPivot; uniform float uContrast; uniform float uSaturation; uniform vec3 uTint; uniform float uLift;
 uniform float uVignette; uniform float uGrain; uniform float uTime; uniform vec2 uResolution; uniform float uNight;
 varying vec2 vUv;
@@ -252,6 +261,19 @@ float hash12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.y
 void main() {
   vec3 c = texture2D(tDiffuse, vUv).rgb;
   if (uBloom > 0.0) c += texture2D(tBloom, vUv).rgb * uBloom;
+  // Moonlit ambient fill (round 9, blind round 8): GTAO removes interreflection bounce, and at night
+  // that bounce is the ONLY light a self-shadowed surface gets — so occluded near-field geometry
+  // (canopy interiors, grass walls) sat at ~5/255 while open ground read 2-4x brighter. This lifts
+  // occluded pixels TOWARD a scotopic floor rather than adding a fixed amount: the need term
+  // (floor - pixel) is exactly zero for anything already above the floor (open ground, sky, lamp
+  // pools — nothing to gate), rises only below it, and the AO mask scales the fill by how occluded
+  // the pixel is. Driven by environment's getNightFloor() (0 by day), so day frames are untouched
+  // by construction. An art-directed stand-in for the missing bounce term, not a physical simulation.
+  if (uFloor > 0.0) {
+    float occ = 1.0 - texture2D(tAO, vUv).r;
+    vec3 need = max(uFloorTint * uFloor - c, vec3(0.0));
+    c += need * occ;
+  }
   c = max(c * uExposure * uTint, vec3(0.0));
   // contrast about middle grey AS DISPLAYED: this pass runs before OutputPass applies
   // renderer.toneMappingExposure (4 by day, up to 12 at night), so the pivot is 0.18 / exposure.
@@ -305,7 +327,7 @@ export class Pipeline {
     this.ctx = ctx; this.renderer = ctx.renderer; this.camera = ctx.camera; this.scene = ctx.scene; this.particles = particles;
     this.log = ctx.log;
     this.enabled = { pipeline: true, ao: true, bloom: true, haze: true, grade: true, vignette: true, grain: true, aa: true, particles: true };
-    this.grade = { exposure: 1, contrast: 1.06, saturation: 1.05, warmth: 0.35, lift: 0, vignette: 0.28, grain: 0.02, bloom: 0.18 };
+    this.grade = { exposure: 1, contrast: 1.06, saturation: 1.05, warmth: 0.35, lift: 0, vignette: 0.28, grain: 0.02, bloom: 0.18, floor: 1 };
     this.aoParams = { radius: 2.5, intensity: 1.0, scale: 1.2, thickness: 1.0 };
     this.bloomParams = { threshold: 1.0, knee: 0.5, mode: opts.bloomMode || 'mip' };
     this.haze = { strength: 0, near: 120, far: 650, amplitude: 3, height: 18, groundY: 0 };
@@ -366,7 +388,7 @@ export class Pipeline {
         if (this.bloomPass) c.addPass(this.bloomPass);
       }
     }
-    this.gradePass = new GradePass(this.bloomPass ? this.bloomPass.texture : this._white);
+    this.gradePass = new GradePass(this.bloomPass ? this.bloomPass.texture : this._white, this.aoPass ? this.aoPass.gtaoMap : this._white);
     c.addPass(this.gradePass);
     const aa = this.aaMode || tier.aa;
     this.aaPass = null;
@@ -439,8 +461,9 @@ export class Pipeline {
   setHazeParams(o = {}) { Object.assign(this.haze, o); this._applyState(); }
   setBloom(o = {}) { Object.assign(this.bloomParams, o); this._applyState(); }
 
-  /** Per-frame inputs from the module: sun colour (linear, unnormalised ok), sun elevation factor, haze strength, ground y. */
-  setFrame(sunColor, sunUp = 1, haze = 0, groundY = 0) {
+  /** Per-frame inputs from the module: sun colour (linear, unnormalised ok), sun elevation factor, haze strength, ground y,
+   *  and environment's night ambient floor (0 by day) driving the AO-masked moonlit fill. */
+  setFrame(sunColor, sunUp = 1, haze = 0, groundY = 0, nightFloor = 0) {
     const e = this.enabled, g = this.grade;
     if (e.grade && sunColor) {
       // warm tint follows the (luminance-normalised) sun colour while the sun is up; cool at night
@@ -453,6 +476,9 @@ export class Pipeline {
       // night look: scotopic shift in the grade (sun below ~-2°: fully on)
       this.gradePass.uniforms.uNight.value = 1 - Math.min(1, sunUp * 12);
     } else this.gradePass.uniforms.uNight.value = 0;
+    // AO-masked moonlit fill: needs the grade pass and live AO data (no AO → no occlusion signal)
+    this.gradePass.uniforms.uFloor.value = (e.grade && this.aoPass && e.ao && this.tier.ao)
+      ? g.floor * NIGHT_FLOOR_GAIN * nightFloor : 0;
     this.resolvePass.uniforms.uHaze.value = e.haze && this.tier.haze ? haze : 0;
     this.resolvePass.uniforms.uGroundY.value = groundY;
   }
