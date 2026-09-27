@@ -563,6 +563,16 @@ async function scenarioFireResponse(browser) {
     const defended = await run(true);
     return { control, defended, days: DAYS };
   }, 21);
+  await page.close();
+  if (!out.error) {
+    out.pass = out.defended.buildingsBurnt === 0 && out.defended.protectedBurnt === 0
+      && out.control.buildingsBurnt > 0 && out.defended.burntHa > 0 && out.control.burntHa > 0;
+  }
+  const result = { scenario: 'fire-response', result: out, consoleErrors: errors };
+  writeJson('fire-response', result);
+  return result;
+}
+
 async function scenarioSpread(browser) {
   const { page, errors } = await loadGame(browser, { label: 'spread' });
   const out = await page.evaluate(async (days) => {
@@ -634,15 +644,6 @@ async function scenarioSpread(browser) {
   await page.close();
   return result;
 }
-  if (!out.error) {
-    out.pass = out.defended.buildingsBurnt === 0 && out.defended.protectedBurnt === 0
-      && out.control.buildingsBurnt > 0 && out.defended.burntHa > 0 && out.control.burntHa > 0;
-  }
-  const result = { scenario: 'fire-response', result: out, consoleErrors: errors };
-  writeJson('fire-response', result);
-  return result;
-}
-
 /** fire-regrowth (Wave P2): burn a patch, then run 90 days — scorch fades and the cover recovers.
  * Pass: by day 90 the median scorch of burnt cells is < 0.25 and their median cover has more than
  * doubled from the post-burn level. */
