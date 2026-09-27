@@ -104,6 +104,8 @@ export const CONST = Object.freeze({
   predationRate: 0.03,        // prey killed per predator per day when prey is available (a lion kills every ~33 days)
   sightingK: 0.12,            // P(see species) = 1 - exp(-n * visibility * roadFactor * K)
   seasonLength: 90,           // days per season in the internal fallback calendar (dry, wet alternate)
+  firebreakCost: 200,         // $/ha to bulldoze a firebreak stroke (Wave P2)
+  waterCost: 120,             // $/ha for a water drop (Wave P2)
   historyCap: 400,
   starveRate: 0.03,          // predators above their prey capacity: deaths/day per excess animal (hunger → deaths);
                              // 0.08 collapsed 3 lions to 0 in 3 days on the live park — 0.03 spreads it over ~2–4 weeks

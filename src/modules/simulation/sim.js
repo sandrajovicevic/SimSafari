@@ -1359,6 +1359,32 @@ export class Simulation {
   /** { [plantId]: cover 0..1 } at world (x, z). */
   getVegetation(x, z) { return this.veg.at(x, z); }
 
+  /** Firebreak (Wave P2): bulldoze a stroke to mineral soil through world.vegetation — cells in the
+   * strip drop to stubble (they regrow, so breaks need re-cutting) and carry too little fuel to
+   * ignite or carry fire. Charges CONST.firebreakCost per ha via spend(…, 'firebreak').
+   * → {ok, cells, ha, cost}. */
+  firebreak(x0, z0, x1, z1, width = 12) {
+    const res = this.veg.clearLine(x0, z0, x1, z1, width);
+    const cost = +(res.ha * CONST.firebreakCost).toFixed(2);
+    if (res.cells) {
+      this.spend(cost, 'firebreak');
+      if (res.rect) this._emit('vegetation:changed', res.rect); // props/overlay rebuild the strip now
+    }
+    return { ok: res.cells > 0, ...res, cost };
+  }
+
+  /** Water drop (Wave P2): wet a disc for ~6-7 days so it cannot ignite or carry fire.
+   * Charges CONST.waterCost per ha via spend(…, 'water'). → {ok, cells, ha, cost}. */
+  waterDrop(x, z, radius = 32) {
+    const res = this.veg.wetRing(x, z, radius);
+    const cost = +(res.ha * CONST.waterCost).toFixed(2);
+    if (res.cells) this.spend(cost, 'water');
+    return { ok: res.cells > 0, ...res, cost };
+  }
+
+  /** Live fire counters: { burning, burntHa, wetCells, fires, version }. */
+  fireStats() { return this.veg.fireStats(); }
+
   /**
    * Food report for a habitat: per species present (and every herbivore the habitat's plants attract)
    * { n, food, need, capacity, foodCapacity, spaceCapacity } — food/need in plant food units per day for
