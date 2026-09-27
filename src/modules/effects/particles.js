@@ -5,11 +5,12 @@
 // depth test (uSoft = 0).
 import * as THREE from 'three';
 
-export const KIND = Object.freeze({ ambient: 0, dust: 1, smoke: 2, splash: 3 });
+export const KIND = Object.freeze({ ambient: 0, dust: 1, smoke: 2, splash: 3, fire: 4 });
 const KIND_DEFAULTS = {
   dust: { rate: 12, speed: 1.2, spread: 0.8, size: 0.45, sizeJitter: 0.5, life: 2.2, lifeJitter: 0.4 },
   smoke: { rate: 8, speed: 0.6, spread: 0.25, size: 0.55, sizeJitter: 0.4, life: 5.0, lifeJitter: 0.5 },
   splash: { rate: 40, speed: 3.2, spread: 0.5, size: 0.12, sizeJitter: 0.5, life: 0.9, lifeJitter: 0.4 },
+  fire: { rate: 22, speed: 1.6, spread: 0.45, size: 1.0, sizeJitter: 0.55, life: 0.5, lifeJitter: 0.4 },
 };
 const MAX_EMITTERS = 64;
 const MAX_SPAWN_PER_FRAME = 400;
@@ -34,6 +35,7 @@ varying float vViewZ;
 varying float vRadius;
 
 void main() {
+  float selfLit = 0.0;
   vUv = uv;
   float birth = aInfo.x, life = aInfo.y, size = aInfo.z, seed = aInfo.w;
   float age = uTime - birth;
@@ -71,12 +73,23 @@ void main() {
       radius = size * (1.0 + 3.2 * t);
       alpha = smoothstep(0.0, 0.1, t) * (1.0 - t) * 0.45;
       albedo = vec3(0.42, 0.42, 0.45);
-    } else {
+    } else if (aKind < 3.5) {
       // splash droplets: ballistic
       p = aPos + aVel * age + vec3(0.0, -4.9 * age * age, 0.0);
       radius = size;
       alpha = (1.0 - t * t) * 0.9;
       albedo = vec3(0.9, 0.95, 1.05);
+    } else {
+      // flame (Wave P2): fast rise, flicker, shrink; self-lit hot colour (bloom catches it at night)
+      float flick = 0.75 + 0.5 * sin(age * 34.0 + seed * 61.0);
+      p = aPos + aVel * age + vec3(
+        sin(age * 22.0 + seed * 31.0) * 0.22,
+        1.6 * age,
+        cos(age * 18.0 + seed * 17.0) * 0.22);
+      radius = size * (1.15 - 0.75 * t) * (0.8 + 0.4 * flick);
+      alpha = smoothstep(0.0, 0.12, t) * (1.0 - t) * (0.75 + 0.35 * flick);
+      albedo = mix(vec3(1.35, 0.62, 0.12), vec3(1.6, 1.25, 0.45), t * flick * 0.6);
+      selfLit = 1.0;
     }
     rot += age * (0.6 + seed);
   }
@@ -84,6 +97,7 @@ void main() {
   vec3 viewDir = normalize(p - uCamPos);
   float fwd = pow(max(dot(viewDir, uSunDir), 0.0), 6.0);
   vec3 light = uAmbient + uSunColor * (0.45 + 1.8 * fwd);
+  light = mix(light, vec3(1.0), selfLit); // flames emit their own light
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   float c = cos(rot), s = sin(rot);
   vec2 corner = position.xy * radius * 2.0;
