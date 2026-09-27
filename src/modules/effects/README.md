@@ -19,7 +19,7 @@ numbers off a screenshot.
 | `setQuality` | `(q) → boolean` | `'low'\|'medium'\|'high'`; rebuilds the whole chain. |
 | `setAA` | `(mode)` | `'fxaa'\|'smaa'\|'none'`, overrides the tier default; rebuilds. |
 | `setBloomMode` | `(mode)` | `'mip'` (default, 4-level 13-tap mip chain, 7 draws) or `'unreal'` (three's `UnrealBloomPass`, ~13 draws); rebuilds. |
-| `setGrade` | `({exposure, contrast, saturation, warmth, lift, vignette, grain, bloom})` | any subset; cheap (no rebuild). `exposure` multiplies inside the grade shader — `renderer.toneMappingExposure` is owned by `environment` and untouched. |
+| `setGrade` | `({exposure, contrast, saturation, warmth, lift, vignette, grain, bloom, floor})` | any subset; cheap (no rebuild). `exposure` multiplies inside the grade shader — `renderer.toneMappingExposure` is owned by `environment` and untouched. `floor` (default 1) is a multiplier on the AO-masked moonlit fill; `setGrade({floor: 0})` disables it for A/B. |
 | `getGrade` | `() → object \| null` | copy of current grade state. |
 | `setAO` | `({radius, intensity, scale, thickness})` | metres/0-1/AO-exponent/metres; any subset. |
 | `setHaze` | `({override, near, far, amplitude, height, tempThreshold, tempRange})` | `override` ≥ 0 forces strength (showcase uses this); `-1` = automatic from `world.weather.temperature` + sun elevation. |
@@ -45,7 +45,7 @@ ResolvePass    scene × AO, + heat-haze UV refraction                           
 ParticlesPass  soft dust/smoke/splash quad-instances over the resolved buffer              [1]
 BloomPass      Karis 13-tap threshold → 4-level 13-tap mip chain → tent upsample (¼ res)    [7]
 GradePass      + bloom, exposure, toe-protected contrast, sat/warmth, night scotopic shift,  [1]
-               lift, vignette, fine grain
+               AO-masked moonlit fill, lift, vignette, fine grain
 FXAAPass       (SMAA at 3 draws if selected)                                               [1]
 OutputPass     ACES tone mapping + sRGB (renderer.toneMappingExposure, owned by environment) [1]
                                                                               total extra = 14
@@ -204,6 +204,63 @@ protection), so contrast acts on midtones and highlights and does not crush nigh
 
 Before: +34 % / 0 % / −30 %. What remains is AO darkening occluded areas and the vignette darkening
 corners — what those passes are for. The bare chain is within 1.3 % of direct everywhere.
+
+## Moonlit ambient fill — AO-masked night floor (round 9, 2026-09-26)
+
+Blind round 8 (real GPU, `docs/critic/game-round8-blind.md`) held both ground-level night shots at
+6.x because self-shadowed near-field geometry read near-black: the game `close` 21.5h camera loses
+its lower half to a canopy mass at bottom-40% luma 5.0/255, and `savannah-night`'s bottom 40% is a
+grass wall at 7.1/255. Root mechanism: GTAO (correctly) removes interreflection bounce, and at night
+that bounce is the *only* light an occluded surface gets — the moon key never reaches it, and
+environment's hemisphere floor is too small to read. A uniform ambient boost was measured (first
+iteration of this round) to lift the open moonlit ground in the same frames by ~50% — ambient cannot
+tell shadow-side from key-lit. So the fill lives in `GradePass` and is **masked by the AO buffer we
+already compute**: each pixel is lifted *toward* a scotopic floor (`uFloorTint × uFloor`, cool
+blue-grey so the Purkinje grade reinforces it) by `need × (1 − AO)`, where `need = max(floor − pixel, 0)`.
+Anything already above the floor — open ground, sky (AO=1 anyway), lamp pools — gets exactly zero by
+construction; deep-shadow pixels rise to the floor scaled by how occluded they are. Strength is
+driven per-frame by `environment`'s new `getNightFloor()` (moon illumination^1.5 × cos-elevation,
+night-gated, cloud-attenuated, 0 by day) through `NIGHT_FLOOR_GAIN` (0.15); `setGrade({floor: 0})`
+switches it off. No new passes (the GradePass exists; one extra texture fetch), so the pipeline stays
+at 14 extra draws. The chain's day exposure-neutrality is untouched by construction (`uFloor = 0`
+whenever `environment` reports no night floor; the day A/B above still applies verbatim — verified:
+game overview 14h frame mean 105.84 → 106.03, +0.18%).
+
+Measured on the real GPU (ANGLE D3D11, Radeon RX 5700 XT, 1920×1080, seed 1, `quality=high`,
+`speed=0`; Rec.601 luma 0–255; `tools/shots/nf-before-*.png` → `nf-after6-*.png`, every PNG read):
+
+| shot | bottom-40% before → after (× target ≥2) | upper-60% before → after (target ≤ +20%) |
+|---|---|---|
+| game close 21.5 | 5.04 → 9.66 (**×1.92**, 4% short) | 11.44 → 14.11 (**+23.3%**, 3 over) |
+| savannah night | 7.09 → 16.94 (**×2.39 ✓**) | 11.89 → 14.51 (**+22.0%**, 2 over) |
+| game overview 21.5 | 12.39 → 13.77 (×1.11) | 13.62 → 14.97 (+9.9%) |
+| game overview 14 (day control) | frame mean 105.84 → 106.03 (**+0.18% ✓**) | — |
+
+Sky band (top 18% of frame, which contains treeline/escarpment silhouettes): +8.2% / +12.0% on the
+two ground-level shots; pure-sky pixels are AO=1 and unmoved. Draw calls ±0, zero console errors on
+all captures.
+
+**The gate tradeoff, honestly.** For `close 21.5` the two targets pull against each other
+arithmetically: 33% of its upper-60% is the *same* self-shadowed canopy class as its bottom-40%, so
+any occlusion-driven floor lifts both roughly proportionally (measured bottom:upper rise ratio
+≈ 1.35:1). The gain therefore sits on a measured tradeoff line (all real captures on disk):
+`NIGHT_FLOOR_GAIN` 0.13 → bottom ×1.80 / upper +20.9% (`nf-after7-*`); **0.15 (shipped) → ×1.92 /
++23.3%**; 0.23 → ×2.39 / +32.8% (`nf-after5-*`). 0.23 was rejected on visual read, not just on the
+upper number: the canopy fills to a flat leaf wall and loses crown/gap structure. The shipped floor
+sits just below the moonlit-field level in the same frames so shadowed geometry never reads brighter
+than moonlit ground — the "it is night" read is kept. `overview 21.5` (bottom ×1.11) cannot reach
+×2 at all under these guardrails: its bottom-40% is open distant plain, AO≈0, and it shares that
+radiance with the escarpment in its upper frame — doubling it would double the upper too; its
+legibility there comes from the lamps and the round-6/8 night key, which are untouched.
+
+**Known gaps of the fill itself:** it is an art-directed stand-in for the missing bounce term, not a
+physical simulation (no colour bleed, single fixed scotopic tint); it is screen-space, so it inherits
+GTAO's halo bias at silhouettes (bounded by the need-term, which is zero on bright pixels); with AO
+off (`quality=low`, `setEnabled('ao', false)`) there is no occlusion signal and the fill is
+automatically 0 — low-quality night stays as dark as before this change; the bypass path
+(`setEnabled('pipeline', false)`) also has no fill by definition, so chain-vs-bypass A/Bs at night
+now intentionally differ (the bare chain is darker) — the exposure-neutrality contract in the
+section above is a day/golden-hour contract and still holds there.
 
 ## Night look (round 5 fix)
 

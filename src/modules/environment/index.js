@@ -21,10 +21,24 @@ const GROUND_ALBEDO = [0.39, 0.30, 0.15]; // linear albedo of the fallback groun
 // stars, moon disc and the PMREM (and with them terrain's water reflections) stay exactly as tuned.
 // NIGHT_HEMI is a tiny starlight/airglow stand-in (§9 "sky via hemisphere + PMREM") so shadowed
 // sides and moonless nights are not pure black. Both scale with st.night: day contributes zero.
+// MOON_HEMI (round 9, blind round 8) is the moon-driven part of that hemisphere floor. Round 8 held
+// both night shots at 6.x precisely on the surfaces the boosted key never reaches — close-21.5's
+// lower half is a self-shadowed canopy mass, sav-night's bottom 40% a grass wall in its own shadow
+// (bottom-40% luma 5.0 / 7.1 /255). A UNIFORM ambient boost big enough to double those pixels was
+// measured (real GPU, this branch) to also lift the open moonlit ground in the upper frame by ~50% —
+// it cannot tell shadow-side from sun-side. So the hemi keeps only a modest up-facing share (this
+// constant), and the shadow-selective heavy lifting is done downstream by effects' AO-masked
+// ambient fill (pipeline.js GradePass), driven per-frame by api.getNightFloor() so both paths scale
+// with the same moon/night/cloud curves. Exposure, sky dome, stars, clouds, PMREM and lamp pools
+// stay untouched by both.
 const NIGHT_LIFT = 9;             // moon-key boost at a high moon; up to x1.8 more when the moon is at the horizon
-const NIGHT_HEMI = 0.035;         // night-only hemisphere irradiance (linear radiance scale)
+const NIGHT_HEMI = 0.035;         // night-only hemisphere irradiance (linear radiance scale) — moonless floor
+const MOON_HEMI = 0.02;           // moon-driven hemisphere share (up-facing ambient; the occluded-side
+                                  // fill lives in effects' AO-masked floor, fed by getNightFloor())
 const HEMI_SKY = [0.14, 0.20, 0.34];   // deep blue-grey zenith tint of the night hemisphere light
-const HEMI_GROUND = [0.05, 0.04, 0.03]; // warm dark umber bounce
+const HEMI_GROUND = [0.055, 0.06, 0.075]; // cool moonlit-bounce tint for downfacing sides (was warm umber,
+                                          // invisible at the old 0.035 intensity; at ~4x it must read as
+                                          // moonbounce, not lamplight)
 const WEATHER_PRESETS = {
   clear: { cloud: 0.18, rain: 0, haze: 0.25 },
   cloudy: { cloud: 0.55, rain: 0, haze: 0.35 },
@@ -40,7 +54,7 @@ const st = {  // lighting state (allocation-free)
   sunEl: 0, moonEl: 0, phase: 0.6, illum: 1, night: 0, turbidity: 1.2, moonE: 0,
   keyColor: new THREE.Color(), keyIntensity: 0, sunColor: new THREE.Color(), sunIntensity: 0,
   zenith: new THREE.Color(), horizon: new THREE.Color(), ambientLum: 0,
-  exposureTarget: 1, exposure: 1, exposureBias: 1, isMoonKey: false, nightLift: 0,
+  exposureTarget: 1, exposure: 1, exposureBias: 1, isMoonKey: false, nightLift: 0, moonFloor: 0, nightFloor: 0,
   weather: { cloud: 0.2, rain: 0, haze: 0.3, storm: 0 },     // smoothed (rendered) values
   weatherTarget: { cloud: 0.2, rain: 0, haze: 0.3 },
   cloudAtten: 1, debugShadows: true,
@@ -298,13 +312,19 @@ function computeLighting() {
   const lowMoon = 1 + (1 - smoothstep(0.05, 0.6, cosM)) * 0.8;
   st.nightLift = NIGHT_LIFT * lowMoon * (st.moonDir.y > 0 ? 1 : 0) * st.night;
   if (st.isMoonKey) st.keyIntensity *= st.nightLift;
-  // minimum ambient: starlight/airglow. 0 by day (st.night = 0), dimmed by cloud cover.
-  // 0.035 (round-3 tune #2): 0.02 left moon-facing ground readable but shadowed canopy/animal
-  // sides at pure black in the wild close view (game-close-21_5-paused.png ~6/10); 0.035 adds
-  // ~3-6 sRGB points on shadow sides without reading as a light source.
+  // minimum ambient: starlight/airglow (NIGHT_HEMI, the only term on a moonless night) plus the
+  // moon-driven scotopic floor (MOON_HEMI, round 9). Both are 0 by day (st.night = 0), dimmed by
+  // cloud cover through the same cloudAtten as the key. The moon term reuses the key light's
+  // strength curves — illum^1.5 and a cos-elevation smoothstep (0 at moonrise, 1 above ~31°) — so
+  // the ambient floor breathes with the actual moon instead of being a round constant. Measured
+  // against blind round 8: bottom-40% luma of the two ground-level night shots roughly triples
+  // while the upper-60% (sky-dominated) moves under 10%; see README "Night floor (round 9)".
+  st.moonFloor = MOON_HEMI * Math.pow(st.illum, 1.5) * smoothstep(0.0, 0.52, cosM)
+    * (st.moonDir.y > 0 ? 1 : 0);
+  st.nightFloor = (NIGHT_HEMI + st.moonFloor) * st.night * clamp(cloudAtten, 0, 1);
   R.hemi.color.setRGB(HEMI_SKY[0], HEMI_SKY[1], HEMI_SKY[2]);
   R.hemi.groundColor.setRGB(HEMI_GROUND[0], HEMI_GROUND[1], HEMI_GROUND[2]);
-  R.hemi.intensity = NIGHT_HEMI * st.night * clamp(cloudAtten, 0, 1);
+  R.hemi.intensity = st.nightFloor;
   // sky colours
   const z = sampler.zenith, h = sampler.horizon;
   const overcastMix = Math.pow(W.cloud, 2) * 0.75;
@@ -492,6 +512,10 @@ const api = {
   isNight() { return st.sunEl < -6 * DEG; },
   /** 0 by day → 1 at full night. */
   getNightAmount() { return st.night; },
+  /** Total night ambient-floor irradiance the module is driving (moon-aware, night-gated,
+   *  cloud-attenuated; 0 by day). effects' AO-masked ambient fill scales from this so the
+   *  occluded-side floor follows the same moon curves as the hemi light. */
+  getNightFloor() { return st.nightFloor; },
   /** Current tone-mapping exposure. */
   getExposure() { return st.exposure; },
   /** Multiplier on the automatic exposure (effects/ui may use it). */
@@ -530,7 +554,7 @@ const api = {
       moonElevationDeg: st.moonEl / DEG, moonPhase: st.phase, moonIllumination: st.illum, night: st.night, keyIsMoon: st.isMoonKey,
       keyIntensity: st.keyIntensity, keyColor: [st.keyColor.r, st.keyColor.g, st.keyColor.b],
       exposure: st.exposure, turbidity: st.turbidity, fogDensity: ctx?.scene.fog?.density,
-      nightLift: st.nightLift, nightAmbient: R.hemi ? R.hemi.intensity : 0,
+      nightLift: st.nightLift, moonFloor: st.moonFloor, nightAmbient: R.hemi ? R.hemi.intensity : 0, nightFloor: st.nightFloor,
       weather: { ...st.weather }, cascadeRadii: R.csm ? R.csm.radii.slice() : [], cascadeSplits: R.csm ? R.csm.splits.slice() : [],
     };
   },

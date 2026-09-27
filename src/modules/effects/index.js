@@ -15,6 +15,7 @@ const S = {
   sunRadiance: new THREE.Color(1, 1, 1),   // colour × intensity for particle lighting
   ambient: new THREE.Color(0.3, 0.35, 0.45),
   sunUp: 0,
+  nightFloor: 0,
   fallbackSun: null, fallbackHemi: null, fallbackLooked: false,
   ambientDust: -1,   // -1 = automatic (golden hour, dry, calm)
   ambientAlpha: 0,
@@ -25,6 +26,7 @@ const S = {
 function computeSun() {
   const hour = ctx.world.time.hour;
   const env = ctx.modules.get('environment');
+  if (!env) S.nightFloor = 0; // no environment → no moon floor (fallback lighting is always day-lit)
   let haveDir = false, haveCol = false;
   if (env) {
     try {
@@ -34,6 +36,8 @@ function computeSun() {
       else if (typeof c === 'number') { S.sunColor.set(c); haveCol = true; }
       const d = env.getSunDirection?.(S.sunDir);
       if (d && d.isVector3) { if (d !== S.sunDir) S.sunDir.copy(d); S.sunDir.normalize(); haveDir = true; }
+      const nf = env.getNightFloor?.();
+      if (typeof nf === 'number') S.nightFloor = nf;
     } catch { /* environment API is optional */ }
   } else if (!S.fallbackLooked) {
     S.fallbackSun = ctx.scene.getObjectByName('fallback-sun') || null;
@@ -147,7 +151,7 @@ export default {
     haze.update({ temperature: w.temperature ?? 28, sunUp: S.sunUp });
     S.ambientAlpha = (S.ambientDust >= 0 ? S.ambientDust : autoAmbientDust()) * 0.55;
     S.target.copy(ctx.rig.target);
-    if (pipeline) pipeline.setFrame(S.sunColor, S.sunUp, haze.strength, S.target.y);
+    if (pipeline) pipeline.setFrame(S.sunColor, S.sunUp, haze.strength, S.target.y, S.nightFloor);
     if (particles) {
       if (!S.lightIn) S.lightIn = { sunDir: S.sunDir, sunColor: S.sunRadiance, ambient: S.ambient, wind: null, camera: ctx.camera, target: S.target, ambientAlpha: 0 };
       S.lightIn.wind = w.wind; S.lightIn.ambientAlpha = S.ambientAlpha;

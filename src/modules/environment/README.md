@@ -41,6 +41,9 @@ getMoonPhase() → number                // 0 new .. 0.5 full
 getMoonIllumination() → number         // 0..1 illuminated fraction
 isNight() → boolean                    // sun below -6°
 getNightAmount() → number              // 0 day → 1 full night
+getNightFloor() → number               // total night ambient-floor irradiance (moon-aware, night-gated,
+                                       // cloud-attenuated; 0 by day). effects' AO-masked moonlit fill
+                                       // scales from this so both ambient paths share the moon curves.
 getExposure() → number                 // current toneMappingExposure
 setExposureBias(v)                     // multiplier on the automatic exposure, clamped 0.1..10
 setWeather(partial, {immediate}?) → weather
@@ -90,6 +93,40 @@ SwiftShader software GL (fps is not representative; draws/tris/errors are real).
 | overview (tod 12) | 34 | 45,290 |
 
 ## Known gaps (honest)
+
+* **Night floor v2 — moon-driven split between hemi and effects' AO fill (2026-09-26, round 9).**
+  Blind round 8 (real GPU) held both ground-level night shots at 6.x on self-shadowed geometry:
+  `close-21.5`'s lower half was a near-black canopy mass (bottom-40% luma 5.0/255), `sav-night`'s
+  bottom 40% a black grass wall (7.1/255) — content the round-8 gain-crops proved present but
+  unlit. Root mechanism: the round-3 floor lifts the moon KEY (useless for shadowed faces) and
+  `NIGHT_HEMI 0.035` is too small to read through. A uniform hemi boost big enough to double those
+  pixels was measured to also lift the open moonlit ground in the upper frame by ~50% (it cannot
+  tell shadow-side from key-lit), so the floor is now split: the hemi keeps a modest moon-driven
+  up-facing share (`MOON_HEMI 0.02` on top of `NIGHT_HEMI 0.035`, both scaled by illum^1.5 ×
+  cos-elevation — the key's own curves, so new-moon nights fall back to starlight), and the
+  shadow-selective heavy lifting moved to effects' AO-masked fill-to-floor (GradePass), driven
+  per-frame by `getNightFloor()`. Measured on the real GPU (ANGLE D3D11, 1920×1080, seed 1,
+  speed=0, `tools/shots/nf-before-*.png` → `nf-after6-*.png`; Rec.601 luma 0–255):
+
+  | shot | bottom-40% before → after (×) | upper-60% before → after (+%) |
+  |---|---|---|
+  | game close 21.5 | 5.04 → 9.66 (**×1.92**) | 11.44 → 14.11 (+23.3%) |
+  | savannah night | 7.09 → 16.94 (**×2.39**) | 11.89 → 14.51 (+22.0%) |
+  | game overview 21.5 | 12.39 → 13.77 (×1.11) | 13.62 → 14.97 (+9.9%) |
+  | game overview 14 (day control) | frame mean 105.84 → 106.03 (+0.18%) | — |
+
+  Sky band (top 18% of frame) moved +8–12% on the night shots — that band is treeline/escarpment
+  silhouettes against sky; pure-sky pixels are AO=1 and get no fill by construction. Draw calls
+  unchanged (±0), zero console errors. Residuals, honest: the gain (`NIGHT_FLOOR_GAIN` in
+  effects/pipeline.js) sits on a measured tradeoff line for `close-21.5` — bottom ×1.80/+20.9%
+  upper at 0.13, ×1.92/+23.3% at 0.15 (shipped), ×2.39/+32.8% at 0.23 (`nf-after5-*`, visually
+  over-filled: the canopy reads as a flat leaf wall) — because 33% of that frame's upper-60% is
+  the *same* self-shadowed geometry class as its bottom, so the round-8 "bottom ×2 / upper +20%"
+  pair is arithmetically unreachable there for any occlusion-driven floor; `overview-21.5`'s
+  bottom (open distant plain, AO≈0) is the same story at ×1.11. Shipped values keep the floor
+  just below the moonlit-field level so shadows never read brighter than moonlit ground. Day
+  behaviour is untouched by construction (`st.night = 0` gates both paths; the day capture above
+  is the proof), and exposure/sky/stars/PMREM are not referenced by the new code.
 
 * **Night sky speckle wall + moonlit-cloud response, fixed 2026-09-25 (round-8 builder).** The round-8
   critic correctly failed the module for its own claim: on the shipped `night` preset the upper sky was
@@ -179,7 +216,9 @@ SwiftShader software GL (fps is not representative; draws/tris/errors are real).
   values are 9 / 0.035 (game-close-21_5-tune2.png reads ~7 while staying clearly night; the moonlit
   savannah waterhole got BETTER, not whiter — sav-night-tune2.png). New-moon nights stay physically
   dark (the lift scales with the moon's illuminated fraction); they get only the hemisphere floor.
-  Night clouds, water glints and park lamps are intentionally NOT boosted.
+  Night clouds, water glints and park lamps are intentionally NOT boosted. (Round 9 added the
+  moon-driven `MOON_HEMI` share and moved the shadow-side floor to effects' AO-masked fill — see
+  the v2 entry at the top of Known gaps.)
 * **Clouds are cheap**: two analytic layers from one tileable noise texture; no cloud shadows on the
   ground, no god rays, no wet-ground darkening during rain.
 * Below-horizon plain is a flat shaded colour with aerial perspective — real terrain hides it inside
