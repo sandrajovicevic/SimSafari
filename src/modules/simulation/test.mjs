@@ -506,6 +506,13 @@ console.log('\nWave P2 — fire');
   // so the total is stamina + one front width (~7-8 ha here) vs ~47 ha unchecked
   assert(stats.burntHa <= 9, `fire: containment holds the burn small (${stats.burntHa} ha)`);
   assert(stats.burntHa > 0.5, `fire: the contained burn still has real extent (${stats.burntHa} ha)`);
+  // a LATER natural fire gets its own budget: the stamina used to be a single running minimum, so after
+  // the first contained fire every later fire started contained and never spread past its ignition disc
+  const burntBefore = stats.burntHa;
+  const lit2 = veg.ignite(-300, 300, 24, VEG.fire.stamina);
+  sim.runDays(8);
+  const grew = veg.fireStats().burntHa - burntBefore;
+  assert(lit2.cells > 0 && grew > lit2.ha * 1.5, `fire: a second natural fire spreads beyond its ignition (${lit2.ha} ha lit -> +${grew.toFixed(2)} ha burnt)`);
 
   // an UNCONTAINED fire (scripted disaster, or a player who ignores it) keeps growing until fuel
   // or rain stops it — 45 days lets a circular front eat a real share of the test park

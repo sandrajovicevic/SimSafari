@@ -1289,7 +1289,9 @@ export class Simulation {
       const spot = opts.x === undefined
         ? (this.veg.pickFireSite(this.rng.float()) || { x: (this.rng.float() - 0.5) * this.world.size * 0.8, z: (this.rng.float() - 0.5) * this.world.size * 0.8, radius: opts.radius })
         : { x: opts.x, z: opts.z, radius: opts.radius };
-      const r = this.veg.ignite(spot.x, spot.z, spot.radius ?? (opts.radius ?? 24));
+      // opts.stamina: cells this fire may claim before it self-contains (default unlimited — a scripted
+      // fire runs until fuel or rain stops it; pass VEG.fire.stamina for a natural-sized fire)
+      const r = this.veg.ignite(spot.x, spot.z, spot.radius ?? (opts.radius ?? 24), opts.stamina ?? Infinity);
       if (!r.cells) return null;
       this.firesIgnited = (this.firesIgnited ?? 0) + 1;
       this._addEvent(day, { type: 'fire', level: 'error', text: `Fire! About ${r.ha} ha are alight near ${Math.round(spot.x)}, ${Math.round(spot.z)}.` });

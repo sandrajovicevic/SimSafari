@@ -135,6 +135,11 @@ export class Vegetation {
     const ix0 = Math.max(0, Math.floor((x - R + half) / c)), ix1 = Math.min(r - 1, Math.floor((x + R + half) / c));
     const iz0 = Math.max(0, Math.floor((z - R + half) / c)), iz1 = Math.min(r - 1, Math.floor((z + R + half) / c));
     let cells = 0;
+    // a fire that starts while nothing is burning is a NEW fire with its own budget; before this the
+    // budget only ever went down (min), so once the first natural fire had spent it, every later fire
+    // started 'contained' and never spread
+    let burningNow = false;
+    for (let i = 0; i < this.burn.length; i++) if (this.burn[i] === 1) { burningNow = true; break; }
     for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
       const cx = (ix + 0.5) * c - half, cz = (iz + 0.5) * c - half;
       const dx = cx - x, dz = cz - z;
@@ -147,7 +152,8 @@ export class Vegetation {
       this.burn[i] = 1; this.burnDays[i] = FIRE.burnDays; cells++;
     }
     if (cells) {
-      if (Number.isFinite(stamina)) this.fireStamina = Math.min(this.fireStamina, stamina);
+      if (!burningNow) this.fireStamina = Number.isFinite(stamina) ? stamina : Infinity;
+      else if (Number.isFinite(stamina)) this.fireStamina = Math.min(this.fireStamina, stamina);
       this.fireVersion++; this.world.vegetation.fireVersion = this.fireVersion;
     }
     return { cells, ha: +(cells * this.cellHa).toFixed(3) };

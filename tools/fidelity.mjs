@@ -658,7 +658,10 @@ async function scenarioFireRegrowth(browser) {
     const fuelAt = (i) => { let f = 0; for (let t = 0; t < veg.types.length; t++) f += veg.cover[t * N + i]; return f; };
     sim.reset();
     sim.replan();
-    sim.injectEvent('fire', { x: 0, z: 0, radius: 40 });
+    // a natural-sized fire (stamina = VEG.fire.stamina, 150 cells): an unlimited scripted fire never went
+    // out on the live park — it swept the map for 90 days (21 buildings, ~100 cells still burning on
+    // day 89) and re-burnt the measured cells around day 80, so the test measured the front, not regrowth
+    sim.injectEvent('fire', { x: 0, z: 0, radius: 40, stamina: 150 });
     sim.runDays(3);
     const cellIdx = [];
     for (let i = 0; i < N; i++) if (veg.burn[i] === 2) cellIdx.push(i);
