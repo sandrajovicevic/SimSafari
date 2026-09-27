@@ -836,9 +836,9 @@
     }
   },
   "game": {
-    "round": 6,
+    "round": 8,
     "score": null,
-    "blindVisual": 7.5,
+    "blindVisual": 7.2,
     "gameplayFidelity": 8,
     "integration": {
       "loads": true,
@@ -889,7 +889,7 @@
         "text": "Golden-hour hero shading reads plasticky (kopje males flat bright-cream, waterhole surface milky-flat) — materials/lighting pass."
       }
     ],
-    "savannahBlindSubset": 7.5,
+    "savannahBlindSubset": 7.4,
     "blindVisualSwiftShader": {
       "round": 7,
       "date": "2026-09-25",
