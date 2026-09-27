@@ -35,7 +35,18 @@ const NIGHT_LIFT = 9;             // moon-key boost at a high moon; up to x1.8 m
 const NIGHT_HEMI = 0.035;         // night-only hemisphere irradiance (linear radiance scale) — moonless floor
 const MOON_HEMI = 0.02;           // moon-driven hemisphere share (up-facing ambient; the occluded-side
                                   // fill lives in effects' AO-masked floor, fed by getNightFloor())
+const NIGHT_CLOUD_GATE = 0.35;    // floor of the cloud attenuation on the night ambient: a storm/overcast
+                                  // deck drives cloudAtten to ~0.06-0.09, which measured (real GPU,
+                                  // nfog-before-*-storm) as a 0.3-1.5/255 blackout frame at night — the
+                                  // round-7 failure mode back via weather. Clear (0.93) and cloudy (0.67)
+                                  // sit above the gate and are unchanged, so the shipped floor numbers
+                                  // only move in the regimes that were broken.
 const HEMI_SKY = [0.14, 0.20, 0.34];   // deep blue-grey zenith tint of the night hemisphere light
+const NIGHT_FOG_GAIN = 0.4;      // night aerial-perspective colour, per unit nightFloor: fog at night
+                                  // must trend toward moonlit-air grey, not black — distant terrain in
+                                  // the night overview faded into a BLACK wall (round-8 finding: the
+                                  // floor cannot reach open distant terrain, AO≈0 there), and fog is
+                                  // what paints that distance. 0 by day (st.nightFloor = 0).
 const HEMI_GROUND = [0.055, 0.06, 0.075]; // cool moonlit-bounce tint for downfacing sides (was warm umber,
                                           // invisible at the old 0.035 intensity; at ~4x it must read as
                                           // moonbounce, not lamplight)
@@ -321,7 +332,7 @@ function computeLighting() {
   // while the upper-60% (sky-dominated) moves under 10%; see README "Night floor (round 9)".
   st.moonFloor = MOON_HEMI * Math.pow(st.illum, 1.5) * smoothstep(0.0, 0.52, cosM)
     * (st.moonDir.y > 0 ? 1 : 0);
-  st.nightFloor = (NIGHT_HEMI + st.moonFloor) * st.night * clamp(cloudAtten, 0, 1);
+  st.nightFloor = (NIGHT_HEMI + st.moonFloor) * st.night * Math.max(cloudAtten, NIGHT_CLOUD_GATE);
   R.hemi.color.setRGB(HEMI_SKY[0], HEMI_SKY[1], HEMI_SKY[2]);
   R.hemi.groundColor.setRGB(HEMI_GROUND[0], HEMI_GROUND[1], HEMI_GROUND[2]);
   R.hemi.intensity = st.nightFloor;
@@ -386,6 +397,18 @@ function computeLighting() {
   const fogDensity = 0.00016 * (1 + 1.6 * W.haze + goldenHaze + 1.2 * W.cloud + 3.0 * W.rain);
   const fog = ctx.scene.fog;
   fog.color.copy(st.horizon);
+  // night aerial perspective (round 9): at night the horizon radiance is near-black, so distant
+  // terrain faded into a black wall — exactly the part of the night overview the AO floor cannot
+  // reach (open ground far away has no occlusion). Fog is what paints that distance, so its colour
+  // gets the same moon-driven scotopic floor as the lights above: distance fades into moonlit-air
+  // grey, never brighter than the night sky itself (max() keeps the day horizon untouched, and
+  // st.nightFloor = 0 by day makes the whole term vanish).
+  if (st.nightFloor > 0) {
+    fog.color.setRGB(
+      Math.max(fog.color.r, HEMI_SKY[0] * st.nightFloor * NIGHT_FOG_GAIN),
+      Math.max(fog.color.g, HEMI_SKY[1] * st.nightFloor * NIGHT_FOG_GAIN),
+      Math.max(fog.color.b, HEMI_SKY[2] * st.nightFloor * NIGHT_FOG_GAIN));
+  }
   fog.density = fogDensity;
 
   // sky uniforms

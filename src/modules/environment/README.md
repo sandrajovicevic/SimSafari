@@ -128,6 +128,33 @@ SwiftShader software GL (fps is not representative; draws/tris/errors are real).
   behaviour is untouched by construction (`st.night = 0` gates both paths; the day capture above
   is the proof), and exposure/sky/stars/PMREM are not referenced by the new code.
 
+* **Night fog colour + storm gate (2026-09-26, round 9b, branch `claude/night-fog`).** Two
+  follow-ups on the same real-GPU harness (all captures `tools/shots/nfog-*.png`, every PNG read):
+  - **Night aerial perspective.** The round-9 floor cannot reach `overview-21.5`'s bottom (open
+    distant plain, AO≈0): its distance faded into fog whose colour is the night horizon radiance —
+    near-black. Fog colour now gets the same moon-driven scotopic floor as the lights:
+    `max(horizon, HEMI_SKY × getNightFloor × NIGHT_FOG_GAIN 0.4)`, 0 by day. First guess 0.12
+    measured as +0.02 (sub-threshold); 0.5 gave +22.3% on the upper frame (over gate); shipped 0.4:
+    `overview-21.5` bottom 12.39 → **14.79** (×1.19), upper **+17.9%** ✓, and the far plain reads as
+    moonlit-air murk instead of a black wall (`nfog-after-game-overview-21_5.png`).
+  - **`NIGHT_CLOUD_GATE 0.35`** — a storm/overcast deck drives `cloudAtten` to ~0.06–0.09, which
+    took the floor, the fill and the key down with it: storm at 21.5h measured a **0.33/255
+    bottom-40% blackout** (`nfog-before-*-storm.png`) — the round-7 failure mode back via weather.
+    The night floor now uses `max(cloudAtten, 0.35)`: clear (0.93) and cloudy (0.67) are unchanged
+    to the bit, storm bottom went 0.33 → **1.21** and the rain streaks read over a dark scene
+    (`nfog-after-game-close-21_5-storm.png`). Knob bracket on disk: gate 0.7 → 2.94
+    (`*-storm-gate07.png`) — roughly linear, still dark; the deck-dim and denser storm fog
+    dominate, and 0.7 starts to blur the storm/overcast distinction the round-2 fix established.
+  - **New-moon verification** (`world.time.day = 13`, phase ≈ 0.996, illum ≈ 0.0004, via the
+    `time:set` path): `close-21.5` mean 2.87 → **3.84**, `sav-night` 3.72 → **4.01** — the
+    illum^1.5 ramp holds (full-moon night means 12.3–15.5), no blackout, still unmistakably night
+    (`nfog-*-newmoon.png`). Day control re-verified: overview 14h mean 105.84 → 105.82 (−0.02%).
+  - Known residuals: `close-21.5`'s upper-60% lands at +30.2% vs the round-8 +20% guardrail (the
+    shipped floor knee plus ~0.8 points of legitimate far-escarpment aerial perspective); the
+    savannah-subject captures carry ±1–2 run noise because the staged weather is still mid-ease at
+    capture time (the 40-frame settle covers ~0.9 s of a ~6 s ease — a harness limitation, not a
+    scene change; scene draw/triangle counts are bit-identical across runs).
+
 * **Night sky speckle wall + moonlit-cloud response, fixed 2026-09-25 (round-8 builder).** The round-8
   critic correctly failed the module for its own claim: on the shipped `night` preset the upper sky was
   a dense bright grey-white speckle/static wall instead of "mostly points" (`tools/shots/seb-before-env-night-22.png`

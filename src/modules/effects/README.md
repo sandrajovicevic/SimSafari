@@ -262,6 +262,16 @@ automatically 0 — low-quality night stays as dark as before this change; the b
 now intentionally differ (the bare chain is darker) — the exposure-neutrality contract in the
 section above is a day/golden-hour contract and still holds there.
 
+**Round 9b follow-up (branch `claude/night-fog`):** `environment.getNightFloor()` now carries a
+storm/overcast cloud gate (`max(cloudAtten, 0.35)`), so the fill input survives heavy decks — storm
+at 21.5h went from a 0.33/255 bottom-40% blackout to 1.21 with the rain streaks legible
+(`tools/shots/nfog-*-storm*.png`; clear/cloudy floors are bit-identical, so the table above still
+holds). Environment also added a night fog-colour floor on the same scalar, which slightly reduces
+the fill's remaining need on far pixels by design (both terms target the same floor level; the sum
+is provably non-diminishing per pixel). Harness note: savannah-subject captures carry ±1–2 run
+noise because the staged weather is still easing (~6 s) when the 40-frame settle ends — quote
+game-subject numbers for gate checks.
+
 ## Night look (round 5 fix)
 
 Critic round 4 read the game at night as "warm sepia-brown". The old grade scaled the *day* sun tint with a
