@@ -19,6 +19,7 @@ const S = {
   material: null, chunks: [], water: null, waterMat: null, apron: null, apronMat: null,
   gen: null, ctlBytes: null, generated: false, textureSize: 1024,
   waterDirty: false, waterQuiet: 0,
+  burnTex: null, burnVersionSeen: -1,
 };
 
 function log(...a) { S.ctx?.log?.info?.(...a); }
@@ -312,6 +313,27 @@ export default {
   update(dt, t) {
     if (S.waterDirty && ++S.waterQuiet >= WATER_SETTLE_FRAMES) { S.waterDirty = false; rebuildWater(); }
     if (S.waterMat) updateWaterSky(S.waterMat, S.ctx.world, S.ctx.renderer);
+    // Wave P2 fire: push the simulation's scorch grid into the terrain's burn texture whenever the
+    // fire version moves (a 64² R8 upload is ~4 kB — no rect bookkeeping needed at this size).
+    const veg = S.ctx.world.vegetation;
+    const u = S.material?.userData.uniforms;
+    if (!u || !veg?.scorch) return;
+    if (S.burnVersionSeen !== veg.fireVersion) {
+      S.burnVersionSeen = veg.fireVersion;
+      if (!S.burnTex || S.burnTex.image.width !== veg.res) {
+        S.burnTex?.dispose();
+        const data = new Uint8Array(veg.res * veg.res);
+        S.burnTex = new THREE.DataTexture(data, veg.res, veg.res, THREE.RedFormat, THREE.UnsignedByteType);
+        S.burnTex.magFilter = THREE.LinearFilter; S.burnTex.minFilter = THREE.LinearFilter;
+        S.burnTex.wrapS = S.burnTex.wrapT = THREE.ClampToEdgeWrapping;
+        S.burnTex.needsUpdate = true;
+        u.uBurnTex.value = S.burnTex;
+      }
+      const d = S.burnTex.image.data;
+      for (let i = 0; i < d.length; i++) d[i] = Math.min(255, (veg.scorch[i] * 255) | 0);
+      S.burnTex.needsUpdate = true;
+      u.uBurnOn.value = 1.0;
+    }
   },
 
   tick() {},
@@ -326,6 +348,7 @@ export default {
     // S.layers / S.control below, so there is no separate apron texture set to release.
     if (S.material) { S.ctx.materials.untrack(S.material); S.material.dispose(); S.material = null; }
     if (S.waterMat) { S.ctx.materials.untrack(S.waterMat); S.waterMat.dispose(); S.waterMat = null; }
+    S.burnTex?.dispose(); S.burnTex = null; S.burnVersionSeen = -1;
     S.layers?.dispose(); S.layers = null;
     if (S.control) { for (const t of Object.values(S.control)) t.dispose(); S.control = null; }
     S.heightTex?.dispose(); S.heightTex = null;
