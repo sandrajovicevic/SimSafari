@@ -206,7 +206,7 @@ planting — the opening park shows no food pressure.
 | prosperity rich vs starved | 0.85 vs 0.44, chain holds | 0.86 vs 0.44, chain holds |
 | **plant-aloe** (new) | — | elephant capacity day 30: **5 planted vs 2 control** (food cap 11 vs 2), $4,523.52 |
 | **remove-prey** (new) | — | lion capacity 4 → 1 by day 6; lions first below control on **day 16**, 0 by day 19 (control 3) |
-| **spread** (new) | — | extra red-oat cover 0.025 → **0.066 ha** in 30 d, **0.033 ha under drought**; reach stays 9 cells |
+| **spread** (new) | — | extra red-oat cover 0.025 → **0.066 ha** in 30 d, **0.033 ha under drought**; reach stays 9 cells. Re-verified 2026-09-26 after the P2-prep merge: 0.025 → **0.051 ha**, drought **0.033 ha** (slight shift from the root-reserve tuning; scenario criterion corrected the same day — see tools/fidelity.mjs — it had also required window-wide mature cover to grow, which the dry-season equilibrium contradicts) |
 
 **Why the numbers moved.** Carrying capacity is now food-coupled and the live demo's habitats are
 tiny (Plains 2.2 ha, Acacia Woodland 3.0 ha, River Wetland 0.43 ha, Pride Kopje 3.6 ha):

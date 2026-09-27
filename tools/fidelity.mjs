@@ -572,7 +572,12 @@ async function scenarioSpread(browser) {
   }, DAYS);
   if (!out.error) {
     const ep = out.extraCoverHa.planted, ed = out.extraCoverHa.drought, cp = out.coveredHaOver03.planted, cd = out.coveredHaOver03.drought;
-    out.pass = cp[cp.length - 1] > cp[0] && ep[ep.length - 1] > ep[0] && ed[ed.length - 1] < ep[ep.length - 1];
+    // What spread demonstrates (simulation README): the planted patch grows extra cover and a drought
+    // suppresses that growth. NOT `coveredHa[last] > coveredHa[0]` — that window includes worldgen-seeded
+    // mature cells whose dry-season equilibrium is below the 0.3 cover line, so covered ha correctly
+    // decays over any 30-day dry-season run regardless of planting (verified 2026-09-26: covered
+    // 2.56 -> 1.15 ha in BOTH control and planted while the patch still gains +0.026 ha).
+    out.pass = ep[ep.length - 1] > ep[0] && ed[ed.length - 1] < ep[ep.length - 1];
   }
   const result = { scenario: 'spread', result: out, consoleErrors: errors };
   writeJson('spread', result);
@@ -674,6 +679,9 @@ function writeJson(name, data) {
   const failed = SCENARIOS.filter((s) => {
     const r = results[s];
     if (!r) return true;
+    // a scenario that ran clean but FAILED its own assertions is a failure (P1 verification fix:
+    // `spread` shipped pass:false unnoticed because only console errors were checked)
+    if (r.result && r.result.pass === false) return true;
     const errs = r.consoleErrors?.length || 0;
     return errs > 0;
   });
