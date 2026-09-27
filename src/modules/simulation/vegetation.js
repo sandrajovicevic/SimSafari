@@ -41,6 +41,7 @@ export class Vegetation {
     this.burnDays = new Uint8Array(this.nCells);   // days left in the burning phase
     this.scorch = new Float32Array(this.nCells);   // 0..1, follows VEG.fire.scorchDecay back to 0
     this.wet = new Float32Array(this.nCells);      // water-ring wetness 0..1, decays per day
+    this.cleared = new Uint8Array(this.nCells);    // firebreak: bulldozed soil regrows at ~15 % rate
     this._fuel = new Float32Array(this.nCells);    // per-call scratch: total cover per cell
     this.fireVersion = 0;                          // bumped whenever any fire state changes
     this.fireStamina = Infinity;                   // cells this fire may still claim (natural fires self-contain)
@@ -113,7 +114,7 @@ export class Vegetation {
 
   /** Clear all fire state (reseed/restart). Bumps fireVersion so renderers re-upload. */
   resetFire() {
-    this.burn.fill(0); this.burnDays.fill(0); this.scorch.fill(0); this.wet.fill(0);
+    this.burn.fill(0); this.burnDays.fill(0); this.scorch.fill(0); this.wet.fill(0); this.cleared.fill(0);
     this.fireStamina = Infinity;
     this.lastNaturalFire = -999;
     this.fireVersion++;
@@ -190,8 +191,10 @@ export class Vegetation {
         const dx = cx - px, dz = cz - pz;
         if (dx * dx + dz * dz > R * R) continue;
         if (this._isWater(cx, cz)) continue;
-        seen[i] = 1; cells++;
-        for (let t = 0; t < NT; t++) this.cover[t * N + i] = 0.05; // bulldozed to stubble; regrows naturally
+        seen[i] = 1; cells++; this.cleared[i] = 1;
+        // per-plant stubble 0.005: total fuel across all plants must land BELOW VEG.fire.minFuel (0.06),
+        // else the strip still carries fire (0.02 x 6 plants = 0.12 crossed the line — found by probe)
+        for (let t = 0; t < NT; t++) this.cover[t * N + i] = 0.005;
         if (ix < bx0) bx0 = ix; if (ix > bx1) bx1 = ix;
         if (iz < bz0) bz0 = iz; if (iz > bz1) bz1 = iz;
       }
@@ -223,7 +226,7 @@ export class Vegetation {
     const r = this.res, N = this.nCells, cover = this.cover, site = this.site, P = this.pressure, S = this._scratch;
     this.lastRain = rain;
     const nb = VEG.neighbourSeed, damp = VEG.grazeDamp, maxLoss = VEG.maxLoss, reserve = VEG.rootReserve;
-    const B = this.burn, SC = this.scorch, regrowDamp = FIRE.regrowDamp;
+    const B = this.burn, SC = this.scorch, regrowDamp = FIRE.regrowDamp, CL = this.cleared;
     for (let t = 0; t < NT; t++) {
       const p = PLANTS[t], fit = rainfallFit(p.rainfall, rain);
       this._fit[t] = fit;
@@ -236,7 +239,8 @@ export class Vegetation {
           const K = Kp * site[k];
           const c = S[i];
           if (K <= 0) { if (c > 0) cover[k] = c * 0.9 < 1e-4 ? 0 : c * 0.9; continue; }
-          const bd = B[i] === 2 ? 1 - regrowDamp * SC[i] : 1; // burnt cells regrow slowly while scorched
+          // burnt cells regrow slowly while scorched; bulldozed firebreak soil regrows at ~15 % rate
+          const bd = (B[i] === 2 ? 1 - regrowDamp * SC[i] : 1) * (CL[i] ? 0.15 : 1);
           // 4-neighbour mean (clamped at the edge)
           const nm = (S[ix > 0 ? i - 1 : i] + S[ix < r - 1 ? i + 1 : i] + S[iz > 0 ? i - r : i] + S[iz < r - 1 ? i + r : i]) * 0.25;
           const room = 1 - c / K;

@@ -11,6 +11,8 @@ import { presets, stage } from './showcase.js';
 let ctx = null;
 let group = null;
 let built = false;
+const rebuilds = []; // {id, cost, at} — burnt buildings awaiting rebuild (Wave P2)
+const REBUILD_DAYS = 8;
 
 const api = {
   /** Build the demo park on the world's current seed. Idempotent: clears any prior park state first. */
@@ -64,14 +66,39 @@ export default {
       ctx.events.once('core:ready', () => {
         api.loadDemo().catch((err) => ctx.log.error('[park] loadDemo on core:ready failed', err));
       });
+      // Wave P2: a building the fire consumed is marked burnt (stops contributing) and rebuilt
+      // automatically after REBUILD_DAYS for 40 % of its base cost once the park can afford it.
+      ctx.events.on('fire:building', ({ id, rebuildCost }) => {
+        const buildings = ctx.modules.get('buildings');
+        if (!buildings?.setState) return;
+        buildings.setState(id, { state: 'burnt', staff: 0, visitors: 0 });
+        rebuilds.push({ id, cost: rebuildCost ?? 2000, at: ctx.world.time.day + REBUILD_DAYS });
+      });
     }
   },
 
   update() {},
-  tick() {},
+  tick() {
+    if (!ctx || rebuilds.length === 0) return;
+    const sim = ctx.modules.get('simulation');
+    const buildings = ctx.modules.get('buildings');
+    if (!sim?.spend || !buildings?.setState) return;
+    const eco = ctx.world.economy;
+    for (let i = rebuilds.length - 1; i >= 0; i--) {
+      const r = rebuilds[i];
+      if (ctx.world.time.day < r.at) continue;
+      if (eco.cash < r.cost) continue; // cannot afford it yet: stays burnt, retried daily
+      sim.spend(r.cost, 'rebuild');
+      buildings.setState(r.id, { state: 'ok' });
+      ctx.events.emit('fire:rebuilt', { id: r.id, cost: r.cost, day: ctx.world.time.day });
+      ctx.events.emit('ui:notify', { level: 'info', text: `Rebuilt a burned-down building for $${Math.round(r.cost).toLocaleString()}` });
+      rebuilds.splice(i, 1);
+    }
+  },
 
   dispose() {
     try { clearPark(ctx); } catch {}
+    rebuilds.length = 0;
     group?.removeFromParent();
     group = null; ctx = null; built = false;
   },

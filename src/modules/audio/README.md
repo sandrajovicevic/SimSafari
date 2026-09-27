@@ -80,6 +80,14 @@ populated 40 Hz–16 kHz spectrum; night layer mix insects 1.00, frogs 1.00, bir
 spatialised lion/hyena/nightjar/elephant-rumble scheduled at real distances 35–265 m. Draw calls: 0
 (no WebGL work). Console errors: 0.
 
+## Fire crackle layer (Wave P2, 2026-09-26)
+
+New ambience layer `fire` (LAYER_NAMES order: ..., thunder, fire): a low roar (brown noise,
+lowpassed 140 Hz) plus a crackle band (white noise, highpass 2.4 kHz + bandpass 3.4 kHz,
+amplitude-jittered by two incommensurate square LFOs). The engine samples the simulation's burn
+grid every 0.5 s: level = 1 at the front, fading to 0 at ~250 m, floored at 0.18 while any cell
+burns; rain douses the layer. Meters extend automatically (panel reads LAYER_NAMES).
+
 ## Known gaps (honest)
 
 * `vehicles` and part of the `animals` bus read −inf dB in still captures because their sounds are

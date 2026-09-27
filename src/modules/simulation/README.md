@@ -206,6 +206,22 @@ planting — the opening park shows no food pressure.
 | prosperity rich vs starved | 0.85 vs 0.44, chain holds | 0.86 vs 0.44, chain holds |
 | **plant-aloe** (new) | — | elephant capacity day 30: **5 planted vs 2 control** (food cap 11 vs 2), $4,523.52 |
 | **remove-prey** (new) | — | lion capacity 4 → 1 by day 6; lions first below control on **day 16**, 0 by day 19 (control 3) |
+### Wave P2 — fire (2026-09-26, branch `claude/p2-fire`)
+
+The vegetation grid doubles as the fire model: per-cell state (unburnt / burning / burnt-regrowing),
+scorch 0..1 and wetness 0..1, all exposed on `world.vegetation` for renderers. Fire spreads per sim
+day from an established front with chance `spreadBase(0.32) x fuel x dryness x wind`, burns 2 days,
+then drops each plant's cover to its per-form residue (grass 8 %, shrub 12 %, tree 55 %) and sets
+scorch 1. Scorch decays ~2.5 %/day (with rain), dampening regrowth by up to 70 % — burnt ground is
+visibly slower to recover. Natural strikes: dry season + rainless day + >= 20 d since the last one,
+with a 150-cell containment budget (~3.8 ha) so wild fires self-limit; scripted fires
+(`injectEvent('fire', {x, z, radius})`) are unlimited. New APIs: `firebreak(x0,z0,x1,z1,width)`
+($200/ha — bulldozes to 0.005/plant so total fuel lands under the 0.06 carry-fire line; regrows at
+15 % rate, so breaks need re-cutting), `waterDrop(x,z,r)` ($120/ha, ~7 days of wetness),
+`fireStats()`. Buildings: a burning cell over a footprint emits `fire:building {id, rebuildCost}`
+once; the park marks it burnt (stops contributing), rebuilds after 8 days at 40 % of base cost.
+Harness: `fire-response` (defended 7.1 ha / 0 buildings vs unprotected 13.4 ha / **7 buildings**)
+and `fire-regrowth` (median scorch 0, fuel 0.219 -> 1.393 over 90 d). 129/129 unit tests.
 | **spread** (new) | — | extra red-oat cover 0.025 → **0.066 ha** in 30 d, **0.033 ha under drought**; reach stays 9 cells. Re-verified 2026-09-26 after the P2-prep merge: 0.025 → **0.051 ha**, drought **0.033 ha** (slight shift from the root-reserve tuning; scenario criterion corrected the same day — see tools/fidelity.mjs — it had also required window-wide mature cover to grow, which the dry-season equilibrium contradicts) |
 
 **Why the numbers moved.** Carrying capacity is now food-coupled and the live demo's habitats are

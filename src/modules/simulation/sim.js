@@ -153,6 +153,7 @@ export class Simulation {
 
   /** Restart with a new seed. Keeps the world (habitats, buildings, roads) and restores the starting population. */
   reset(seed = this.seed) {
+    this._fireSeenBuildings = new Set();
     this.rng = new Rng(seed);
     this.seed = seed;
     const w = this.world;
@@ -163,6 +164,7 @@ export class Simulation {
     for (const r of STAFF_ORDER) if (staff[r]) this.staff[r] = { ...staff[r] };
     if (this._vegStart) { this.veg.restore(this._vegStart); this._food.clear(); this._emit('vegetation:changed', this.veg.wholeRect()); }
     else this.seedVegetation();
+    this.veg.resetFire(); // a fresh game starts unburnt (burn/scorch/wet/cleared cleared; fireVersion bumps)
     if (this.initialPopulation) for (const [hid, m] of this.initialPopulation) for (const [s, n] of m) this.setPopulation(hid, s, n);
   }
 
@@ -591,7 +593,8 @@ export class Simulation {
             const hw = (b.w ?? 8) / 2 + 1, hd = (b.d ?? 8) / 2 + 1;
             if (cx >= b.x - hw && cx <= b.x + hw && cz >= b.z - hd && cz <= b.z + hd) {
               this._fireSeenBuildings.add(b.id);
-              this._emit('fire:building', { id: b.id, type: b.type, x: b.x, z: b.z, day: this.clock.day });
+              const rebuildCost = Math.round((this.building(b.type)?.cost ?? 5000) * 0.4);
+              this._emit('fire:building', { id: b.id, type: b.type, x: b.x, z: b.z, day: this.clock.day, rebuildCost });
               this._addEvent(this.clock.day, { type: 'fire', level: 'error', text: `The ${b.type} at ${Math.round(b.x)}, ${Math.round(b.z)} caught fire and burned down!` });
             }
           }
@@ -806,7 +809,7 @@ export class Simulation {
     let beds = 0, quality = 0, extra = 0, count = 0;
     const w = this.world;
     if (w.buildings) for (const b of w.buildings.values()) {
-      if (!b || b.state === 'construction' || b.state === 'building') continue;
+      if (!b || b.state === 'construction' || b.state === 'building' || b.state === 'burnt') continue;
       const k = this.building(b.type);
       if (k.beds) { beds += k.beds; quality += k.quality ?? 0.6; count++; }
       if (k.lodgeQuality) extra += k.lodgeQuality;
@@ -819,7 +822,7 @@ export class Simulation {
     const out = { hides: 0, shops: 0, vet: 0, rangerStations: 0, morale: 0, efficiency: 0, closeness: 0, total: 0 };
     const w = this.world;
     if (w.buildings) for (const b of w.buildings.values()) {
-      if (!b || b.state === 'construction' || b.state === 'building') continue;
+      if (!b || b.state === 'construction' || b.state === 'building' || b.state === 'burnt') continue;
       const k = this.building(b.type);
       out.total++;
       if (k.closeness) { out.hides++; out.closeness += k.closeness; }

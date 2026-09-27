@@ -185,6 +185,16 @@ burned ~35 game-hours, pushing every capture into a random night hour (the first
 screenshot came out black). The demo now runs at speed 1 only in the live game and only when the
 clock is not explicitly paused (`&speed=0` keeps capture pages deterministic).
 
+## Fire: burnt buildings and rebuild (Wave P2, 2026-09-26)
+
+When wildfire consumes a building's vegetation cell, the simulation emits `fire:building
+{id, rebuildCost}`; the park marks the building `burnt` (staff/visitors zeroed, it stops
+contributing to lodge/shop/staff effects) and automatically rebuilds it 8 days later for 40 % of
+its base cost once the park can afford the spend — `fire:rebuilt {id, cost, day}` fires and the
+building contributes again. Cannot-afford buildings stay burnt and retry daily. Verified in the
+`fire-response` harness scenario: an unprotected wildfire burned 7 demo buildings; the defended
+run (firebreak + water drops) lost 0.
+
 ## Known gaps (honest)
 
 * **2026-09-24 wrong-scene fixes (critic park-round4 #1/#2).** `habitat` framed a river because the
