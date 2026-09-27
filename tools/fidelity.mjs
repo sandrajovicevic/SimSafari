@@ -563,6 +563,16 @@ async function scenarioFireResponse(browser) {
     const defended = await run(true);
     return { control, defended, days: DAYS };
   }, 21);
+  if (!out.error) {
+    out.pass = out.defended.buildingsBurnt === 0 && out.defended.protectedBurnt === 0
+      && out.control.buildingsBurnt > 0 && out.defended.burntHa > 0 && out.control.burntHa > 0;
+  }
+  const result = { scenario: 'fire-response', result: out, consoleErrors: errors };
+  writeJson('fire-response', result);
+  await page.close();
+  return result;
+}
+
 async function scenarioSpread(browser) {
   const { page, errors } = await loadGame(browser, { label: 'spread' });
   const out = await page.evaluate(async (days) => {
@@ -632,14 +642,6 @@ async function scenarioSpread(browser) {
   const result = { scenario: 'spread', result: out, consoleErrors: errors };
   writeJson('spread', result);
   await page.close();
-  return result;
-}
-  if (!out.error) {
-    out.pass = out.defended.buildingsBurnt === 0 && out.defended.protectedBurnt === 0
-      && out.control.buildingsBurnt > 0 && out.defended.burntHa > 0 && out.control.burntHa > 0;
-  }
-  const result = { scenario: 'fire-response', result: out, consoleErrors: errors };
-  writeJson('fire-response', result);
   return result;
 }
 

@@ -572,32 +572,28 @@ export class Simulation {
     this._fireBuildings();
   }
 
-  /** Burnt buildings: any burning cell whose footprint carries a building emits fire:building once. */
+  /** Burnt buildings: any burning 16 m vegetation cell that OVERLAPS a building's footprint emits
+   * fire:building once. AABB-vs-cell test on the whole cell (not just its centre), so small hides in
+   * a big cell are caught too. */
   _fireBuildings() {
     const veg = this.veg, w = this.world;
-    if (!w.buildings?.size || !w.grid?.occupancy) return;
+    if (!w.buildings?.size) return;
     if (!this._fireSeenBuildings) this._fireSeenBuildings = new Set();
-    const B = veg.burn, N = veg.nCells, grid = w.grid, gres = grid.res, gcell = grid.cell;
-    const half = w.half ?? w.size / 2;
+    const B = veg.burn, N = veg.nCells;
+    const half = w.half ?? w.size / 2, cell = veg.cell;
     for (let i = 0; i < N; i++) {
       if (B[i] !== 1) continue;
       const iz = (i / veg.res) | 0, ix = i - iz * veg.res;
-      const cx = (ix + 0.5) * veg.cell - half, cz = (iz + 0.5) * veg.cell - half;
-      // the 4 m grid cells under this vegetation cell
-      for (let gz = Math.floor((cz + half) / gcell); gz <= Math.floor((cz + 0.5 * veg.cell + half - 0.01) / gcell); gz++) {
-        for (let gx = Math.floor((cx + half) / gcell); gx <= Math.floor((cx + 0.5 * veg.cell + half - 0.01) / gcell); gx++) {
-          if (gx < 0 || gz < 0 || gx >= gres || gz >= gres) continue;
-          if (grid.occupancy[gz * gres + gx] !== 1) continue;
-          for (const b of w.buildings.values()) {
-            if (this._fireSeenBuildings.has(b.id) || b.state === 'burnt') continue;
-            const hw = (b.w ?? 8) / 2 + 1, hd = (b.d ?? 8) / 2 + 1;
-            if (cx >= b.x - hw && cx <= b.x + hw && cz >= b.z - hd && cz <= b.z + hd) {
-              this._fireSeenBuildings.add(b.id);
-              const rebuildCost = Math.round((this.building(b.type)?.cost ?? 5000) * 0.4);
-              this._emit('fire:building', { id: b.id, type: b.type, x: b.x, z: b.z, day: this.clock.day, rebuildCost });
-              this._addEvent(this.clock.day, { type: 'fire', level: 'error', text: `The ${b.type} at ${Math.round(b.x)}, ${Math.round(b.z)} caught fire and burned down!` });
-            }
-          }
+      const cx = (ix + 0.5) * cell - half, cz = (iz + 0.5) * cell - half;
+      const cx0 = cx - cell / 2, cx1 = cx + cell / 2, cz0 = cz - cell / 2, cz1 = cz + cell / 2;
+      for (const b of w.buildings.values()) {
+        if (this._fireSeenBuildings.has(b.id) || b.state === 'burnt') continue;
+        const hw = (b.w ?? 8) / 2, hd = (b.d ?? 8) / 2;
+        if (cx1 >= b.x - hw && cx0 <= b.x + hw && cz1 >= b.z - hd && cz0 <= b.z + hd) {
+          this._fireSeenBuildings.add(b.id);
+          const rebuildCost = Math.round((this.building(b.type)?.cost ?? 5000) * 0.4);
+          this._emit('fire:building', { id: b.id, type: b.type, x: b.x, z: b.z, day: this.clock.day, rebuildCost });
+          this._addEvent(this.clock.day, { type: 'fire', level: 'error', text: `The ${b.type} at ${Math.round(b.x)}, ${Math.round(b.z)} caught fire and burned down!` });
         }
       }
     }

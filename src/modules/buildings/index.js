@@ -404,6 +404,26 @@ function placeLamps() {
 // public API
 // ---------------------------------------------------------------------------------------------------------
 
+const CHARCOAL = new THREE.Color(0x231d18);
+const WHITE = new THREE.Color(1, 1, 1);
+/** Tint every InstancedMesh slot of this building's type-set: charcoal when burnt, restore when not. */
+function charInstance(rec, burnt) {
+  const set = S.sets.get(rec.type);
+  if (!set || rec._slot === undefined || rec._slot >= set.count) return;
+  const col = burnt ? CHARCOAL : WHITE;
+  for (const im of set.meshes) {
+    if (!im.instanceColor && !burnt) continue; // never burnt: no colour buffer was ever needed
+    im.setColorAt(rec._slot, col);
+    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  }
+  for (const sm of set.spinMeshes) {
+    const im = sm.mesh;
+    if (!im.instanceColor && !burnt) continue;
+    im.setColorAt(rec._slot, col);
+    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  }
+}
+
 const api = {
   /** Every buildable type as plain rows: footprint, cost, upkeep, staff, capacity, appeal, rules. */
   catalogue() { return catalogueRows(); },
@@ -432,13 +452,21 @@ const api = {
   /** Ghost mesh for the build tool. preview(null) hides it. */
   preview(type, x, z, rot = 0, valid = true) { return preview(type, x, z, rot, valid); },
 
-  /** Update simulation state on one building: { staff, visitors, state }. */
+  /** Update simulation state on one building: { staff, visitors, state }.
+   * Wave P2: state 'burnt' chars the instance's colour to charcoal (rebuild restores it). */
   setState(id, patch = {}) {
     const rec = S.records.get(id);
     if (!rec) return false;
     if (patch.staff !== undefined) rec.staff = patch.staff;
     if (patch.visitors !== undefined) rec.visitors = patch.visitors;
-    if (patch.state !== undefined) rec.state = patch.state;
+    if (patch.state !== undefined) {
+      rec.state = patch.state;
+      const burnt = patch.state === 'burnt';
+      if (burnt !== !!rec._charred) {
+        rec._charred = burnt;
+        charInstance(rec, burnt);
+      }
+    }
     return true;
   },
 

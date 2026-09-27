@@ -187,6 +187,7 @@ export class Vegetation {
       for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
         const i = iz * r + ix;
         if (seen[i]) continue;
+        if (this.cleared[i]) { seen[i] = 1; continue; } // already a firebreak: no double work, no double charge
         const cx = (ix + 0.5) * c - half, cz = (iz + 0.5) * c - half;
         const dx = cx - px, dz = cz - pz;
         if (dx * dx + dz * dz > R * R) continue;

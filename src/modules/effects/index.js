@@ -62,38 +62,54 @@ function computeSun() {
 }
 
 /** Wave P2: pin flame + smoke emitters to burning vegetation cells (world.vegetation.burn). Scans the
- * 64² grid every 6th frame (uint8 reads) and round-robin-positions up to 8 flame + 8 smoke emitters
- * from the shared pool; extras idle. Flames are self-lit HDR so bloom carries them at night. */
-const FIRE_EMITTERS = 8;
+ * 64² uint8 burn grid every 3rd frame: counts the front, keeps up to 16 emitter positions and the
+ * front centroid for the glow light. Flames scale with the front (1.2 -> 2.2 m); smoke is a tall
+ * buoyant column (life 9 s, size 2.4) visible at 160 m by day. A single orange PointLight rides the
+ * front centroid as the night glow. Emitters idle and the light drops to 0 when the front dies. */
+const FIRE_EMITTERS = 16;
 function updateFireFront() {
   const veg = ctx.world.vegetation;
   if (!veg?.burn || !particles) return;
-  if (S.fireFlames === undefined) { S.fireFlames = []; S.fireSmoke = []; S.fireScan = 0; S.fireCursor = 0; S.fireCells = []; }
-  S.fireScan = (S.fireScan + 1) % 6;
+  if (S.fireFlames === undefined) {
+    S.fireFlames = []; S.fireSmoke = []; S.fireScan = 0; S.fireCursor = 0; S.fireCells = [];
+    S.fireGlow = new THREE.PointLight(0xff8c3a, 0, 260, 2);
+    S.fireGlow.name = 'fire-glow';
+    ctx.scene.add(S.fireGlow);
+  }
+  S.fireScan = (S.fireScan + 1) % 3;
   if (S.fireScan !== 0) return;
   const r = veg.res, c = veg.cell, half = ctx.world.half ?? ctx.world.size / 2;
   const found = S.fireCells;
   found.length = 0;
+  let burning = 0, cx = 0, cz = 0;
   const start = (S.fireCursor = (S.fireCursor + 7) % (r * r));
-  for (let k = 0; k < r * r && found.length < FIRE_EMITTERS; k++) {
-    const i = (start + k * 13) % (r * r);
+  for (let k = 0; k < r * r; k++) {
+    const i = (start + k) % (r * r);
     if (veg.burn[i] !== 1) continue;
+    burning++;
     const iz = (i / r) | 0, ix = i - iz * r;
-    found.push([(ix + 0.5) * c - half, (iz + 0.5) * c - half]);
+    if (found.length < FIRE_EMITTERS) found.push([(ix + 0.5) * c - half, (iz + 0.5) * c - half]);
+    cx += (ix + 0.5) * c - half; cz += (iz + 0.5) * c - half;
   }
+  const scale = Math.min(1.2, burning / 60);
+  const flameSize = 1.2 + scale * 0.9, flameRate = 24 + scale * 14;
   while (S.fireFlames.length < found.length) {
-    const fl = particles.emitter('fire', { rate: 26, size: 1.1, life: 0.5 });
-    const sm = particles.emitter('smoke', { rate: 5, size: 1.3, life: 4.5, speed: 0.8 });
+    const fl = particles.emitter('fire', { rate: flameRate, size: flameSize, life: 0.55 });
+    const sm = particles.emitter('smoke', { rate: 16, size: 2.4, life: 9, speed: 0.7, spread: 0.3 });
     if (!fl || !sm) break;
     S.fireFlames.push(fl); S.fireSmoke.push(sm);
   }
+  const gx = burning ? cx / burning : 0, gz = burning ? cz / burning : 0;
+  const gy = burning && ctx.world.getHeight ? ctx.world.getHeight(gx, gz) : 0;
+  S.fireGlow.position.set(gx, gy + 4, gz);
+  S.fireGlow.intensity = Math.min(4, burning / 30);
   for (let i = 0; i < S.fireFlames.length; i++) {
     const fl = S.fireFlames[i], sm = S.fireSmoke[i];
     if (i < found.length) {
       const x = found[i][0], z = found[i][1];
       const y = (ctx.world.getHeight ? ctx.world.getHeight(x, z) : 0) + 0.4;
-      fl.setPosition(x, y, z); fl.set({ rate: 26 });
-      sm?.setPosition(x, y + 1.2, z); sm?.set({ rate: 5 });
+      fl.setPosition(x, y, z); fl.set({ rate: flameRate, size: flameSize });
+      sm?.setPosition(x, y + 1.5, z); sm?.set({ rate: 16, size: 2.4, life: 9 });
     } else {
       fl.set({ rate: 0 }); sm?.set({ rate: 0 });
     }
@@ -209,6 +225,7 @@ export default {
     pipeline?.dispose(); pipeline = null;
     if (S.fireFlames) { for (const e of S.fireFlames) e?.dispose?.(); for (const e of S.fireSmoke) e?.dispose?.(); }
     S.fireFlames = null; S.fireSmoke = null;
+    S.fireGlow?.removeFromParent(); S.fireGlow = null;
     particles?.dispose(); particles = null;
     group?.removeFromParent(); group = null;
     S.fallbackLooked = false; S.fallbackSun = null; S.lightIn = null;

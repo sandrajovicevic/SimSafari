@@ -16,6 +16,7 @@ export const FireTool = {
   activate(ctx, S) {
     S.last = null;
     S.spent = 0;
+    S.previewKey = '';
     ctx.log.info(`[tools] fire tool: mode=${S.options.mode}`);
   },
 
@@ -65,7 +66,12 @@ export const FireTool = {
     S.ring.setColor(S.options.mode === 'water' ? 0x59c8ff : 0xffb14d);
     S.ring.update(ctx.world, x, z, r);
     S.ring.mesh.visible = true;
-    ctx.events.emit('tool:preview', { tool: 'fire', mode: S.options.mode, cost: 0, ha: 0, note: COST[S.options.mode] });
+    // ui rebuilds toolbar DOM on tool:preview — emit only when the mode/radius actually changes
+    const pk = S.options.mode + '|' + S.options.radius;
+    if (pk !== S.previewKey) {
+      S.previewKey = pk;
+      ctx.events.emit('tool:preview', { tool: 'fire', mode: S.options.mode, cost: 0, ha: 0, note: COST[S.options.mode] });
+    }
   },
 
   key(ctx, S, e) {
