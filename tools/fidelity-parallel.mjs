@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 // Run the fidelity harness (tools/fidelity.mjs) as N parallel shards against the one running dev server.
-// Verifier tooling: the harness is ~26 sequential page loads of the full game (~2 h on a 4-core
-// SwiftShader box); shards cut the wall time without touching fidelity.mjs itself.
+// Verifier tooling: the harness is ~23 sequential page loads of the full game; shards run them side by
+// side without touching fidelity.mjs itself.
+//
+// MEASURED (2026-09-28, 4-core container, SwiftShader): --jobs 2 finished all 16 scenarios in 75.7 min,
+// but each page load took ~360 s instead of ~204 s alone (median of 71 sequential loads) — SwiftShader
+// already saturates the cores, so two shards mostly contend. Net gain ≈ 5–10 %, not the 1.5× hoped for.
+// It pays off only where cores are idle during a run (more cores, or a real-GPU machine). Results are
+// identical to a sequential run (baseline −2,496.83, $15 +433.13, determinism identical).
 //
 //   node tools/fidelity-parallel.mjs                    # every default scenario, 2 shards
 //   node tools/fidelity-parallel.mjs --jobs 3
