@@ -5,12 +5,13 @@
 // depth test (uSoft = 0).
 import * as THREE from 'three';
 
-export const KIND = Object.freeze({ ambient: 0, dust: 1, smoke: 2, splash: 3, fire: 4 });
+export const KIND = Object.freeze({ ambient: 0, dust: 1, smoke: 2, splash: 3, fire: 4, firesmoke: 5 });
 const KIND_DEFAULTS = {
   dust: { rate: 12, speed: 1.2, spread: 0.8, size: 0.45, sizeJitter: 0.5, life: 2.2, lifeJitter: 0.4 },
   smoke: { rate: 8, speed: 0.6, spread: 0.25, size: 0.55, sizeJitter: 0.4, life: 5.0, lifeJitter: 0.5 },
   splash: { rate: 40, speed: 3.2, spread: 0.5, size: 0.12, sizeJitter: 0.5, life: 0.9, lifeJitter: 0.4 },
   fire: { rate: 22, speed: 1.6, spread: 0.45, size: 1.0, sizeJitter: 0.55, life: 0.5, lifeJitter: 0.4 },
+  firesmoke: { rate: 10, speed: 0.4, spread: 0.2, size: 3.0, sizeJitter: 0.4, life: 12.0, lifeJitter: 0.3 },
 };
 const MAX_EMITTERS = 64;
 const MAX_SPAWN_PER_FRAME = 400;
@@ -79,6 +80,17 @@ void main() {
       radius = size;
       alpha = (1.0 - t * t) * 0.9;
       albedo = vec3(0.9, 0.95, 1.05);
+    } else if (aKind > 4.5) {
+      // wildfire smoke (Wave P2): a dense column — strong buoyant rise that slows with height, little
+      // wind drift (the generic smoke leaned into a horizontal streak and read as a comet), wide
+      // late growth. Dark grey-brown, lit flat (no forward-scatter lobe), warm from below near the base.
+      float rise = 5.5 * (1.0 - exp(-0.35 * age)) / 0.35;
+      p = aPos + aVel * age + uWind * age * 0.22 + vec3(0.0, rise, 0.0)
+        + vec3(sin(age * 0.7 + seed * 9.0), 0.0, cos(age * 0.6 + seed * 5.0)) * 0.6 * age;
+      radius = size * (1.0 + 4.5 * t);
+      alpha = smoothstep(0.0, 0.08, t) * (1.0 - t) * 0.62;
+      albedo = mix(vec3(0.26, 0.23, 0.20), vec3(0.34, 0.33, 0.33), t);
+      selfLit = -1.0;
     } else {
       // flame (Wave P2): fast rise, flicker, shrink; self-lit hot colour (bloom catches it at night)
       float flick = 0.75 + 0.5 * sin(age * 34.0 + seed * 61.0);
@@ -97,7 +109,12 @@ void main() {
   vec3 viewDir = normalize(p - uCamPos);
   float fwd = pow(max(dot(viewDir, uSunDir), 0.0), 6.0);
   vec3 light = uAmbient + uSunColor * (0.45 + 1.8 * fwd);
-  light = mix(light, vec3(1.0), selfLit); // flames emit their own light
+  if (selfLit > 0.5) light = vec3(1.0); // flames emit their own light
+  else if (selfLit < -0.5) {
+    // fire smoke: flat-lit (ambient + a third of the sun) plus a fire-lit underside for the first metres
+    float t2 = clamp(age / max(life, 0.001), 0.0, 1.0);
+    light = uAmbient + uSunColor * 0.35 + vec3(1.2, 0.45, 0.12) * (1.0 - smoothstep(0.0, 0.18, t2)) * 0.6;
+  }
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   float c = cos(rot), s = sin(rot);
   vec2 corner = position.xy * radius * 2.0;

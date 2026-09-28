@@ -91,25 +91,29 @@ function updateFireFront() {
     if (found.length < FIRE_EMITTERS) found.push([(ix + 0.5) * c - half, (iz + 0.5) * c - half]);
     cx += (ix + 0.5) * c - half; cz += (iz + 0.5) * c - half;
   }
-  const scale = Math.min(1.2, burning / 60);
-  const flameSize = 1.2 + scale * 0.9, flameRate = 24 + scale * 14;
+  // flames read at 160 m: a 16 m burning cell is a line of 1-3 m flames; drawn a little larger than
+  // life (2.4-3.6 m sprites, fast rise) because one emitter stands in for a whole cell
+  const scale = Math.min(1.0, burning / 40);
+  const flameSize = 2.4 + scale * 1.2, flameRate = 40 + scale * 20;
   while (S.fireFlames.length < found.length) {
-    const fl = particles.emitter('fire', { rate: flameRate, size: flameSize, life: 0.55 });
-    const sm = particles.emitter('smoke', { rate: 16, size: 2.4, life: 9, speed: 0.7, spread: 0.3 });
+    const fl = particles.emitter('fire', { rate: flameRate, size: flameSize, life: 0.7, speed: 2.4, spread: 0.35 });
+    const sm = particles.emitter('firesmoke', { rate: 9, size: 3.0, life: 12, speed: 0.4, spread: 0.2 });
     if (!fl || !sm) break;
     S.fireFlames.push(fl); S.fireSmoke.push(sm);
   }
   const gx = burning ? cx / burning : 0, gz = burning ? cz / burning : 0;
   const gy = burning && ctx.world.getHeight ? ctx.world.getHeight(gx, gz) : 0;
-  S.fireGlow.position.set(gx, gy + 4, gz);
-  S.fireGlow.intensity = Math.min(4, burning / 30);
+  // physical point light (candela, inverse-square): ~1500 cd lights the ground ~30-60 m round the
+  // front at night (the old min(4, burning/30) was < 0.001 lux at 20 m: invisible)
+  S.fireGlow.position.set(gx, gy + 10, gz);
+  S.fireGlow.intensity = burning ? 900 + 600 * Math.min(1, burning / 20) : 0;
   for (let i = 0; i < S.fireFlames.length; i++) {
     const fl = S.fireFlames[i], sm = S.fireSmoke[i];
     if (i < found.length) {
       const x = found[i][0], z = found[i][1];
       const y = (ctx.world.getHeight ? ctx.world.getHeight(x, z) : 0) + 0.4;
       fl.setPosition(x, y, z); fl.set({ rate: flameRate, size: flameSize });
-      sm?.setPosition(x, y + 1.5, z); sm?.set({ rate: 16, size: 2.4, life: 9 });
+      sm?.setPosition(x, y + 2.5, z); sm?.set({ rate: 9, size: 3.0, life: 12 });
     } else {
       fl.set({ rate: 0 }); sm?.set({ rate: 0 });
     }

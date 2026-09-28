@@ -189,7 +189,7 @@ function barkMaterial(name, set, extra = {}) {
   });
   m.userData.cacheKeyExtra = 'bark:' + name;
   S.ctx.materials.withWind(m, { strength: 0.0035, pivotY: 2.2, frequency: 0.55 });
-  return withScorch(m);
+  return withScorch(m, 'bark');
 }
 
 function leafMaterial(name, tex, extra = {}) {
@@ -199,13 +199,24 @@ function leafMaterial(name, tex, extra = {}) {
   });
   m.userData.cacheKeyExtra = 'leaf:' + name;
   S.ctx.materials.withWind(m, { strength: 0.0035, pivotY: 2.2, frequency: 0.55 });
-  return withScorch(m);
+  return withScorch(m, 'leaf');
 }
 
 const NL = String.fromCharCode(10); // shader-string newline
 const SCORCH_UNIFORMS = { uScorchTex: { value: null }, uScorchOn: { value: 0 }, uScorchHalf: { value: 512 }, uScorchSize: { value: 1024 } };
-function withScorch(m) {
+function withScorch(m, part = 'bark') {
+  // part: 'bark' chars to charcoal; 'leaf' turns to dead brown foliage and thins (canopy holes);
+  // 'imp' (distant imposters) browns + darkens. Injected after <color_fragment>, which every props
+  // material keeps: imposters replace <map_fragment> with their own sampling, so hooking that include
+  // left distant crowns uncharred.
   const prev = m.onBeforeCompile;
+  const code = part === 'leaf'
+    ? '  float hsh = fract(sin(dot(floor(vScorchW * 1.7), vec3(12.9898, 78.233, 37.719))) * 43758.5453);' + NL +
+      '  if (hsh < sc * 0.62) discard;' + NL +
+      '  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.20, 0.13, 0.07) * (0.55 + 0.6 * hsh), sc * 0.9);' + NL
+    : part === 'imp'
+      ? '  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.12, 0.08, 0.05), sc * 0.85);' + NL
+      : '  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.030, 0.026, 0.022), sc * 0.92);' + NL;
   m.onBeforeCompile = (shader, renderer) => {
     prev?.call(m, shader, renderer);
     Object.assign(shader.uniforms, SCORCH_UNIFORMS);
@@ -215,10 +226,12 @@ function withScorch(m) {
         '#ifdef USE_INSTANCING\n modelMatrix * instanceMatrix *\n #endif\n vec4(transformed, 1.0)).xyz;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vScorchW;\nuniform sampler2D uScorchTex;\nuniform float uScorchOn;\nuniform float uScorchHalf;\nuniform float uScorchSize;')
-      .replace('#include <map_fragment>', '#include <map_fragment>\n if (uScorchOn > 0.0) {\n' + '  float sc = texture2D(uScorchTex, clamp((vScorchW.xz + uScorchHalf) / uScorchSize, 0.002, 0.998)).r;\n' + '  sc = clamp(sc * (0.7 + 0.6 * fract(sin(dot(floor(vScorchW.xz * 0.25), vec2(127.1, 311.7))) * 43758.5453)), 0.0, 1.0);\n' + '  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.062, 0.052, 0.042), sc * 0.88);\n }');
+      .replace('#include <color_fragment>', '#include <color_fragment>' + NL + ' if (uScorchOn > 0.0) {' + NL +
+        '  float sc = texture2D(uScorchTex, clamp((vScorchW.xz + uScorchHalf) / uScorchSize, 0.002, 0.998)).r;' + NL +
+        '  sc = clamp(sc * 1.25, 0.0, 1.0);' + NL + code + ' }');
   };
   const prevKey = m.customProgramCacheKey;
-  m.customProgramCacheKey = () => (prevKey ? prevKey.call(m) : m.userData.cacheKeyExtra || '') + '+scorch';
+  m.customProgramCacheKey = () => (prevKey ? prevKey.call(m) : m.userData.cacheKeyExtra || '') + '+scorch2' + part;
   return m;
 }
 
@@ -382,7 +395,7 @@ function buildImposters() {
       try { baked = bakeImposter(S.ctx, meshes, { size: S.ctx.quality === 'low' ? 128 : 256 }); }
       catch (err) { S.ctx.log.warn(`[props] imposter bake failed for ${kind} v${vi}: ${err?.message || err}`); }
       if (!baked) continue;
-      v.imposter = { ...baked, mat: withScorch(imposterMaterial(S.ctx, baked.texture, kind + vi, baked.top, baked.topExtent, baked.crownY, baked.width, baked.sideN, baked.topN)), geo: S.imposterGeo, refHeight: v.height };
+      v.imposter = { ...baked, mat: withScorch(imposterMaterial(S.ctx, baked.texture, kind + vi, baked.top, baked.topExtent, baked.crownY, baked.width, baked.sideN, baked.topN), 'imp'), geo: S.imposterGeo, refHeight: v.height };
     }
     sp.hasImposter = sp.variants.some((v) => !!v.imposter);
   }
