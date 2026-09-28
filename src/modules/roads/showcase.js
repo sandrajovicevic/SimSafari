@@ -150,6 +150,41 @@ const MAX_WET_RUN = 60;   // m: a clean crossing of the 18–50 m channel; longe
 // (critic roads r4 #2 re-check 2026-09-28: a 25° skew across a ~25 m channel passed the 60 m cap).
 const MAX_SKEW_RATIO = 1.5;
 
+/** Nearest point on the generated river to (x, z): { x, z, nx, nz, hw } from terrain features. */
+function nearestRiverPoint(features, x, z) {
+  let best = null, bd = Infinity;
+  for (let i = 0; i <= 400; i++) {
+    const r = features.pointOnRiver(i / 400);
+    const d = Math.hypot(r.x - x, r.z - z);
+    if (d < bd) { bd = d; best = r; }
+  }
+  return best;
+}
+
+/**
+ * Replace the part of a control polyline that crosses the river near (mx, mz) with a short crossing
+ * square to the channel: approach, bank, bank, exit (the same construction as the fallback crossings).
+ * Control points within the approach distance of the crossing are dropped so the curve cannot swing
+ * back along the water.
+ */
+function squareCrossing(pts, mx, mz, features) {
+  const r = nearestRiverPoint(features, mx, mz);
+  const reach = r.hw + 35, side = (p) => (p[0] - r.x) * r.nx + (p[1] - r.z) * r.nz;
+  let seg = 0, sd = Infinity;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const cx = (pts[i][0] + pts[i + 1][0]) * 0.5, cz = (pts[i][1] + pts[i + 1][1]) * 0.5;
+    const flips = side(pts[i]) * side(pts[i + 1]) <= 0;
+    const d = Math.hypot(cx - mx, cz - mz) - (flips ? 1e4 : 0);
+    if (d < sd) { sd = d; seg = i; }
+  }
+  const near = (p) => Math.hypot(p[0] - r.x, p[1] - r.z) < reach + 12;
+  const before = pts.slice(0, seg + 1).filter((p, i) => i === 0 || !near(p));
+  const after = pts.slice(seg + 1).filter((p, i, a) => i === a.length - 1 || !near(p));
+  const s = side(before[before.length - 1]) < 0 ? -1 : 1;
+  const at = (d) => [r.x + r.nx * d * s, r.z + r.nz * d * s];
+  return before.concat([at(reach), at(r.hw + 6), at(-(r.hw + 6)), at(-reach)], after);
+}
+
 /**
  * On generated terrain the river does not follow riverX, so some fixed routes ran along the channel on
  * 45–80 m "bridges" (critic roads r4 #2). Keep every route whose wet runs are real crossings, drop the
@@ -160,23 +195,33 @@ function layNetworkOnTerrain(ctx, api, features) {
   const world = ctx.world;
   const nodes = [];
   let crossings = 0;
-  for (const [pts, kind] of ROUTES) {
-    // Judge the BUILT edges, not the control polyline: the graph smooths/resamples the route, and the
-    // curve can take a much longer line across the water than the straight control segments (measured
-    // 2026-09-28: control points passed, built gravel edge ran 72 m wet over a 30 m channel).
-    const ids = api.addRoad(pts, kind);
-    let bad = false, wetAny = false;
+  // Judge the BUILT edges, not the control polyline: the graph smooths/resamples the route, and the
+  // curve can take a much longer line across the water than the straight control segments (measured
+  // 2026-09-28: control points passed, built gravel edge ran 72 m wet over a 30 m channel).
+  const judge = (ids) => {
+    let bad = null, wet = false;
     for (const id of ids) {
       const e = api.getEdge(id);
       if (!e) continue;
       const fp = [];
       for (let i = 0; i < e.points.length; i += 2) fp.push([e.points[i], e.points[i + 1]]);
-      const wet = longestWetRun(world, fp);
-      if (wet.len > 0) wetAny = true;
-      if (wet.len > MAX_WET_RUN || (wet.len > 0 && wet.len > MAX_SKEW_RATIO * channelWidth(world, wet.x, wet.z) + 4)) { bad = true; break; }
+      const w = longestWetRun(world, fp);
+      if (w.len > 12) wet = true;
+      if (w.len > MAX_WET_RUN || (w.len > 0 && w.len > MAX_SKEW_RATIO * channelWidth(world, w.x, w.z) + 4)) { bad = w; break; }
     }
-    if (bad) { for (const id of ids) api.removeRoad(id); continue; }
-    if (wetAny) crossings++;
+    return { bad, wet };
+  };
+  for (const [authored, kind] of ROUTES) {
+    // A skewed crossing is re-routed square (spliced in at the nearest real river point), not dropped:
+    // dropping the gravel loop took every junction of the showcase with it. Drop only if that fails.
+    let pts = authored, ids = api.addRoad(pts, kind), j = judge(ids);
+    for (let tries = 0; j.bad && tries < 3 && features?.pointOnRiver; tries++) {
+      for (const id of ids) api.removeRoad(id);
+      pts = squareCrossing(pts, j.bad.x, j.bad.z, features);
+      ids = api.addRoad(pts, kind); j = judge(ids);
+    }
+    if (j.bad) { for (const id of ids) api.removeRoad(id); continue; }
+    if (j.wet) crossings++;
     for (const p of pts) nodes.push(p);
   }
   if (!features?.pointOnRiver) return;
