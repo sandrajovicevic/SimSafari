@@ -144,9 +144,14 @@ vec2 rot2(vec2 p, float a){ float c = cos(a), s = sin(a); return vec2(c * p.x - 
 ${GLSL_NOISE}
 // Two-scale planar (XZ) sample blended with X/Z projections by the squared normal.
 // tri = 0 → pure planar (flat ground, cheapest path); tri = 1 → full triplanar (cliff faces).
+// Mud's crack cells are sized for the A tile (9 cells / 3.7 m ≈ 0.4 m plates); sampled at the B tile
+// (29 m) the same cells became 3.2 m polygons — the "metre-scale voronoi webbing" on every river bank
+// (critic terrain r5). Its B lookup is mip-biased +5 (≈ 32× blur: a 114 px cell → ~3 px) so the B
+// scale contributes only tone variation, not a second, giant crack lattice.
 void sampleLayer(float layer, float tri, vec2 uvA, vec2 uvB, vec3 bw, vec3 P, float mb, out vec4 A, out vec4 Nn){
-  A  = mix(texture(tAlb, vec3(uvA, layer)), texture(tAlb, vec3(uvB, layer)), mb);
-  Nn = mix(texture(tNrm, vec3(uvA, layer)), texture(tNrm, vec3(uvB, layer)), mb);
+  float bB = layer > 4.5 ? 5.0 : 0.0;
+  A  = mix(texture(tAlb, vec3(uvA, layer)), texture(tAlb, vec3(uvB, layer), bB), mb);
+  Nn = mix(texture(tNrm, vec3(uvA, layer)), texture(tNrm, vec3(uvB, layer), bB), mb);
   if (tri > 0.004) {
     vec2 uX = P.zy * uInvScaleT, uZ = P.xy * uInvScaleT;
     vec4 aX = texture(tAlb, vec3(uX, layer)), aZ = texture(tAlb, vec3(uZ, layer));
@@ -185,7 +190,7 @@ export function createTerrainMaterial(ctx, layers, control) {
       .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(tNormalW, 0.0)).xyz);')
       .replace('#include <aomap_fragment>', 'reflectedLight.indirectDiffuse *= tAo; reflectedLight.directDiffuse *= mix(1.0, tAo, 0.35);');
   };
-  m.customProgramCacheKey = () => 'terrain-splat-v7';
+  m.customProgramCacheKey = () => 'terrain-splat-v8';
   return m;
 }
 
