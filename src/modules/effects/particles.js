@@ -115,7 +115,7 @@ void main() {
     // fire smoke: flat-lit (ambient + a third of the sun) plus a fire-lit underside for the first metres
     float t2 = clamp(age / max(life, 0.001), 0.0, 1.0);
     // + fire-lit from below: strong near the flames, fading up the column (warm at night, not moon-blue)
-    light = uAmbient * 0.8 + uSunColor * 0.3 + vec3(1.0, 0.42, 0.12) * (1.0 - smoothstep(0.0, 0.45, t2)) * 0.9;
+    light = uAmbient * 0.8 + uSunColor * 0.3 + vec3(1.0, 0.42, 0.12) * (1.0 - smoothstep(0.0, 0.3, t2)) * 0.12; // x night exposure (~12): 0.9 lit the column like a lamp
   }
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   float c = cos(rot), s = sin(rot);
