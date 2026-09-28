@@ -319,6 +319,18 @@ particularly on first load or after a large camera jump (e.g. a showcase preset 
   value, seeded from the same forked `ctx.rng`), and the per-candidate jitter in `_genChunk()`
   (±35% → ±46% of the cell, still a seeded hash — never `Math.random`). The mat SIZE constants
   are untouched: the coverage equation above still holds.
+* **Back-face normals (2026-09-28, blind round-8 issue 3 "close-range worm/scribble mottle").**
+  The grass material is `DoubleSide`, and three.js flips the normal of every back face — so a
+  blade seen from behind got a normal pointing DOWN and rendered near-black, defeating the
+  up-bent normals `buildTuft()` exists to provide. On LOD2's wide single-triangle blades each
+  back-facing blade became a dark wedge; at 30–300 m they swirled into the "worm mottle" four
+  blind rounds recorded (and the "vague mottled patch" in wide daytime shots, and black strokes
+  at night). Isolated by hiding each LOD in the game's `close` 14 h view (only hiding LOD2
+  removed it). Fix: `normal_fragment_begin` is patched so both faces keep the same up-bent
+  normal (cache key `grass-v2`). Verified: game `close` 7/14/21.5 h, `overview` 14 h, props
+  `grass` + `overview`, before/after (`props-grass-before.png` vs `props-grass-auto.png`).
+  Trade-off: the close sward loses the (buggy) light/dark alternation it used to read as depth;
+  a few blades lying near-flat in the foreground still read as pale flat triangles (pre-existing).
 * **No per-sample allocation.** `grassSample()` runs on the order of 10⁵–10⁶ times per grass field
   rebuild; it and everything it calls (`biomeRowAt`, `biomeAtFast`, `cellIndexAt`, `macroAt`) write
   into shared scratch objects/arrays instead of `world.cellAt`/`world.biomeAt` (which both

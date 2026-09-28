@@ -39,8 +39,10 @@ getEdge(id) → edge | null
 getNode(id) → node | null
 edges() → Map<id, edge>
 nodes() → Map<id, node>
-stats() → { edges, nodes, length, dirt, gravel, paved, junctions, build:{drawables,triangles,ms,junctions,bridges,edges,props} }
-rebuild()                                 // force a synchronous mesh rebuild (normally automatic next frame)
+stats() → { edges, nodes, length, dirt, gravel, paved, junctions, build:{drawables,triangles,ms,junctions,bridges,edges,props,
+                                             conformedEdges,conformMs,meshMs,propsMs} }
+rebuild(full=false)                       // force a synchronous mesh rebuild (normally automatic next frame);
+                                          //   full=true also re-conforms the terrain under every edge
 isDirty() → boolean
 setDustColor(r, g, b)                     // recolour the shoulder-dust blend uniform shared by all three kinds
 group                                     // (getter) the THREE.Group all road/bridge/prop meshes live under
@@ -122,8 +124,18 @@ the 12-edge / 5-junction / several-bridge overview network this is at most ~10 r
   60 m (a clean crossing of the 18–50 m channel), adds crossings perpendicular to the real river from
   `terrain.getFeatures().pointOnRiver()` if fewer than two survive, and joins their ends only outward
   to dry-reachable nodes. The `junction` preset re-targets onto the nearest real ≥3-way node.
-  Verified in `roads-overview-15.png` (4 short crossings, full loop), `roads-bridge-9.png`,
-  `roads-junction-17.png`. Remaining: one loop crossing is oblique (~55 m, inside the 60 m rule).
+  **Re-checked 2026-09-28: that verification was wrong.** The 60 m rule was applied to the sparse
+  control polyline, but the graph builds a smoothed curve that takes a different line across the
+  water: measured on the built edges, the gravel loop ran 72 m wet over a 30 m channel and the hero
+  `bridge` was a ~25° skew. Now every route is judged on its **built** edges (wet run ≤ 60 m and
+  ≤ 1.5 × the local channel width, measured as the narrowest wet chord through the crossing), and a
+  failing crossing is **re-routed square** at the nearest real river point (`squareCrossing()`,
+  dropped only if that fails too — dropping the gravel loop took all 5 junctions with it). Measured
+  after: 13 edges, 5 junctions, every crossing's wet run within 2 m of its channel width (22/22,
+  24/24, 24/23, 18/16, 42/40 m); `roads-overview-auto.png`, `roads-bridge-auto.png` read square.
+  **Remaining gap:** the fixed routes were authored for a straight river, and the generated river
+  meanders through the loop, so the showcase now carries ~6 bridges within ~500 m and the loop
+  S-bends to meet them. The real fix is a network authored against `terrain.getFeatures()`.
 * **Junction patches fixed 2026-09-25** (critic r4 #1: torn/folded patch, grass through the asphalt).
   Three bugs in `ribbon.js` §3, found by dumping the real boundary of the showcase T (node n_4):
   (1) fillet corners were taken as the row's ±a ends, but ±a is relative to the EDGE direction, which
@@ -136,9 +148,14 @@ the 12-edge / 5-junction / several-bridge overview network this is at most ~10 r
   (`roads-jn-top.png` before → `roads-jn-top5.png` after) and in `roads-junction-17.png`,
   `roads-overview-15.png`. Remaining nits: a hard seam where a paved apron meets a gravel/dirt leg, and
   the patch reuses a flat-ish surface (no crown continuation).
-* **A full `rebuild()` is not "a few ms"**: the critic measured `stats().build.ms` at ~1,600 ms on the
-  showcase network under SwiftShader (terrain conform dominates). It runs once per edit batch, not per
-  frame.
+* **Rebuild cost (re-measured 2026-09-28, SwiftShader, 9-edge showcase).** The critic's ~1,600 ms
+  predates terrain's changed-rows-only upload; a full rebuild now measures **138–166 ms** (terrain
+  conform 105–122 ms, meshes 31–42 ms, props ~2 ms). Terrain conform is now **incremental**: only
+  edges not yet conformed are flattened and refreshed (an external `terrain:modified` re-queues the
+  edges it touches; `terrain:ready` re-queues all), so adding one road measures **59 ms** (conform
+  11 ms). What remains is the mesh rebuild, which still regenerates every edge on any edit (~40 ms);
+  per-edge mesh caching is the next step if edits ever feel hitchy. `stats().build` reports
+  `conformMs / meshMs / propsMs / conformedEdges`. `rebuild(true)` forces a full re-conform.
 * **No traffic-facing lane geometry beyond `getLanes()`'s two-lane assumption** — every road kind
   reports exactly 2 lanes with a fixed `leftHand: true` convention; there's no notion of one-lane
   dirt tracks (realistic for a safari track) or shoulder pull-outs.

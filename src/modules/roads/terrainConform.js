@@ -5,16 +5,17 @@
 import { BIOME } from '../../core/World.js';
 
 /**
- * Write flattened heights + dust biome into world.terrain for all edges in the graph.
- * Returns the touched sample bbox {ix0, iz0, ix1, iz1} or null.
+ * Write flattened heights + dust biome into world.terrain for the edges in the graph (all of them, or only
+ * those `edges` lists — the incremental path, so one road edit does not re-conform and refresh the whole
+ * network). Returns the touched sample bbox {ix0, iz0, ix1, iz1} or null.
  */
-export function flattenHeightfield(world, graph, { paint = true, isWater = null, dustRadius = 3 } = {}) {
+export function flattenHeightfield(world, graph, { paint = true, isWater = null, dustRadius = 3, edges = null } = {}) {
   const T = world.terrain, res = T.res, h = T.heights, cell = T.cell;
   const wet = isWater || ((x, z) => world.isWater(x, z));
   const bestW = new Float32Array(res * res), bestT = new Float32Array(res * res);
   let ix0 = res, iz0 = res, ix1 = -1, iz1 = -1;
   const dust = paint ? new Uint8Array(res * res) : null;
-  for (const e of graph.edges.values()) {
+  for (const e of (edges || graph.edges.values())) {
     const p = e.points, n = p.length >> 1, W = e.width * 0.5;
     const hs = new Float32Array(n), wetFlag = new Uint8Array(n);
     for (let i = 0; i < n; i++) { hs[i] = world.getHeight(p[i * 2], p[i * 2 + 1]); wetFlag[i] = wet(p[i * 2], p[i * 2 + 1]) ? 1 : 0; }
