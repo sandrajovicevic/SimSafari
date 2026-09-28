@@ -9,8 +9,8 @@ a UI exception can never stop rendering. The only module allowed to read the DOM
 
 * `index.js` — module wiring: visibility rules, keyboard map, event subscriptions, `#ui-root` setup.
 * `topbar.js` / `toolbar.js` / `minimap.js` / `notify.js` / `report.js` / `settings.js` /
-  `sidepanel.js` / `tooltip.js` / `species.js` — one file per surface, all sharing `dom.js` helpers
-  and styled by the injected stylesheet `ui.css.js`.
+  `sidepanel.js` / `tooltip.js` / `species.js` / `objectives.js` (Wave P3) — one file per surface,
+  all sharing `dom.js` helpers and styled by the injected stylesheet `ui.css.js`.
 * Visibility: shown in the full game; **hidden automatically while another module's showcase is
   up** and with `?noui=1` (park's demo relies on both rules).
 * **Credits panel (2026-09-25)**: a static "Credits" section in the settings modal listing the
@@ -21,7 +21,7 @@ a UI exception can never stop rendering. The only module allowed to read the DOM
   per-frame cost (built once per settings-open); rendered through `dom.js`'s `el()`/null-filtering
   append — never native `Element.append` (which stringifies null arguments into visible text, the
   09-22 toolbar bug).
-* Keyboard: `Space` pause · `,`/`.` speed (steps 1/3/10) · `J` report · `O` settings · `M` minimap ·
+* Keyboard: `Space` pause · `,`/`.` speed (steps 1/3/10) · `J` report · `G` objectives (Wave P3) · `O` settings · `M` minimap ·
   `H` hide UI · `1`–`9` toolbar categories.
 
 ## Public API — `ctx.modules.get('ui')`
@@ -29,7 +29,7 @@ a UI exception can never stop rendering. The only module allowed to read the DOM
 ```js
 notify(level, text, opts?)            // level 'info'|'warn'|'error'|'good';
                                       // opts {title, sub, x, z, ttl} — also via the ui:notify event
-openPanel(name)                       // 'report' | 'settings' | 'selection' | a toolbar category:
+openPanel(name)                       // 'report' | 'settings' | 'objectives' (Wave P3) | 'selection' | a toolbar category:
                                       //   'terrain' 'roads' 'zones' 'buildings' 'animals' 'view'
 closePanel()
 setToolbar(items)                     // replace the category toolbar contents
@@ -56,6 +56,7 @@ isEnabled() → bool
 | `module:failed` | consumes | error toast naming the module |
 | `animal:spawned`, `building:placed` | consumes | toast + minimap markers |
 | `core:ready` | consumes | initial population of all surfaces |
+| `mission:progress`, `mission:completed` | consumes | Wave P3: objectives panel refresh (only while open); completion/failure toast |
 
 ### Plants and food (Wave P1, 2026-09-26)
 * Toolbar category **Plants** (key 6; View moved to 7) — one card per `core/Plants.js` plant with form tag,
@@ -65,6 +66,23 @@ isEnabled() → bool
 * Habitat panel → **Food** section: per resident species `n / capacity` and a bar of food ÷ need (green ≥ 1.2,
   amber ≥ 1, red below), re-read once per sim day from `simulation.getFoodReport`; when a species is over its food
   capacity it names the best plants for it with a "Plant …" button that opens the Plant tool.
+
+### Objectives + biodiversity (Wave P3, 2026-09-28)
+* **Objectives panel** (`objectives.js`; top-bar target button or `G`) — mission picker (one card per
+  `simulation.listMissions()` row with goal + star brackets + Start), active view (progress bar, days
+  left, star row, per-goal detail rows, two-step Abandon), and the won/failed result. The panel never
+  computes progress or holds mission state: it re-reads `getMissionState()` on open and refreshes on
+  `mission:progress` / `mission:completed` — never per frame. A finished mission raises a toast
+  (`★`-string in the text). `openPanel('objectives')` / `closePanel()` stack with the other modals.
+* **Biodiversity readout in the report panel** — an INDEX ring + species/plant richness + evenness and
+  the Big-Five row (elephant/rhino/buffalo/lion counts; **leopard shown as an entry struck "—" with the
+  tooltip "not in this park" — we have no leopard and do not substitute another species**), from
+  `report.biodiversity` (`simulation.getBiodiversity()`); the mock report carries a computed copy for
+  the showcase.
+* Showcase presets **`objectives`** (mid-mission: pride started, one lion bought, 3 days in → 83 %)
+  and **`objectives-won`** (won with 3 stars + sticky toast). Both drive a *real* mission through the
+  simulation API (present in this showcase's optional-dependency closure) with `autoReport` off so the
+  report modal doesn't cover the panel.
 
 ## Modules consumed (all optional, all null-checked)
 
@@ -82,6 +100,8 @@ table), `environment` (weather readout), `terrain` (minimap sampling).
 | `panel` | 14 | settings/selection side panel |
 | `toolbar` | 14 | every category toolbar expanded |
 | `close` | 16 | HUD over a near camera |
+| `objectives` | 15 | objectives panel mid-mission: progress, days left, biodiversity strip (Wave P3) |
+| `objectives-won` | 15 | objectives panel on a won mission: stars, result rows, toast (Wave P3) |
 | `night` | 22 | HUD legibility on the night grade |
 
 Use `node tools/screenshot.mjs --module ui --preset <p> --dom` — the DOM surfaces only appear in

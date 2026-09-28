@@ -34,7 +34,7 @@ const URL_BASE = args.url || process.env.SIM_URL || 'http://127.0.0.1:5173';
 const SEED = +(args.seed || 1);
 const DAYS = +(args.days || 30);
 const TIMEOUT = +(args.timeout || 300000); // this machine's SwiftShader needs ~150 s to ready the full game
-const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep', 'plant-aloe', 'remove-prey', 'spread', 'fire-response', 'fire-regrowth']);
+const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep', 'plant-aloe', 'remove-prey', 'spread', 'fire-response', 'fire-regrowth', 'biodiversity', 'mission-replay']);
 
 async function launch() {
   const gpuArgs = ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-gpu-sandbox', '--no-sandbox', '--autoplay-policy=no-user-gesture-required'];
@@ -44,12 +44,12 @@ async function launch() {
 }
 
 /** Load the full game paused, wait for ready + park demo, settle, return an API handle. */
-async function loadGame(browser, { label, tod = 10 } = {}) {
+async function loadGame(browser, { label, tod = 10, extra = '' } = {}) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
   const consoleErrors = [], pageErrors = [];
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 800)); });
   page.on('pageerror', (e) => pageErrors.push(String(e?.message || e).slice(0, 800)));
-  const url = `${URL_BASE}/?speed=0&seed=${SEED}&tod=${tod}&quality=medium`;
+  const url = `${URL_BASE}/?speed=0&seed=${SEED}&tod=${tod}&quality=medium${extra}`;
   const t0 = Date.now();
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUT });
   await page.waitForFunction(() => window.__SIM__ && window.__SIM__.ready === true, null, { timeout: TIMEOUT });
@@ -685,6 +685,150 @@ async function scenarioFireRegrowth(browser) {
   return result;
 }
 
+// ---------------------------------------------------------------- Wave P3 (docs/specs/p3-biodiversity-missions.md)
+
+/** biodiversity: the stat is a pure function of the ledger + vegetation and must react to the park
+ * both ways. Remove every zebra through the animals API (the sim's daily census writes them off) →
+ * richness drops by exactly 1 and the index falls; buy 2 rhino → bigFive.rhino rises. Pass requires
+ * both directions (a non-vacuity term each way: the numbers must MOVE, not just stay in range). */
+async function scenarioBiodiversity(browser) {
+  const { page, errors } = await loadGame(browser, { label: 'biodiversity' });
+  const out = await page.evaluate(async () => {
+    const reg = window.__SIM__.app.registry.modules;
+    const sim = reg.get('simulation').def.api, animals = reg.get('animals').def.api;
+    const world = window.__SIM__.world;
+    sim.markStart();
+    sim.runDays(1);
+    const b0 = sim.getReport().biodiversity;
+    // remove all zebra through the animals module (the world census is truth at day end)
+    const ids = [];
+    for (const a of world.animals.values()) if (a?.species === 'zebra') ids.push(a.id);
+    for (const id of ids) animals.remove(id);
+    sim.runDays(1);
+    const b1 = sim.getReport().biodiversity;
+    // add 2 rhino into the habitat that already carries them (public buy path)
+    let rhinoHab = null;
+    for (const h of world.habitats.values()) if ((sim.getFoodReport(h.id)?.rhino?.n ?? 0) > 0) { rhinoHab = h.id; break; }
+    const purchase = rhinoHab != null ? sim.buyAnimals('rhino', rhinoHab, 2) : null;
+    sim.runDays(1);
+    const b2 = sim.getReport().biodiversity;
+    return {
+      day1: b0, afterZebraRemoved: b1, afterRhinoBought: b2,
+      zebraRemoved: ids.length, rhinoHabitat: rhinoHab, purchase,
+      plantMeans: world.vegetation.types.map((t, i) => {
+        let s = 0; const N = world.vegetation.res * world.vegetation.res;
+        for (let j = 0; j < N; j++) s += world.vegetation.cover[i * N + j];
+        return [t, +(s / N).toFixed(4)];
+      }),
+    };
+  });
+  out.pass = out.zebraRemoved > 0
+    && out.afterZebraRemoved.richness === out.day1.richness - 1
+    && out.afterZebraRemoved.index < out.day1.index
+    && out.purchase?.ok === true
+    && out.afterRhinoBought.bigFive.rhino > out.afterZebraRemoved.bigFive.rhino;
+  const result = { scenario: 'biodiversity', result: out, consoleErrors: errors };
+  writeJson('biodiversity', result);
+  await page.close();
+  return result;
+}
+
+/** mission-replay (Wave P3): every starter mission replayed from a fresh load with a fixed action
+ * script (days + public API calls) must be WON, and the same mission with NO actions must NOT be
+ * won (non-vacuity). Every variant is a FRESH PAGE LOAD — the spec's "replayed from a fresh load":
+ * simulation.reset() is not a whole-game restart (world.animals is the animals module's, terrain
+ * flattening persists across a park rebuild), so one-page variants would contaminate each other.
+ * The first load carries &mission=pride so park's URL-param path is exercised. Scripted fires are
+ * bounded by the mission's own stamina budget (150 cells each); the harness injects no unbounded
+ * disasters. Writes tools/shots/fidelity-mission-replay.json with per-mission day-won, stars and
+ * idle outcome. */
+async function scenarioMissionReplay(browser) {
+  /** The fixed action script for one mission, evaluated inside the page: {day, run}[] plus an
+   * optional per-day policy. Everything goes through public simulation APIs. */
+  const SCRIPTS = {
+    pride: [{ day: 1, buy: ['lion', 3] }],
+    'balanced-range': [{ day: 1, buy: ['cheetah', 1] }, { day: 1, plant: ['sour_plum', 0, -300, 95, 0.45] }, { day: 1, plant: ['knobthorn', 250, 300, 140, 0.3] }, { day: 1, plant: ['marula', -300, 250, 145, 0.25] }],
+    'in-the-black': [{ day: 1, price: 15 }, { day: 1, fire: ['ranger', 1] }],
+    'fire-season': [], // policy: weekly water drops on every building through the season
+  };
+
+  const runVariant = async (id, scripted) => {
+    const { page, errors } = await loadGame(browser, { label: `mission-${id}-${scripted ? 'replay' : 'idle'}` });
+    const out = await page.evaluate(async ({ id, scripted, actions, policy }) => {
+      const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+      const world = window.__SIM__.world;
+      const habitatOf = (species) => {
+        for (const h of world.habitats.values()) if ((sim.getFoodReport(h.id)?.[species]?.n ?? 0) > 0) return h.id;
+        return [...world.habitats.keys()][0] ?? 1;
+      };
+      const start = sim.startMission(id);
+      const mission = sim.listMissions().find((m) => m.id === id);
+      const applied = [];
+      const cap = mission.deadlineDays + 2;
+      let last = null;
+      for (let d = 1; d <= cap; d++) {
+        if (scripted) {
+          for (const a of actions.filter((x) => x.day === d)) {
+            let r = null;
+            if (a.buy) r = sim.buyAnimals(a.buy[0], habitatOf(a.buy[0]), a.buy[1]);
+            else if (a.plant) r = sim.plant(...a.plant);
+            else if (a.price != null) r = { ok: true, price: sim.setTicketPrice(a.price) };
+            else if (a.fire) r = { ok: true, n: sim.fire(a.fire[0], a.fire[1]) };
+            else if (a.hire) r = { ok: true, n: sim.hire(a.hire[0], a.hire[1]) };
+            applied.push({ day: d, act: a.buy ? 'buy' + a.buy.join(':') : a.plant ? 'plant:' + a.plant[0] : a.price != null ? 'price:' + a.price : a.fire ? 'fire:' + a.fire.join(':') : 'hire:' + (a.hire || []).join(':'), ok: r?.ok !== false, cost: r?.cost ?? null });
+          }
+          if (policy === 'weekly-drops' && (d - 1) % 6 === 0) {
+            for (const b of world.buildings.values()) sim.waterDrop(b.x, b.z, 40);
+          }
+        }
+        sim.runDays(1);
+        last = sim.getMissionState();
+        if (last.status !== 'active') break;
+        if (d % 45 === 0) await new Promise((r) => setTimeout(r)); // keep the page responsive
+      }
+      const bio = sim.getBiodiversity();
+      const eco = world.economy;
+      return { id, scripted, ok: start.ok, status: last.status, stars: last.stars, day: last.day, deadline: last.deadline,
+        detail: last.detail, applied,
+        cashEnd: Math.round(eco.cash), netEnd: Math.round(eco.cash - (eco.loans || 0)),
+        bioEnd: { index: bio.index, richness: bio.richness, plantRichness: bio.plantRichness, evenness: bio.evenness } };
+    }, { id, scripted, actions: scripted ? (SCRIPTS[id] || []) : [], policy: id === 'fire-season' && scripted ? 'weekly-drops' : null });
+    await page.close();
+    return { ...out, consoleErrors: errors };
+  };
+
+  // 1. the &mission= URL param must start the mission after the demo park builds
+  const paramHandle = await loadGame(browser, { label: 'mission-urlparam', extra: '&mission=pride' });
+  const urlParam = await paramHandle.page.evaluate(() => {
+    const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+    const st = sim.getMissionState();
+    return { id: st.id, status: st.status, day: st.day, deadline: st.deadline };
+  });
+  const paramErrors = paramHandle.errors;
+  await paramHandle.page.close();
+
+  // 2. per mission: idle control + scripted replay, each from a fresh load
+  const missions = {};
+  const order = ['pride', 'balanced-range', 'in-the-black', 'fire-season'];
+  for (const id of order) {
+    missions[id] = { idle: await runVariant(id, false), replay: await runVariant(id, true) };
+  }
+  // 3. determinism: the first mission's replay again, fresh load → identical outcome
+  const detA = missions.pride.replay;
+  const detB = await runVariant('pride', true);
+  const strip = (v) => JSON.stringify({ ...v, consoleErrors: undefined });
+  const determinism = { mission: 'pride', identical: strip(detA) === strip(detB), a: `${detA.status}/★${detA.stars}/d${detA.day}`, b: `${detB.status}/★${detB.stars}/d${detB.day}` };
+
+  const allErrors = [...paramErrors];
+  for (const m of Object.values(missions)) allErrors.push(...m.idle.consoleErrors, ...m.replay.consoleErrors);
+  const out = { missions, determinism };
+  out.pass = urlParam.status === 'active' && urlParam.id === 'pride' && determinism.identical
+    && Object.values(missions).every((m) => m.replay.status === 'won' && m.replay.stars >= 1 && m.idle.status !== 'won');
+  const result = { scenario: 'mission-replay', urlParam, result: out, consoleErrors: [...new Set(allErrors)] };
+  writeJson('mission-replay', result);
+  return result;
+}
+
 function writeJson(name, data) {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const p = path.join(OUT_DIR, `fidelity-${name}.json`);
@@ -784,6 +928,23 @@ function writeJson(name, data) {
       results['fire-regrowth'] = await scenarioFireRegrowth(browser);
       const rr = results['fire-regrowth'].result;
       console.log(JSON.stringify({ pass: rr.pass, ...rr }, null, 2));
+    }
+    if (SCENARIOS.includes('biodiversity')) {
+      console.log('[biodiversity] remove zebra / add rhino → stat moves both ways');
+      results.biodiversity = await scenarioBiodiversity(browser);
+      const r = results.biodiversity.result;
+      console.log(JSON.stringify({ pass: r.pass, day1: r.day1, afterZebraRemoved: { richness: r.afterZebraRemoved.richness, index: r.afterZebraRemoved.index }, afterRhinoBought: { rhino: r.afterRhinoBought.bigFive.rhino, index: r.afterRhinoBought.index }, plantMeans: r.plantMeans }, null, 2));
+    }
+    if (SCENARIOS.includes('mission-replay')) {
+      console.log('[mission-replay] four starter missions × (idle, scripted replay) + determinism');
+      results['mission-replay'] = await scenarioMissionReplay(browser);
+      const r = results['mission-replay'];
+      const per = Object.fromEntries(Object.entries(r.result.missions).map(([id, m]) => [id, {
+        idle: `${m.idle.status}${m.idle.detail?.reason ? ' (' + m.idle.detail.reason + ')' : ''}`,
+        replay: `${m.replay.status} ★${m.replay.stars} day ${m.replay.endDay}`,
+        netEnd: m.replay.netEnd, bioIndexEnd: m.replay.bioEnd.index,
+      }]));
+      console.log(JSON.stringify({ urlParam: r.urlParam, pass: r.result.pass, determinism: r.result.determinism, missions: per }, null, 2));
     }
   } finally {
     await browser.close();
