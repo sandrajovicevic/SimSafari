@@ -43,6 +43,25 @@ vec3 tAlbedo; float tRough; float tAo; vec3 tNormalW;
   w[3] = c0.a * keep + wRockS; w[4] = (c1.r + c1.b) * keep; w[5] = c1.g * keep;
   float wsum = w[0] + w[1] + w[2] + w[3] + w[4] + w[5] + 1e-5;
   ${Array.from({ length: L }, (_, i) => `w[${i}] /= wsum;`).join(' ')}
+  // World-border handoff (2026-09-28): the apron (apron.js) has no baked control, so it derives plains
+  // weights analytically. Inside, the baked biome patches (blocky, 2 m grid) met those smooth analytic
+  // patches along the border as a ruler-straight seam across the game's default overview. Over the
+  // last 80 m the splat now fades to the apron's exact formula (same noise, same moisture source), so
+  // both sides agree at the border. Riverbed/dust tints fade with it (the apron has neither).
+  float edgeD = uHalf - max(abs(wxz.x), abs(wxz.y));
+  float eb = 1.0 - smoothstep(4.0, 80.0, edgeD);
+  if (eb > 0.001) {
+    float ptE = fbm(wxz * (1.0 / 90.0) + vec2(37.3, 91.7), 3);
+    float gE = smoothstep(0.50, 0.62, moist + 0.22 * ptE);
+    float dE = smoothstep(0.36, 0.46, ptE) * (1.0 - smoothstep(0.30, 0.45, moist)) * 0.8;
+    float wDirtSE = smoothstep(0.05, 0.16, slope) * (1.0 - wRockS);
+    float keepE = 1.0 - max(wRockS, wDirtSE);
+    float a0 = gE * keepE, a1 = max(1.0 - max(gE, dE), 0.0) * keepE, a2 = min(dE * keepE + wDirtSE, 1.0), a3 = wRockS;
+    float as = max(a0 + a1 + a2 + a3, 1e-4);
+    w[0] = mix(w[0], a0 / as, eb); w[1] = mix(w[1], a1 / as, eb); w[2] = mix(w[2], a2 / as, eb);
+    w[3] = mix(w[3], a3 / as, eb); w[4] *= 1.0 - eb; w[5] *= 1.0 - eb;
+    c1.a *= 1.0 - eb; c1.b *= 1.0 - eb;
+  }
   // The two tile scales are sampled at fixed odd-angle rotations (and the B scale is offset) so
   // their repeats can never line up with each other or with the world axes into a visible grid.
   // The layer textures are tileable, so a rotated lookup wraps seamlessly.
@@ -190,7 +209,7 @@ export function createTerrainMaterial(ctx, layers, control) {
       .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(tNormalW, 0.0)).xyz);')
       .replace('#include <aomap_fragment>', 'reflectedLight.indirectDiffuse *= tAo; reflectedLight.directDiffuse *= mix(1.0, tAo, 0.35);');
   };
-  m.customProgramCacheKey = () => 'terrain-splat-v8';
+  m.customProgramCacheKey = () => 'terrain-splat-v9';
   return m;
 }
 

@@ -189,6 +189,15 @@ organic mottled burn patch reads against unburnt grassland (`tools/shots/p2-scor
 
 ## Known gaps (honest)
 
+* **World-border seam fixed (2026-09-28).** A ruler-straight line crossed the game's default overview at
+  the east border: inside, the splat reads its baked 2 m biome control (blocky dirt/grass patches);
+  the apron has no control and derives plains weights analytically, so the two patch patterns met
+  along the border. Located by projecting the world square into the camera and a 3× contrast crop
+  (shadows and apron shadow-receiving were ruled out first). The splat now fades its layer weights
+  to the apron's exact formula over the last 80 m (and fades riverbed/dust tints), cache key
+  `terrain-splat-v9`. Verified: game `overview` 14 h before/after + contrast crops. Remaining: where
+  the escarpment meets the border its cliff still ends in a short straight cut (geometry, not
+  texture); props (trees) also stop at the border by design.
 * **Mud crack scale fixed (2026-09-28, critic r5 "metre-scale angular voronoi webbing").** Every layer
   is sampled at two tiles (A = 3.7 m, B = 29 m, mixed ~50/50). Mud's crack cells (9 per tile) are
   0.4 m plates at A but became **3.2 m polygons at B** — the webbing on every bank. Mud's B lookup is
