@@ -747,7 +747,7 @@ async function scenarioMissionReplay(browser) {
    * optional per-day policy. Everything goes through public simulation APIs. */
   const SCRIPTS = {
     pride: [{ day: 1, buy: ['lion', 3] }],
-    'balanced-range': [{ day: 1, buy: ['cheetah', 1] }, { day: 1, plant: ['sour_plum', 0, -300, 95, 0.45] }, { day: 1, plant: ['knobthorn', 250, 300, 140, 0.3] }, { day: 1, plant: ['marula', -300, 250, 145, 0.25] }],
+    'balanced-range': [{ day: 1, buy: ['cheetah', 1] }, { day: 1, plant: ['sour_plum', 0, -300, 135, 0.45] }, { day: 1, plant: ['knobthorn', 250, 300, 200, 0.3] }, { day: 1, plant: ['marula', -300, 250, 205, 0.25] }],
     'in-the-black': [{ day: 1, price: 15 }, { day: 1, fire: ['ranger', 1] }],
     'fire-season': [], // policy: weekly water drops on every building through the season
   };
