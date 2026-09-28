@@ -104,6 +104,8 @@ export const CONST = Object.freeze({
   predationRate: 0.03,        // prey killed per predator per day when prey is available (a lion kills every ~33 days)
   sightingK: 0.12,            // P(see species) = 1 - exp(-n * visibility * roadFactor * K)
   seasonLength: 90,           // days per season in the internal fallback calendar (dry, wet alternate)
+  firebreakCost: 200,         // $/ha to bulldoze a firebreak stroke (Wave P2)
+  waterCost: 120,             // $/ha for a water drop (Wave P2)
   historyCap: 400,
   starveRate: 0.03,          // predators above their prey capacity: deaths/day per excess animal (hunger → deaths);
                              // 0.08 collapsed 3 lions to 0 in 3 days on the live park — 0.03 spreads it over ~2–4 weeks
@@ -175,4 +177,20 @@ export const VEG = Object.freeze({
   treeDensity: 0.6,        // seeding: P(tree/shrub present in a cell) = site × treeDensity (cover then 50–100 % of its ceiling)
   rainDry: 0.4, rainWet: 0.8, droughtRain: 0.35, weatherRain: 0.2,
   emitThreshold: 0.02,     // a cell counts as changed for vegetation:changed when a cover moved this much
+  // Wave P2 fire: spread is per sim-day, deterministic (per-cell/per-day integer hash rolls, no Math.random).
+  fire: Object.freeze({
+    minFuel: 0.06,         // min total cover (all plants summed) for a cell to carry fire
+    fuelFull: 0.5,         // total cover at/above which a cell burns at full spread chance
+    spreadBase: 0.32,      // P(ignite) per burning neighbour per day at full fuel, perfectly dry, no wind
+    windBoost: 0.6,        // downwind neighbours: spread chance x (1 + windBoost x alignment)
+    burnDays: 2,           // days a cell burns before it goes to the burnt/regrowing state
+    residue: Object.freeze({ grass: 0.08, shrub: 0.12, tree: 0.55 }), // surviving cover share after the burn
+    scorchDecay: 0.025,    // scorch decays 2.5%/day once burnt (~40 d to fade; terrain tint + regrow damp follow it)
+    regrowDamp: 0.7,       // burnt regrowth rate x (1 - regrowDamp x scorch): fresh burns regrow at ~30 % rate
+    wetDecay: 0.15,        // water-ring wetness -15%/day (a drop protects a cell for ~6-7 days)
+    naturalP: 0.004,       // per-day chance of a natural strike: dry season, rain <= naturalRain, no recent fire
+    naturalRain: 0.1,      // natural strikes only on essentially dry days
+    stamina: 150,          // natural fires self-contain after ~this many burnt cells (~3.8 ha); scripted fires unlimited
+    minInterval: 20,       // >= this many days between natural fires (park-friendliness)
+  }),
 });

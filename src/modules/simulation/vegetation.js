@@ -8,6 +8,14 @@ import { SITE, VEG } from './tables.js';
 
 const NT = PLANTS.length;
 const FORM_LOSS = PLANTS.map((p) => VEG.overgraze[p.form] ?? 0.05);
+const FIRE = VEG.fire;
+
+/** Deterministic per-cell/per-day pseudo-random in [0,1) — no Math.random, stable across runs/platforms. */
+function hash01(i, day, salt) {
+  let h = (Math.imul(i, 374761393) + Math.imul(day, 668265263) + Math.imul(salt, 1274126177)) | 0;
+  h ^= h >>> 13; h = Math.imul(h, 1274126177); h = (h ^ (h >>> 16)) >>> 0;
+  return h / 4294967296;
+}
 
 export class Vegetation {
   /** @param world shared world; world.vegetation is created here when absent (plain test worlds). */
@@ -28,6 +36,17 @@ export class Vegetation {
     this._scratch = new Float32Array(this.nCells);       // one plant layer, pre-step copy (neighbour term)
     this._emitted = new Float32Array(NT * this.nCells);  // cover as of the last vegetation:changed
     this._fit = new Float32Array(NT);
+    // Wave P2 fire state (simulation-owned; renderers read the copies on world.vegetation)
+    this.burn = new Uint8Array(this.nCells);       // 0 unburnt, 1 burning, 2 burnt/regrowing
+    this.burnDays = new Uint8Array(this.nCells);   // days left in the burning phase
+    this.scorch = new Float32Array(this.nCells);   // 0..1, follows VEG.fire.scorchDecay back to 0
+    this.wet = new Float32Array(this.nCells);      // water-ring wetness 0..1, decays per day
+    this.cleared = new Uint8Array(this.nCells);    // firebreak: bulldozed soil regrows at ~15 % rate
+    this._fuel = new Float32Array(this.nCells);    // per-call scratch: total cover per cell
+    this.fireVersion = 0;                          // bumped whenever any fire state changes
+    this.fireStamina = Infinity;                   // cells this fire may still claim (natural fires self-contain)
+    this.lastNaturalFire = -999;
+    v.burn = this.burn; v.scorch = this.scorch; v.wet = this.wet; v.fireVersion = 0;
     this.seeded = false;
     this.lastStepMs = 0;
     this.lastRain = 0;
@@ -88,8 +107,111 @@ export class Vegetation {
     }
     this._emitted.set(cover);
     if (this.world.vegetation.natural) this.world.vegetation.natural.set(cover);
+    this.resetFire();
     this.seeded = true;
     this.world.vegetation.version++;
+  }
+
+  /** Clear all fire state (reseed/restart). Bumps fireVersion so renderers re-upload. */
+  resetFire() {
+    this.burn.fill(0); this.burnDays.fill(0); this.scorch.fill(0); this.wet.fill(0); this.cleared.fill(0);
+    this.fireStamina = Infinity;
+    this.lastNaturalFire = -999;
+    this.fireVersion++;
+    this.world.vegetation.fireVersion = this.fireVersion;
+  }
+
+  /** Total cover across all plants in a cell (fire fuel). */
+  fuelAt(i) {
+    let f = 0; for (let t = 0; t < NT; t++) f += this.cover[t * this.nCells + i];
+    return f;
+  }
+
+  /** Set fire in a disc (event injection / tests). Cells need fuel >= minFuel and dry ground.
+   * Returns {cells, ha} — the fire itself then spreads via stepFire(). */
+  ignite(x, z, radius = 24, stamina = Infinity) {
+    const r = this.res, c = this.cell, half = this.world.half ?? this.world.size / 2;
+    const R = Math.max(c * 0.5, +radius || 0);
+    const ix0 = Math.max(0, Math.floor((x - R + half) / c)), ix1 = Math.min(r - 1, Math.floor((x + R + half) / c));
+    const iz0 = Math.max(0, Math.floor((z - R + half) / c)), iz1 = Math.min(r - 1, Math.floor((z + R + half) / c));
+    let cells = 0;
+    // a fire that starts while nothing is burning is a NEW fire with its own budget; before this the
+    // budget only ever went down (min), so once the first natural fire had spent it, every later fire
+    // started 'contained' and never spread
+    let burningNow = false;
+    for (let i = 0; i < this.burn.length; i++) if (this.burn[i] === 1) { burningNow = true; break; }
+    for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+      const cx = (ix + 0.5) * c - half, cz = (iz + 0.5) * c - half;
+      const dx = cx - x, dz = cz - z;
+      if (dx * dx + dz * dz > R * R) continue;
+      if (this._isWater(cx, cz)) continue;
+      const i = iz * r + ix;
+      if (this.wet[i] > 0 || this.burn[i] === 1) continue;
+      this._fuel[i] = this.fuelAt(i);
+      if (this._fuel[i] < FIRE.minFuel) continue;
+      this.burn[i] = 1; this.burnDays[i] = FIRE.burnDays; cells++;
+    }
+    if (cells) {
+      if (!burningNow) this.fireStamina = Number.isFinite(stamina) ? stamina : Infinity;
+      else if (Number.isFinite(stamina)) this.fireStamina = Math.min(this.fireStamina, stamina);
+      this.fireVersion++; this.world.vegetation.fireVersion = this.fireVersion;
+    }
+    return { cells, ha: +(cells * this.cellHa).toFixed(3) };
+  }
+
+  /** Water drop: wet a disc so it cannot ignite or carry fire. Wetness decays VEG.fire.wetDecay/day. */
+  wetRing(x, z, radius = 32) {
+    const r = this.res, c = this.cell, half = this.world.half ?? this.world.size / 2;
+    const R = Math.max(c * 0.5, +radius || 0);
+    const ix0 = Math.max(0, Math.floor((x - R + half) / c)), ix1 = Math.min(r - 1, Math.floor((x + R + half) / c));
+    const iz0 = Math.max(0, Math.floor((z - R + half) / c)), iz1 = Math.min(r - 1, Math.floor((z + R + half) / c));
+    let cells = 0;
+    for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+      const cx = (ix + 0.5) * c - half, cz = (iz + 0.5) * c - half;
+      const dx = cx - x, dz = cz - z;
+      if (dx * dx + dz * dz > R * R) continue;
+      if (this._isWater(cx, cz)) continue;
+      this.wet[iz * r + ix] = 1; cells++;
+    }
+    if (cells) { this.fireVersion++; this.world.vegetation.fireVersion = this.fireVersion; }
+    return { cells, ha: +(cells * this.cellHa).toFixed(3) };
+  }
+
+  /** Firebreak: bulldoze a stroke to mineral soil — every plant's cover drops to a stubble fraction
+   * (roots survive; the strip regrows naturally, so real firebreaks need re-cutting). The cleared
+   * cells carry too little fuel to ignite or carry fire. Returns {cells, ha, rect}. */
+  clearLine(x0, z0, x1, z1, width = 12) {
+    const r = this.res, c = this.cell, half = this.world.half ?? this.world.size / 2, N = this.nCells;
+    const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, z1 - z0) / (c * 0.5)));
+    let bx0 = r, bz0 = r, bx1 = -1, bz1 = -1, cells = 0;
+    const seen = this._scratch; seen.fill(0);
+    for (let s = 0; s <= steps; s++) {
+      const px = x0 + (x1 - x0) * (s / steps), pz = z0 + (z1 - z0) * (s / steps);
+      const R = Math.max(c * 0.5, width * 0.5);
+      const ix0 = Math.max(0, Math.floor((px - R + half) / c)), ix1 = Math.min(r - 1, Math.floor((px + R + half) / c));
+      const iz0 = Math.max(0, Math.floor((pz - R + half) / c)), iz1 = Math.min(r - 1, Math.floor((pz + R + half) / c));
+      for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+        const i = iz * r + ix;
+        if (seen[i]) continue;
+        if (this.cleared[i]) { seen[i] = 1; continue; } // already a firebreak: no double work, no double charge
+        const cx = (ix + 0.5) * c - half, cz = (iz + 0.5) * c - half;
+        const dx = cx - px, dz = cz - pz;
+        if (dx * dx + dz * dz > R * R) continue;
+        if (this._isWater(cx, cz)) continue;
+        seen[i] = 1; cells++; this.cleared[i] = 1;
+        // per-plant stubble 0.005: total fuel across all plants must land BELOW VEG.fire.minFuel (0.06),
+        // else the strip still carries fire (0.02 x 6 plants = 0.12 crossed the line — found by probe)
+        for (let t = 0; t < NT; t++) this.cover[t * N + i] = 0.005;
+        if (ix < bx0) bx0 = ix; if (ix > bx1) bx1 = ix;
+        if (iz < bz0) bz0 = iz; if (iz > bz1) bz1 = iz;
+      }
+    }
+    let rect = null;
+    if (cells) {
+      this.fireVersion++; this.world.vegetation.fireVersion = this.fireVersion;
+      rect = this.rectOf(bx0, bz0, bx1, bz1);
+    }
+    return { cells, ha: +(cells * this.cellHa).toFixed(3), rect };
   }
 
   /** Rainfall 0..1 for today from season, drought strength and today's weather. */
@@ -111,6 +233,7 @@ export class Vegetation {
     const r = this.res, N = this.nCells, cover = this.cover, site = this.site, P = this.pressure, S = this._scratch;
     this.lastRain = rain;
     const nb = VEG.neighbourSeed, damp = VEG.grazeDamp, maxLoss = VEG.maxLoss, reserve = VEG.rootReserve;
+    const B = this.burn, SC = this.scorch, regrowDamp = FIRE.regrowDamp, CL = this.cleared;
     for (let t = 0; t < NT; t++) {
       const p = PLANTS[t], fit = rainfallFit(p.rainfall, rain);
       this._fit[t] = fit;
@@ -123,10 +246,12 @@ export class Vegetation {
           const K = Kp * site[k];
           const c = S[i];
           if (K <= 0) { if (c > 0) cover[k] = c * 0.9 < 1e-4 ? 0 : c * 0.9; continue; }
+          // burnt cells regrow slowly while scorched; bulldozed firebreak soil regrows at ~15 % rate
+          const bd = (B[i] === 2 ? 1 - regrowDamp * SC[i] : 1) * (CL[i] ? 0.15 : 1);
           // 4-neighbour mean (clamped at the edge)
           const nm = (S[ix > 0 ? i - 1 : i] + S[ix < r - 1 ? i + 1 : i] + S[iz > 0 ? i - r : i] + S[iz < r - 1 ? i + r : i]) * 0.25;
           const room = 1 - c / K;
-          let g = rate * c * room + (room > 0 && nm > c ? rate * nb * (nm - c) * room : 0);
+          let g = rate * bd * c * room + (room > 0 && nm > c ? rate * bd * nb * (nm - c) * room : 0);
           if (g < -0.1 * c) g = -0.1 * c; // die-back toward a much lower ceiling is gradual, not a cliff
           const pr = P[k];
           let nc;
@@ -146,6 +271,102 @@ export class Vegetation {
     const rect = this._dirtyRect();
     if (t0) this.lastStepMs = performance.now() - t0;
     return rect;
+  }
+
+  /** One sim-day of fire. Order: wet decay -> spread from yesterday's front -> burn-out (residue +
+   * scorch) -> scorch decay. Spreads only from cells that ignited on an earlier day, so a fresh
+   * ignition marks time for a day like a real front. Returns true when any fire state changed. */
+  stepFire(opts = {}) {
+    const rain = opts.rain ?? 0, drought = opts.drought ?? 0;
+    const wx = opts.windX ?? 0, wz = opts.windZ ?? 0;
+    const day = opts.day ?? 0;
+    const r = this.res, N = this.nCells, cover = this.cover, B = this.burn, BD = this.burnDays, SC = this.scorch, W = this.wet, F = this._fuel;
+    let changed = false;
+    // wetness dries out
+    for (let i = 0; i < N; i++) if (W[i] > 0) { W[i] = W[i] > FIRE.wetDecay ? W[i] - FIRE.wetDecay : 0; changed = true; }
+    // fuel per cell (one pass; also marks scorch decay + burn-out below)
+    for (let i = 0; i < N; i++) {
+      let f = 0;
+      for (let t = 0; t < NT; t++) f += cover[t * N + i];
+      F[i] = f;
+      if (B[i] === 2 && SC[i] > 0) {
+        SC[i] = SC[i] - FIRE.scorchDecay * (1 + rain);
+        if (SC[i] <= 0) { SC[i] = 0; B[i] = 0; } // recovered: fully unburnt again
+        changed = true;
+      }
+    }
+    const dry = Math.max(0, Math.min(1, 1.15 - rain * 1.5 - 0.6 * drought));
+    const contained = this.fireStamina <= 0; // the fire has claimed its containment budget: front stalls
+    if (dry <= 0) {
+      // rain: burning cells still burn out (slower fronts are not modelled) but nothing spreads
+      for (let i = 0; i < N; i++) if (B[i] === 1 && --BD[i] <= 0) { this._burnOut(i); if (Number.isFinite(this.fireStamina)) this.fireStamina--; changed = true; }
+      if (changed) { this.fireVersion++; this.world.vegetation.fireVersion = this.fireVersion; }
+      return changed;
+    }
+    const wLen = Math.hypot(wx, wz), wux = wLen > 1e-4 ? wx / wLen : 0, wuz = wLen > 1e-4 ? wz / wLen : 0;
+    const NB = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 0.7071], [1, -1, 0.7071], [-1, 1, 0.7071], [-1, -1, 0.7071]];
+    for (let iz = 0; iz < r; iz++) for (let ix = 0; ix < r; ix++) {
+      const i = iz * r + ix;
+      if (B[i] !== 1) continue;
+      if (--BD[i] > 0) {
+        if (contained) continue;
+        // spread from an established front cell
+        for (let n = 0; n < 8; n++) {
+          const nx = ix + NB[n][0], nz = iz + NB[n][1];
+          if (nx < 0 || nx >= r || nz < 0 || nz >= r) continue;
+          const j = nz * r + nx;
+          if (B[j] !== 0 || W[j] > 0) continue;
+          if (F[j] < FIRE.minFuel) continue;
+          const align = (NB[n][0] * wux + NB[n][1] * wuz) / NB[n][2];
+          const wind = 1 + FIRE.windBoost * Math.max(0, align);
+          const p = FIRE.spreadBase * Math.min(1, F[j] / FIRE.fuelFull) * dry * wind;
+          if (hash01(j, day, 3) < p) { B[j] = 1; BD[j] = FIRE.burnDays + 1; changed = true; }
+        }
+      } else {
+        this._burnOut(i);
+        if (Number.isFinite(this.fireStamina)) this.fireStamina--;
+        changed = true;
+      }
+    }
+    if (changed) { this.fireVersion++; this.world.vegetation.fireVersion = this.fireVersion; }
+    return changed;
+  }
+
+  /** A cell finishes burning: cover drops to the per-form residue share, scorch set to full. */
+  _burnOut(i) {
+    const N = this.nCells, cover = this.cover;
+    for (let t = 0; t < NT; t++) {
+      const p = PLANTS[t], k = t * N + i;
+      cover[k] *= FIRE.residue[p.form] ?? 0.1;
+    }
+    this.burn[i] = 2; this.burnDays[i] = 0; this.scorch[i] = 1;
+  }
+
+  /** A deterministic ignition site: among cells sampled every 2 cells with real fuel, `t` in [0,1)
+   * picks one (the caller passes its seeded roll). Null when the park has nothing to burn. */
+  pickFireSite(t = 0.5, radius = 24) {
+    const r = this.res, N = this.nCells, c = this.cell, half = this.world.half ?? this.world.size / 2;
+    const cands = [];
+    for (let iz = 2; iz < r - 2; iz += 2) for (let ix = 2; ix < r - 2; ix += 2) {
+      const i = iz * r + ix;
+      if (this.wet[i] > 0 || this.burn[i] === 1) continue;
+      const cx = (ix + 0.5) * c - half, cz = (iz + 0.5) * c - half;
+      if (this._isWater(cx, cz)) continue;
+      let f = 0;
+      for (let tt = 0; tt < NT; tt++) f += this.cover[tt * N + i];
+      if (f >= FIRE.minFuel * 2) cands.push({ x: cx, z: cz, fuel: f });
+    }
+    if (!cands.length) return null;
+    const pick = cands[Math.min(cands.length - 1, Math.floor(t * cands.length))];
+    return { x: pick.x, z: pick.z, radius };
+  }
+
+  /** Live counters for UI/effects/harness. */
+  fireStats() {
+    const N = this.nCells, B = this.burn;
+    let burning = 0, burnt = 0, wetCells = 0;
+    for (let i = 0; i < N; i++) { const b = B[i]; if (b === 1) burning++; else if (b === 2) burnt++; if (this.wet[i] > 0) wetCells++; }
+    return { burning, burntHa: +(burnt * this.cellHa).toFixed(3), wetCells, fires: this.firesIgnited || 0, version: this.fireVersion };
   }
 
   /** Bounding rect (world metres) of the cells whose cover moved ≥ emitThreshold since the last emit;

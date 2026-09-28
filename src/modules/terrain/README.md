@@ -178,13 +178,24 @@ Terrain + water draw calls: 16 chunk meshes (4×4, always resident) + 1 water me
 ≤ 64 terrain+water budget. Triangle count is mesh-resolution-bound (513² heightfield, 4×4 chunks,
 128 apron segments × 22 rings), not draw-call-bound.
 
+## Fire scorch (Wave P2, 2026-09-26)
+
+The splat shader samples a burn texture by world XZ (`uBurnTex`, R8 64² DataTexture fed from
+`world.vegetation.scorch` whenever the simulation bumps `fireVersion`; ~4 kB upload, allocation-free)
+and chars the albedo toward ash with a noise-modulated organic edge (roughness up, AO down ~30 %).
+`uBurnOn` is 0 until the simulation module exists, so showcases without fire pay nothing. Verified:
+organic mottled burn patch reads against unburnt grassland (`tools/shots/p2-scorch-check3.png`,
+`nfog-after-fire-night.png`, real GPU).
+
 ## Known gaps (honest)
 
 * **Edit cost (2026-09-25).** `afterEdit()` used to re-pack the whole 513² splat control texture on
   every edit (~135 ms each, so every frame of a brush drag). It now calls `packControlRect()` for the
   edited sample rect (+1 for the blur): verified byte-identical weight textures against a full repack,
   one `raise()` ~8–13 ms under SwiftShader. `setWaterLevel()`/`generate()` still do the full repack.
-  Not fixed: the full control/height textures are still re-uploaded to the GPU on each edit.
+  Fixed 2026-09-26 (P2 prerequisites, commit 55193cd): edits now upload only the edited rows of the
+  height + control textures (update ranges) and refresh only the overlapping chunk buffers
+  (`refreshChunkRect`); GPU readback verified equal to the CPU arrays after a 40-step stroke.
 
 * **Night water fixed 2026-09-25** (critic r4 #1: water ~2.5–3× brighter than ground and sky at night).
   Cause: the in-column scatter floor in `water.js` was divided by exposure, so its *displayed*

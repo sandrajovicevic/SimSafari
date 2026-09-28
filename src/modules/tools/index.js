@@ -13,11 +13,12 @@ import { ZoneTool } from './ZoneTool.js';
 import { BuildingTool } from './BuildingTool.js';
 import { AnimalTool } from './AnimalTool.js';
 import { PlantTool } from './PlantTool.js';
+import { FireTool } from './FireTool.js';
 import { VegetationOverlay } from './vegoverlay.js';
 import { presets, stage } from './showcase.js';
 
 const TOOLS = {
-  select: SelectTool, terrain: TerrainTool, road: RoadTool, zone: ZoneTool, building: BuildingTool, animal: AnimalTool, plant: PlantTool,
+  select: SelectTool, terrain: TerrainTool, road: RoadTool, zone: ZoneTool, building: BuildingTool, animal: AnimalTool, plant: PlantTool, fire: FireTool,
 };
 
 let ctx = null;

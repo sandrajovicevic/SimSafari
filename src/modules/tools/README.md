@@ -229,6 +229,22 @@ cursor (1 draw call), the road ribbon + markers + snap ring (3 draw calls), the 
 draw call) and the building ghost (drawn by `buildings.preview()`, not this module) — at most ~5 draw
 calls and a few hundred triangles, well inside any reasonable per-module soft cap.
 
+## Fire tool (Wave P2, 2026-09-26)
+
+`FireTool` (id `fire`, needs `simulation`) has two modes, exposed as a toolbar "Fire" category (hotkey 8):
+
+* **Firebreak** (`fire.firebreak`, drag): extends a cleared stroke through
+  `simulation.firebreak(x0,z0,x1,z1,width)` in ~16 m segments while the button is held
+  ($200/ha). The strip's total fuel drops below the 0.06 carry-fire line, so wildfire cannot cross
+  it; regrowth is slowed to ~15 % rate, so long games need re-cutting. Emits
+  `vegetation:changed` for the strip so props/overlay rebuild immediately.
+* **Water drop** (`fire.water`, click): `simulation.waterDrop(x,z,radius)` wets a disc
+  ($120/ha); wet cells cannot ignite or carry fire while wetness (> 6 days) lasts. `[` `]` resize.
+
+No undo in v1: the ground change regrows naturally and the charges are in
+`simulation.getSpendLog()`. Verified live: `fire` in `availableTools()`, Fire category rendered,
+firebreak 0.23 ha/$46 and water 0.33 ha/$40 charged (`tools/shots/p2-tools-eval.json`).
+
 ## Known gaps (honest)
 
 * **Plant tool:** click-per-disc only (no drag strokes — `plant()` charges every cell in the disc, so a drag

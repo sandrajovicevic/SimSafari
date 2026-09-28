@@ -56,6 +56,14 @@ export function defaultCategories(s) {
     return { id: sid, name: f.name, icon: animalIconName(sid), tool: 'animal.place', options: { species: sid }, cost: f.cost, tag: DIET_TAG[f.diet] || null, tagCls: f.diet === 'predator' ? 'warn' : '', desc: f.desc };
   }) });
 
+  // fire fighting (Wave P2) — only when the simulation has the firebreak API
+  if (get('simulation')?.firebreak) {
+    const cats0 = cats;
+    cats0.push({ id: 'fire', name: 'Fire', icon: 'fire', key: '8', hint: 'Firebreak: drag a cleared line the fire cannot cross ($200/ha). Water drop: click to wet a disc ($120/ha).', items: [
+      { id: 'firebreak', name: 'Firebreak', icon: 'firebreak', tool: 'fire.firebreak', options: { mode: 'firebreak' }, cost: '$200/ha', tag: 'drag', description: 'Drag a bulldozed line: the strip carries too little fuel to burn. Regrows over time — re-cut as needed.' },
+      { id: 'water', name: 'Water drop', icon: 'water', tool: 'fire.water', options: { mode: 'water' }, cost: '$120/ha', tag: 'click', description: 'Click to wet a disc: cells cannot ignite or carry fire for about a week. [ ] resize.' },
+    ] });
+  }
   // plants (Wave P1 food web) — only when the simulation can plant
   if (get('simulation')?.plant) {
     const RAIN = { drought: 'drought-hardy', low: 'dry', medium: 'moderate rain', high: 'wet ground' };

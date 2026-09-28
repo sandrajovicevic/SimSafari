@@ -3,7 +3,7 @@
 // seeded random events; daily report. Pure JS: runs in Node (test.mjs) and in the browser (index.js wrapper).
 // No three, no DOM, no Math.random — every random draw goes through the injected Rng.
 import { Rng } from '../../core/Rng.js';
-import { SPECIES, SPECIES_ORDER, HABITAT_WEIGHTS, BUILDINGS, ROADS, STAFF, STAFF_ORDER, CONST, FOOD, DIET, PREY_YIELD } from './tables.js';
+import { SPECIES, SPECIES_ORDER, HABITAT_WEIGHTS, BUILDINGS, ROADS, STAFF, STAFF_ORDER, CONST, FOOD, DIET, PREY_YIELD, VEG } from './tables.js';
 import { PLANTS, PLANT_INDEX } from '../../core/Plants.js';
 import { Vegetation, PLANT_COUNT } from './vegetation.js';
 
@@ -153,6 +153,7 @@ export class Simulation {
 
   /** Restart with a new seed. Keeps the world (habitats, buildings, roads) and restores the starting population. */
   reset(seed = this.seed) {
+    this._fireSeenBuildings = new Set();
     this.rng = new Rng(seed);
     this.seed = seed;
     const w = this.world;
@@ -163,6 +164,7 @@ export class Simulation {
     for (const r of STAFF_ORDER) if (staff[r]) this.staff[r] = { ...staff[r] };
     if (this._vegStart) { this.veg.restore(this._vegStart); this._food.clear(); this._emit('vegetation:changed', this.veg.wholeRect()); }
     else this.seedVegetation();
+    this.veg.resetFire(); // a fresh game starts unburnt (burn/scorch/wet/cleared cleared; fireVersion bumps)
     if (this.initialPopulation) for (const [hid, m] of this.initialPopulation) for (const [s, n] of m) this.setPopulation(hid, s, n);
   }
 
@@ -538,6 +540,63 @@ export class Simulation {
     const rect = veg.step(rain);
     this.vegToday = { rain: +rain.toFixed(3), changed: rect }; // timing lives in getState(), not the (deterministic) report
     if (rect) this._emit('vegetation:changed', rect);
+    this._fireStep(rain);
+  }
+
+  /**
+   * Daily fire step (Wave P2): natural ignition roll in the dry season, spread/burn-out on the
+   * vegetation grid, then building loss — a burnt cell that carries a building emits 'fire:building'
+   * once per fire (the buildings/park side owns the burnt state and rebuild). Deterministic: the
+   * natural roll uses this.rng, spread uses vegetation's per-cell/day hash.
+   */
+  _fireStep(rain) {
+    const veg = this.veg, w = this.world, season = this._season();
+    const drought = this._eventStrength('drought');
+    const wind = w.weather?.wind || { x: 1, z: 0 };
+    // natural strike: dry season, essentially rainless day, none recently
+    if (season === 'dry' && rain <= VEG.fire.naturalRain && this.clock.day - (this._lastNaturalFire ?? -999) >= VEG.fire.minInterval
+      && this.rng.float() < VEG.fire.naturalP) {
+      const spot = veg.pickFireSite(this.rng.float());
+      if (spot) {
+        this._lastNaturalFire = this.clock.day;
+        const r = veg.ignite(spot.x, spot.z, spot.radius ?? 24, VEG.fire.stamina);
+        if (r.cells) {
+          this.firesIgnited = (this.firesIgnited ?? 0) + 1;
+          this._addEvent(this.clock.day, { type: 'fire', level: 'error', text: `Wildfire ignited by lightning near ${Math.round(spot.x)}, ${Math.round(spot.z)} — about ${r.ha} ha alight!` });
+        }
+      }
+    }
+    const before = veg.fireVersion;
+    veg.stepFire({ rain, drought, windX: wind.x ?? 0, windZ: wind.z ?? 0, day: this.clock.day });
+    if (veg.fireVersion !== before) this._emit('fire:changed', { version: veg.fireVersion, stats: veg.fireStats() });
+    this._fireBuildings();
+  }
+
+  /** Burnt buildings: any burning 16 m vegetation cell that OVERLAPS a building's footprint emits
+   * fire:building once. AABB-vs-cell test on the whole cell (not just its centre), so small hides in
+   * a big cell are caught too. */
+  _fireBuildings() {
+    const veg = this.veg, w = this.world;
+    if (!w.buildings?.size) return;
+    if (!this._fireSeenBuildings) this._fireSeenBuildings = new Set();
+    const B = veg.burn, N = veg.nCells;
+    const half = w.half ?? w.size / 2, cell = veg.cell;
+    for (let i = 0; i < N; i++) {
+      if (B[i] !== 1) continue;
+      const iz = (i / veg.res) | 0, ix = i - iz * veg.res;
+      const cx = (ix + 0.5) * cell - half, cz = (iz + 0.5) * cell - half;
+      const cx0 = cx - cell / 2, cx1 = cx + cell / 2, cz0 = cz - cell / 2, cz1 = cz + cell / 2;
+      for (const b of w.buildings.values()) {
+        if (this._fireSeenBuildings.has(b.id) || b.state === 'burnt') continue;
+        const hw = (b.w ?? 8) / 2, hd = (b.d ?? 8) / 2;
+        if (cx1 >= b.x - hw && cx0 <= b.x + hw && cz1 >= b.z - hd && cz0 <= b.z + hd) {
+          this._fireSeenBuildings.add(b.id);
+          const rebuildCost = Math.round((this.building(b.type)?.cost ?? 5000) * 0.4);
+          this._emit('fire:building', { id: b.id, type: b.type, x: b.x, z: b.z, day: this.clock.day, rebuildCost });
+          this._addEvent(this.clock.day, { type: 'fire', level: 'error', text: `The ${b.type} at ${Math.round(b.x)}, ${Math.round(b.z)} caught fire and burned down!` });
+        }
+      }
+    }
   }
 
   /**
@@ -746,7 +805,7 @@ export class Simulation {
     let beds = 0, quality = 0, extra = 0, count = 0;
     const w = this.world;
     if (w.buildings) for (const b of w.buildings.values()) {
-      if (!b || b.state === 'construction' || b.state === 'building') continue;
+      if (!b || b.state === 'construction' || b.state === 'building' || b.state === 'burnt') continue;
       const k = this.building(b.type);
       if (k.beds) { beds += k.beds; quality += k.quality ?? 0.6; count++; }
       if (k.lodgeQuality) extra += k.lodgeQuality;
@@ -759,7 +818,7 @@ export class Simulation {
     const out = { hides: 0, shops: 0, vet: 0, rangerStations: 0, morale: 0, efficiency: 0, closeness: 0, total: 0 };
     const w = this.world;
     if (w.buildings) for (const b of w.buildings.values()) {
-      if (!b || b.state === 'construction' || b.state === 'building') continue;
+      if (!b || b.state === 'construction' || b.state === 'building' || b.state === 'burnt') continue;
       const k = this.building(b.type);
       out.total++;
       if (k.closeness) { out.hides++; out.closeness += k.closeness; }
@@ -1226,6 +1285,18 @@ export class Simulation {
       this._addEvent(day, { type: 'disease', level: 'warn', species: s, duration: d, text: `Disease outbreak among the ${s} (vet costs up, ${d} days)` });
       return record();
     }
+    if (type === 'fire') {
+      const spot = opts.x === undefined
+        ? (this.veg.pickFireSite(this.rng.float()) || { x: (this.rng.float() - 0.5) * this.world.size * 0.8, z: (this.rng.float() - 0.5) * this.world.size * 0.8, radius: opts.radius })
+        : { x: opts.x, z: opts.z, radius: opts.radius };
+      // opts.stamina: cells this fire may claim before it self-contains (default unlimited — a scripted
+      // fire runs until fuel or rain stops it; pass VEG.fire.stamina for a natural-sized fire)
+      const r = this.veg.ignite(spot.x, spot.z, spot.radius ?? (opts.radius ?? 24), opts.stamina ?? Infinity);
+      if (!r.cells) return null;
+      this.firesIgnited = (this.firesIgnited ?? 0) + 1;
+      this._addEvent(day, { type: 'fire', level: 'error', text: `Fire! About ${r.ha} ha are alight near ${Math.round(spot.x)}, ${Math.round(spot.z)}.` });
+      return record();
+    }
     if (type === 'poachers') {
       const pop = this.population();
       const present = Object.keys(pop);
@@ -1288,6 +1359,32 @@ export class Simulation {
 
   /** { [plantId]: cover 0..1 } at world (x, z). */
   getVegetation(x, z) { return this.veg.at(x, z); }
+
+  /** Firebreak (Wave P2): bulldoze a stroke to mineral soil through world.vegetation — cells in the
+   * strip drop to stubble (they regrow, so breaks need re-cutting) and carry too little fuel to
+   * ignite or carry fire. Charges CONST.firebreakCost per ha via spend(…, 'firebreak').
+   * → {ok, cells, ha, cost}. */
+  firebreak(x0, z0, x1, z1, width = 12) {
+    const res = this.veg.clearLine(x0, z0, x1, z1, width);
+    const cost = +(res.ha * CONST.firebreakCost).toFixed(2);
+    if (res.cells) {
+      this.spend(cost, 'firebreak');
+      if (res.rect) this._emit('vegetation:changed', res.rect); // props/overlay rebuild the strip now
+    }
+    return { ok: res.cells > 0, ...res, cost };
+  }
+
+  /** Water drop (Wave P2): wet a disc for ~6-7 days so it cannot ignite or carry fire.
+   * Charges CONST.waterCost per ha via spend(…, 'water'). → {ok, cells, ha, cost}. */
+  waterDrop(x, z, radius = 32) {
+    const res = this.veg.wetRing(x, z, radius);
+    const cost = +(res.ha * CONST.waterCost).toFixed(2);
+    if (res.cells) this.spend(cost, 'water');
+    return { ok: res.cells > 0, ...res, cost };
+  }
+
+  /** Live fire counters: { burning, burntHa, wetCells, fires, version }. */
+  fireStats() { return this.veg.fireStats(); }
 
   /**
    * Food report for a habitat: per species present (and every herbivore the habitat's plants attract)

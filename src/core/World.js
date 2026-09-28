@@ -45,6 +45,11 @@ export class World {
       // draws that baseline, so the plant layer draws only cover above it (planting, spread, regrowth).
       natural: new Float32Array(PLANT_IDS.length * vres * vres),
       version: 0,
+      // Wave P2 fire state (written by simulation/vegetation.js, read by terrain/props/effects):
+      burn: new Uint8Array(vres * vres),     // 0 unburnt, 1 burning, 2 burnt/regrowing
+      scorch: new Float32Array(vres * vres), // 0..1 char intensity; decays ~2.5%/day
+      wet: new Float32Array(vres * vres),    // water-drop wetness 0..1; decays ~15%/day
+      fireVersion: 0,                        // bumped on any fire-state change (renderers re-upload)
     };
 
     this.habitats = new Map();

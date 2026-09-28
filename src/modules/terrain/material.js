@@ -104,6 +104,25 @@ vec3 tAlbedo; float tRough; float tAo; vec3 tNormalW;
   // matte; close range (< 200 m) is untouched, so the wet sheen at ground level survives.
   rough += 0.35 * smoothstep(200.0, 800.0, camD);
   tAlbedo = clamp(alb, 0.0, 1.0); tRough = clamp(rough, 0.2, 1.0); tAo = mix(1.0, ao, 0.7); tNormalW = nW;
+  // Wave P2 fire: scorch mask from simulation's burn grid (16 m cells, linear-filtered, noise-edged).
+  // Char the albedo toward ash, kill the wet-band sheen, lift roughness. uBurnOn is 0 until the
+  // simulation module attaches its scorch array, so showcases without fire pay nothing.
+  if (uBurnOn > 0.0) {
+    float scorch = texture2D(uBurnTex, clamp((wxz + uHalf) / uSize, 0.002, 0.998)).r;
+    scorch = clamp(scorch * (0.72 + 0.56 * (snoise(wxz * 0.09) * 0.5 + 0.5)), 0.0, 1.0);
+    if (scorch > 0.003) {
+      // char: near-black with pale ash drifts (two noise scales) — the ground photo's crack relief
+      // is flattened under the ash (normal toward up, AO lifted), else a burn read as grey dried mud
+      // soft, low-contrast ash (a hard high-contrast mask read as white worms at 160 m)
+      float ash = smoothstep(0.25, 0.95, snoise(wxz * 0.12) * 0.5 + 0.5) * 0.7 + 0.3 * (snoise(wxz * 0.9) * 0.5 + 0.5);
+      vec3 charCol = mix(vec3(0.030, 0.026, 0.023), vec3(0.085, 0.080, 0.075), ash);
+      float sc = clamp(scorch * 1.15, 0.0, 1.0);
+      tAlbedo = mix(tAlbedo, charCol, sc * 0.94);
+      tRough = mix(tRough, 0.97, sc * 0.8);
+      tNormalW = normalize(mix(tNormalW, vec3(0.0, 1.0, 0.0), sc * 0.65));
+      tAo = mix(tAo, 1.0, sc * 0.5);
+    }
+  }
 }
 diffuseColor.rgb *= tAlbedo;
 `;
@@ -118,6 +137,7 @@ uniform float uInvScaleA; uniform float uInvScaleB; uniform float uInvScaleT;
 uniform float uNormalStr; uniform float uBlendDepth;
 uniform float uWarpA; uniform float uWarpB; uniform float uWarpC;
 uniform float uSat; uniform float uGain; uniform float uContrast;
+uniform sampler2D uBurnTex; uniform float uBurnOn; uniform float uSize;
 varying vec3 vWPos; varying vec3 vWNormal;
 vec3 srgb2lin(vec3 c){ return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }
 vec2 rot2(vec2 p, float a){ float c = cos(a), s = sin(a); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }
@@ -149,6 +169,7 @@ export function createTerrainMaterial(ctx, layers, control) {
     uNormalStr: { value: 1.0 }, uBlendDepth: { value: 0.30 },
     uWarpA: { value: 11.0 }, uWarpB: { value: 3.4 }, uWarpC: { value: 1.1 },
     uSat: { value: 1.0 }, uGain: { value: 1.0 }, uContrast: { value: 0.0 },
+    uBurnTex: { value: null }, uBurnOn: { value: 0.0 }, uSize: { value: world.size },
   };
   m.userData.uniforms = uniforms;
   m.onBeforeCompile = (shader) => {
@@ -164,7 +185,7 @@ export function createTerrainMaterial(ctx, layers, control) {
       .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(tNormalW, 0.0)).xyz);')
       .replace('#include <aomap_fragment>', 'reflectedLight.indirectDiffuse *= tAo; reflectedLight.directDiffuse *= mix(1.0, tAo, 0.35);');
   };
-  m.customProgramCacheKey = () => 'terrain-splat-v4';
+  m.customProgramCacheKey = () => 'terrain-splat-v7';
   return m;
 }
 

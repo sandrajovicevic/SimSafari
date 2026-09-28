@@ -20,6 +20,7 @@ const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); retu
 const lerp = (a, b, t) => a + (b - a) * t;
 
 const TREE_KINDS = ['acacia', 'fever', 'baobab', 'dead'];
+let scorchTex = null, scorchVersionSeen = -1;
 const ALL_KINDS = ['acacia', 'fever', 'baobab', 'dead', 'shrub', 'boulder', 'termite', 'log'];
 
 // LOD switch distances in metres: [full → reduced, reduced → billboard]
@@ -178,6 +179,8 @@ grassSample.out = gout;
 // materials + species geometry
 // ---------------------------------------------------------------------------------------------------------
 
+// Wave P2: crown char — tree/shrub/imposter materials sample the simulation's scorch grid by world
+// position and char toward charcoal in burnt cells. Chains after withWind's onBeforeCompile.
 function barkMaterial(name, set, extra = {}) {
   const m = S.ctx.materials.standard({
     map: set.map, normalMap: set.normalMap, roughnessMap: set.roughnessMap,
@@ -186,7 +189,7 @@ function barkMaterial(name, set, extra = {}) {
   });
   m.userData.cacheKeyExtra = 'bark:' + name;
   S.ctx.materials.withWind(m, { strength: 0.0035, pivotY: 2.2, frequency: 0.55 });
-  return m;
+  return withScorch(m, 'bark');
 }
 
 function leafMaterial(name, tex, extra = {}) {
@@ -196,8 +199,42 @@ function leafMaterial(name, tex, extra = {}) {
   });
   m.userData.cacheKeyExtra = 'leaf:' + name;
   S.ctx.materials.withWind(m, { strength: 0.0035, pivotY: 2.2, frequency: 0.55 });
+  return withScorch(m, 'leaf');
+}
+
+const NL = String.fromCharCode(10); // shader-string newline
+const SCORCH_UNIFORMS = { uScorchTex: { value: null }, uScorchOn: { value: 0 }, uScorchHalf: { value: 512 }, uScorchSize: { value: 1024 } };
+function withScorch(m, part = 'bark') {
+  // part: 'bark' chars to charcoal; 'leaf' turns to dead brown foliage and thins (canopy holes);
+  // 'imp' (distant imposters) browns + darkens. Injected after <color_fragment>, which every props
+  // material keeps: imposters replace <map_fragment> with their own sampling, so hooking that include
+  // left distant crowns uncharred.
+  const prev = m.onBeforeCompile;
+  const code = part === 'leaf'
+    ? '  float hsh = fract(sin(dot(floor(vScorchW * 1.7), vec3(12.9898, 78.233, 37.719))) * 43758.5453);' + NL +
+      '  if (hsh < sc * 0.62) discard;' + NL +
+      '  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.20, 0.13, 0.07) * (0.55 + 0.6 * hsh), sc * 0.9);' + NL
+    : part === 'imp'
+      ? '  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.12, 0.08, 0.05), sc * 0.85);' + NL
+      : '  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.030, 0.026, 0.022), sc * 0.92);' + NL;
+  m.onBeforeCompile = (shader, renderer) => {
+    prev?.call(m, shader, renderer);
+    Object.assign(shader.uniforms, SCORCH_UNIFORMS);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vScorchW;')
+      .replace('#include <fog_vertex>', '#include <fog_vertex>\n vScorchW = (' + NL +
+        '#ifdef USE_INSTANCING\n modelMatrix * instanceMatrix *\n #endif\n vec4(transformed, 1.0)).xyz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vScorchW;\nuniform sampler2D uScorchTex;\nuniform float uScorchOn;\nuniform float uScorchHalf;\nuniform float uScorchSize;')
+      .replace('#include <color_fragment>', '#include <color_fragment>' + NL + ' if (uScorchOn > 0.0) {' + NL +
+        '  float sc = texture2D(uScorchTex, clamp((vScorchW.xz + uScorchHalf) / uScorchSize, 0.002, 0.998)).r;' + NL +
+        '  sc = clamp(sc * 1.25, 0.0, 1.0);' + NL + code + ' }');
+  };
+  const prevKey = m.customProgramCacheKey;
+  m.customProgramCacheKey = () => (prevKey ? prevKey.call(m) : m.userData.cacheKeyExtra || '') + '+scorch2' + part;
   return m;
 }
+
 
 function buildMaterials() {
   const T = S.ctx.textures;
@@ -260,7 +297,8 @@ class InstGroup {
   finish() {
     for (const m of this.meshes) { m.count = this.count; m.instanceMatrix.needsUpdate = true; }
   }
-  dispose() { for (const m of this.meshes) { m.removeFromParent(); m.dispose?.(); } this.meshes.length = 0; }
+  dispose() {
+    scorchTex?.dispose(); scorchTex = null; scorchVersionSeen = -1; SCORCH_UNIFORMS.uScorchOn.value = 0; for (const m of this.meshes) { m.removeFromParent(); m.dispose?.(); } this.meshes.length = 0; }
 }
 
 function makeTreeSpecies(kind, nVariants, barkMat, leafMat) {
@@ -357,7 +395,7 @@ function buildImposters() {
       try { baked = bakeImposter(S.ctx, meshes, { size: S.ctx.quality === 'low' ? 128 : 256 }); }
       catch (err) { S.ctx.log.warn(`[props] imposter bake failed for ${kind} v${vi}: ${err?.message || err}`); }
       if (!baked) continue;
-      v.imposter = { ...baked, mat: imposterMaterial(S.ctx, baked.texture, kind + vi, baked.top, baked.topExtent, baked.crownY, baked.width, baked.sideN, baked.topN), geo: S.imposterGeo, refHeight: v.height };
+      v.imposter = { ...baked, mat: withScorch(imposterMaterial(S.ctx, baked.texture, kind + vi, baked.top, baked.topExtent, baked.crownY, baked.width, baked.sideN, baked.topN), 'imp'), geo: S.imposterGeo, refHeight: v.height };
     }
     sp.hasImposter = sp.variants.some((v) => !!v.imposter);
   }
@@ -1136,6 +1174,21 @@ export default {
   },
 
   update(dt, t) {
+    // Wave P2: push the simulation's scorch grid into the shared props scorch texture (crown char)
+    const veg = S.world?.vegetation;
+    if (veg?.scorch && SCORCH_UNIFORMS.uScorchOn.value === 0) { SCORCH_UNIFORMS.uScorchOn.value = 1; SCORCH_UNIFORMS.uScorchHalf.value = S.world.half ?? S.world.size / 2; SCORCH_UNIFORMS.uScorchSize.value = S.world.size; }
+    if (veg?.scorch && scorchVersionSeen !== veg.fireVersion) {
+      scorchVersionSeen = veg.fireVersion;
+      if (!scorchTex || scorchTex.image.width !== veg.res) {
+        scorchTex?.dispose();
+        scorchTex = new THREE.DataTexture(new Uint8Array(veg.res * veg.res), veg.res, veg.res, THREE.RedFormat, THREE.UnsignedByteType);
+        scorchTex.magFilter = THREE.LinearFilter; scorchTex.minFilter = THREE.LinearFilter;
+        SCORCH_UNIFORMS.uScorchTex.value = scorchTex;
+      }
+      const d = scorchTex.image.data;
+      for (let i = 0; i < d.length; i++) d[i] = Math.min(255, (veg.scorch[i] * 255) | 0);
+      scorchTex.needsUpdate = true;
+    }
     if (!S.ready) return;
     S._t += dt;
     const cam = S.ctx.camera;

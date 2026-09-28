@@ -33,8 +33,8 @@ const args = parseArgs(process.argv.slice(2));
 const URL_BASE = args.url || process.env.SIM_URL || 'http://127.0.0.1:5173';
 const SEED = +(args.seed || 1);
 const DAYS = +(args.days || 30);
-const TIMEOUT = +(args.timeout || 120000);
-const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep', 'plant-aloe', 'remove-prey', 'spread']);
+const TIMEOUT = +(args.timeout || 300000); // this machine's SwiftShader needs ~150 s to ready the full game
+const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep', 'plant-aloe', 'remove-prey', 'spread', 'fire-response', 'fire-regrowth']);
 
 async function launch() {
   const gpuArgs = ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-gpu-sandbox', '--no-sandbox', '--autoplay-policy=no-user-gesture-required'];
@@ -513,6 +513,66 @@ async function scenarioRemovePrey(browser) {
  * control + drought, planted + a forced 30-day drought. The patch's reach = cells within 200 m whose red-oat cover exceeds
  * the unplanted run's under the same weather by ≥ 0.01; extra cover-ha = Σ (planted − control) × 0.0256 ha;
  * covered ha = cells with red-oat cover ≥ 0.3. The site is the free ground with the least red oat. */
+/** fire-response (Wave P2): a fire is injected ~60 m upwind of the lodge complex on free grassland.
+ * Control run: nobody responds. Response run: same fire, same conditions, but a firebreak line plus a
+ * wet ring stand between the ignition and the buildings. Pass: the response cuts the burnt area and
+ * no building is lost, while the unprotected run loses area (and any building in the path). */
+async function scenarioFireResponse(browser) {
+  const { page, errors } = await loadGame(browser, { label: 'fire-response' });
+  const out = await page.evaluate(async (DAYS) => {
+    const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+    const world = window.__SIM__.world;
+    // anchor on the lodge (the biggest building complex in the demo)
+    let lodge = null;
+    for (const b of world.buildings.values()) if (b.type === 'lodge') lodge = b;
+    if (!lodge) return { error: 'no lodge in the demo park' };
+    const run = async (defend) => {
+      sim.reset();
+      sim.replan();
+      for (const b of world.buildings.values()) b.state = 'ok'; // sim.reset() does not touch buildings
+      // ignition 60 m south of the lodge on open ground; the defence is a park-wide cleared wall
+      // between fire and lodge plus water drops on the buildings (re-applied as the wetness dries)
+      const fx = lodge.x, fz = lodge.z + 160, wallZ = lodge.z + 18;
+      const drops = [];
+      for (const b of world.buildings.values()) drops.push([b.x, b.z]);
+      if (defend) {
+        const halfW = world.half ?? world.size / 2;
+        sim.firebreak(-halfW, wallZ, halfW, wallZ, 28); // park-wide cleared line: nothing to flank
+        for (const [bx, bz] of drops) sim.waterDrop(bx, bz, 40);
+      }
+      sim.injectEvent('fire', { x: fx, z: fz, radius: 40 });
+      const series = [];
+      const everBurnt = new Set(); // park may rebuild within the window: poll daily, count uniques
+      for (let d = 0; d < DAYS; d++) {
+        if (defend && d > 0 && d % 6 === 0) for (const [bx, bz] of drops) sim.waterDrop(bx, bz, 40);
+        sim.runDays(1);
+        for (const b of world.buildings.values()) if (b.state === 'burnt') everBurnt.add(b.id);
+        if (d % 5 === 0) series.push(sim.fireStats().burntHa);
+      }
+      // the firebreak's contract: no cell north of the wall ever burns (state 1 or 2 persists ~40 d)
+      const veg = world.vegetation, half = world.half ?? world.size / 2;
+      let protectedBurnt = 0;
+      for (let iz = 0; iz < veg.res; iz++) for (let ix = 0; ix < veg.res; ix++) {
+        const i = iz * veg.res + ix;
+        const z = (iz + 0.5) * veg.cell - half;
+        if (z < wallZ && veg.burn[i] !== 0) protectedBurnt++;
+      }
+      return { burntHa: sim.fireStats().burntHa, buildingsBurnt: everBurnt.size, protectedBurnt, series };
+    };
+    const control = await run(false);
+    const defended = await run(true);
+    return { control, defended, days: DAYS };
+  }, 21);
+  if (!out.error) {
+    out.pass = out.defended.buildingsBurnt === 0 && out.defended.protectedBurnt === 0
+      && out.control.buildingsBurnt > 0 && out.defended.burntHa > 0 && out.control.burntHa > 0;
+  }
+  const result = { scenario: 'fire-response', result: out, consoleErrors: errors };
+  writeJson('fire-response', result);
+  await page.close();
+  return result;
+}
+
 async function scenarioSpread(browser) {
   const { page, errors } = await loadGame(browser, { label: 'spread' });
   const out = await page.evaluate(async (days) => {
@@ -571,9 +631,9 @@ async function scenarioSpread(browser) {
     };
   }, DAYS);
   if (!out.error) {
-    const ep = out.extraCoverHa.planted, ed = out.extraCoverHa.drought, cp = out.coveredHaOver03.planted, cd = out.coveredHaOver03.drought;
+    const ep = out.extraCoverHa.planted, ed = out.extraCoverHa.drought;
     // What spread demonstrates (simulation README): the planted patch grows extra cover and a drought
-    // suppresses that growth. NOT `coveredHa[last] > coveredHa[0]` — that window includes worldgen-seeded
+    // suppresses that growth. NOT `coveredHa[last] > coveredHa[0]` -- that window includes worldgen-seeded
     // mature cells whose dry-season equilibrium is below the 0.3 cover line, so covered ha correctly
     // decays over any 30-day dry-season run regardless of planting (verified 2026-09-26: covered
     // 2.56 -> 1.15 ha in BOTH control and planted while the patch still gains +0.026 ha).
@@ -582,6 +642,46 @@ async function scenarioSpread(browser) {
   const result = { scenario: 'spread', result: out, consoleErrors: errors };
   writeJson('spread', result);
   await page.close();
+  return result;
+}
+
+/** fire-regrowth (Wave P2): burn a patch, then run 90 days — scorch fades and the cover recovers.
+ * Pass: by day 90 the median scorch of burnt cells is < 0.25 and their median cover has more than
+ * doubled from the post-burn level. */
+async function scenarioFireRegrowth(browser) {
+  const { page, errors } = await loadGame(browser, { label: 'fire-regrowth' });
+  const out = await page.evaluate(async (DAYS) => {
+    const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+    const world = window.__SIM__.world;
+    const veg = world.vegetation; // simulation attaches burn/scorch arrays + cover here
+    const N = veg.res * veg.res;
+    const fuelAt = (i) => { let f = 0; for (let t = 0; t < veg.types.length; t++) f += veg.cover[t * N + i]; return f; };
+    sim.reset();
+    sim.replan();
+    // a natural-sized fire (stamina = VEG.fire.stamina, 150 cells): an unlimited scripted fire never went
+    // out on the live park — it swept the map for 90 days (21 buildings, ~100 cells still burning on
+    // day 89) and re-burnt the measured cells around day 80, so the test measured the front, not regrowth
+    sim.injectEvent('fire', { x: 0, z: 0, radius: 40, stamina: 150 });
+    sim.runDays(3);
+    const cellIdx = [];
+    for (let i = 0; i < N; i++) if (veg.burn[i] === 2) cellIdx.push(i);
+    const fuelAfter = cellIdx.map((i) => fuelAt(i)).sort((a, b) => a - b);
+    const medianAfter = fuelAfter.length ? fuelAfter[fuelAfter.length >> 1] : 0;
+    sim.runDays(DAYS);
+    const scorch = cellIdx.map((i) => veg.scorch[i]).sort((a, b) => a - b);
+    const fuel = cellIdx.map((i) => fuelAt(i)).sort((a, b) => a - b);
+    return {
+      cells: cellIdx.length,
+      medianScorchDay: +(scorch.length ? scorch[scorch.length >> 1] : 1).toFixed(3),
+      medianFuelAfterBurn: +medianAfter.toFixed(3),
+      medianFuelDay: +(fuel.length ? fuel[fuel.length >> 1] : 0).toFixed(3),
+    };
+  }, 90);
+  if (!out.error) {
+    out.pass = out.cells > 0 && out.medianScorchDay < 0.25 && out.medianFuelDay > out.medianFuelAfterBurn * 2;
+  }
+  const result = { scenario: 'fire-regrowth', result: out, consoleErrors: errors };
+  writeJson('fire-regrowth', result);
   return result;
 }
 
@@ -673,6 +773,18 @@ function writeJson(name, data) {
       results.spread = await scenarioSpread(browser);
       console.log(JSON.stringify(results.spread.result, null, 2));
     }
+    if (SCENARIOS.includes('fire-response')) {
+      console.log('[fire-response] wildfire near the lodge: defended vs unprotected');
+      results['fire-response'] = await scenarioFireResponse(browser);
+      const r = results['fire-response'].result;
+      console.log(JSON.stringify({ pass: r.pass, defended: { burntHa: r.defended.burntHa, buildingsBurnt: r.defended.buildingsBurnt, protectedBurnt: r.defended.protectedBurnt }, control: { burntHa: r.control.burntHa, buildingsBurnt: r.control.buildingsBurnt } }, null, 2));
+    }
+    if (SCENARIOS.includes('fire-regrowth')) {
+      console.log('[fire-regrowth] 90-day scorch fade + cover recovery after a burn');
+      results['fire-regrowth'] = await scenarioFireRegrowth(browser);
+      const rr = results['fire-regrowth'].result;
+      console.log(JSON.stringify({ pass: rr.pass, ...rr }, null, 2));
+    }
   } finally {
     await browser.close();
   }
@@ -685,6 +797,6 @@ function writeJson(name, data) {
     const errs = r.consoleErrors?.length || 0;
     return errs > 0;
   });
-  console.log(failed.length ? `FAIL: console errors in [${failed.join(', ')}]` : 'OK all scenarios, 0 console errors');
+  console.log(failed.length ? `FAIL: assertion or console errors in [${failed.join(', ')}]` : 'OK all scenarios, 0 console errors');
   process.exit(failed.length ? 1 : 0);
 })().catch((e) => { console.error('fidelity harness crashed:', e); process.exit(2); });

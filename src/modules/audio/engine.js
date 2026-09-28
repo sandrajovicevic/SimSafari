@@ -27,7 +27,8 @@ export class AudioEngine {
     this.nextWild = {}; for (const k in ANIMALS) this.nextWild[k] = -1;
     this.events = []; for (let i = 0; i < LOG_SIZE; i++) this.events.push({ sound: '', x: 0, y: 0, z: 0, dist: 0, t: 0, bus: '', seq: 0, marked: true });
     this.eventHead = 0; this.eventCount = 0; this.eventSeq = 0;
-    this.env = { hour: 12, windSpeed: 3, rain: 0, cloud: 0, storm: false, water: 0, temperature: 28, tx: 0, ty: 0, tz: 0 };
+    this.env = { hour: 12, windSpeed: 3, rain: 0, cloud: 0, storm: false, water: 0, fire: 0, temperature: 28, tx: 0, ty: 0, tz: 0 };
+    this._lastFire = -1; this.fire = 0;
     this.water = 0; this._lastWater = -1; this._lastEngineRefresh = 0;
     this.stats = { voices: 0, played: 0 };
     this.manualListenerUntil = -1;
@@ -108,6 +109,29 @@ export class AudioEngine {
       this.water = this.hint.water !== null && this.hint.water !== undefined ? this.hint.water : this._sampleWater(e.tx, e.tz);
     }
     e.water = this.water;
+    if (now - this._lastFire > 0.5) {
+      this._lastFire = now;
+      this.fire = this._sampleFire(e.tx, e.tz);
+    }
+    e.fire = this.fire;
+  }
+
+  /** Wave P2 fire proximity for the crackle layer: 1 at the front, fading to 0 at ~250 m (scans the
+   * simulation's burn grid — 4096 uint8 cells, every 0.5 s). */
+  _sampleFire(x, z) {
+    const veg = this.world.vegetation;
+    if (!veg?.burn) return 0;
+    const r = veg.res, c = veg.cell, half = this.world.half ?? this.world.size / 2;
+    let best = 1e9;
+    for (let i = 0; i < r * r; i++) {
+      if (veg.burn[i] !== 1) continue;
+      const iz = (i / r) | 0, ix = i - iz * r;
+      const dx = (ix + 0.5) * c - half - x, dz = (iz + 0.5) * c - half - z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < best) best = d2;
+    }
+    if (best >= 1e9) return 0;
+    return Math.max(0.18, 1 - Math.sqrt(best) / 250);
   }
 
   /** Fraction of a 30 m / 90 m ring around the camera target that is water. */

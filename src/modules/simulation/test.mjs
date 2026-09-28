@@ -6,6 +6,7 @@ import { Rng } from '../../core/Rng.js';
 import { Simulation } from './sim.js';
 import { createPlainWorld, buildPark, applyPark } from './worldgen.js';
 import { PLANTS, PLANT_INDEX } from '../../core/Plants.js';
+import { VEG } from './tables.js';
 
 const failures = [];
 const passes = [];
@@ -479,6 +480,117 @@ console.log('food web + vegetation (Wave P1)');
   const b = makeSim(33);
   for (let d = 0; d < 30; d++) { b.sim.runDays(1); const ms = b.sim.getState().vegetation.stepMs; msSum += ms; msMax = Math.max(msMax, ms); }
   assert(msSum / 30 < 5, `daily vegetation update ${(msSum / 30).toFixed(2)} ms mean, ${msMax.toFixed(2)} ms max (budget 5 ms, 64² × ${PLANTS.length})`);
+}
+
+// ---------------------------------------------------------------- Wave P2: fire
+console.log('\nWave P2 — fire');
+{
+  // ignite -> burn-out: cover drops to the residue share, scorch set, then slow regrowth
+  const { sim } = makeSim(11, {});
+  const veg = sim.veg;
+  const cx = 0, cz = 0;
+  const before = veg.fuelAt(veg.cellIndex(cx, cz));
+  // a NATURAL fire carries containment stamina (~150 cells, ~3.8 ha): it self-contains like a
+  // real backburn; scripted/harness fires pass no stamina and burn until fuel or rain stops them
+  const lit = veg.ignite(cx, cz, 24, VEG.fire.stamina);
+  assert(lit.cells > 0, `fire: ignite lights cells in fuel (${lit.cells} cells, ${lit.ha} ha)`);
+  sim.runDays(4); // 2 days burning + spread tail
+  let anyBurnt = 0, anyScorch = 0;
+  for (let i = 0; i < veg.nCells; i++) { if (veg.burn[i] === 2) anyBurnt++; if (veg.scorch[i] > 0) anyScorch++; }
+  assert(anyBurnt > 0, `fire: cells reach the burnt state (${anyBurnt} cells)`);
+  assert(anyScorch >= anyBurnt, `fire: burnt cells carry scorch (${anyScorch} cells)`);
+  sim.runDays(27);
+  const stats = veg.fireStats();
+  assert(stats.burning === 0, `fire: contained front burns out (${stats.burning} cells still burning after 31 d)`);
+  // containment stops SPREAD once the stamina is claimed; the front alive at that moment burns out,
+  // so the total is stamina + one front width (~7-8 ha here) vs ~47 ha unchecked
+  assert(stats.burntHa <= 9, `fire: containment holds the burn small (${stats.burntHa} ha)`);
+  assert(stats.burntHa > 0.5, `fire: the contained burn still has real extent (${stats.burntHa} ha)`);
+  // a LATER natural fire gets its own budget: the stamina used to be a single running minimum, so after
+  // the first contained fire every later fire started contained and never spread past its ignition disc
+  const burntBefore = stats.burntHa;
+  const lit2 = veg.ignite(-300, 300, 24, VEG.fire.stamina);
+  sim.runDays(8);
+  const grew = veg.fireStats().burntHa - burntBefore;
+  assert(lit2.cells > 0 && grew > lit2.ha * 1.5, `fire: a second natural fire spreads beyond its ignition (${lit2.ha} ha lit -> +${grew.toFixed(2)} ha burnt)`);
+
+  // an UNCONTAINED fire (scripted disaster, or a player who ignores it) keeps growing until fuel
+  // or rain stops it — 45 days lets a circular front eat a real share of the test park
+  const u = makeSim(12, {});
+  u.sim.veg.ignite(0, 0, 16);
+  u.sim.runDays(45);
+  const ust = u.sim.veg.fireStats();
+  assert(ust.burntHa > 30, `fire: an unchecked fire consumes real area (${ust.burntHa} ha in 45 d)`);
+
+  // spread: a fire in dry grassland with no rain grows beyond its ignition disc
+  const s2world = makeSim(12, {});
+  const v2 = s2world.sim.veg;
+  v2.ignite(0, 0, 16);
+  s2world.sim.runDays(8);
+  const half2 = s2world.world.half ?? s2world.world.size / 2, c2 = v2.cell;
+  let beyond = 0;
+  for (let iz = 0; iz < v2.res; iz++) for (let ix = 0; ix < v2.res; ix++) {
+    const i = iz * v2.res + ix;
+    if (v2.burn[i] === 0) continue;
+    const x = (ix + 0.5) * c2 - half2, z = (iz + 0.5) * c2 - half2;
+    if (x * x + z * z > 16 * 16) beyond++;
+  }
+  assert(beyond >= 4, `fire: front spreads past the ignition disc (${beyond} cells beyond 16 m)`);
+
+  // a wet WALL (stacked water drops) blocks the front completely
+  const w = makeSim(13, {});
+  const v3 = w.sim.veg;
+  const half = w.world.half ?? w.world.size / 2, c = v3.cell;
+  for (let z = -200; z <= 200; z += c) v3.wetRing(-2 * c, z, c * 1.2);
+  v3.ignite(2 * c, 0, 12);
+  w.sim.runDays(8);
+  let crossed = 0;
+  for (let iz = 0; iz < v3.res; iz++) for (let ix = 0; ix < v3.res; ix++) {
+    const i = iz * v3.res + ix;
+    const x = (ix + 0.5) * c - half;
+    if (v3.burn[i] !== 0 && x < -c * 3.2) crossed++;
+  }
+  assert(crossed === 0, `fire: wet wall holds (${crossed} cells burnt west of it)`);
+
+  // firebreak (cleared line) blocks the front
+  const f = makeSim(14, {});
+  const v4 = f.sim.veg;
+  v4.clearLine(-c * 1.5, -200, -c * 1.5, 200, 16);
+  v4.ignite(c * 1.5, 0, 12);
+  f.sim.runDays(8);
+  let crossedFb = 0;
+  for (let iz = 0; iz < v4.res; iz++) for (let ix = 0; ix < v4.res; ix++) {
+    const i = iz * v4.res + ix;
+    const x = (ix + 0.5) * c - half;
+    if (v4.burn[i] !== 0 && x < -c * 2.5) crossedFb++;
+  }
+  assert(crossedFb === 0, `fire: firebreak holds (${crossedFb} cells burnt west of the cleared line)`);
+
+  // regrowth: a burnt grass cell recovers and its scorch fades
+  const r = makeSim(15, {});
+  const v5 = r.sim.veg;
+  const gi = v5.cellIndex(0, 0);
+  v5.ignite(0, 0, 24);
+  r.sim.runDays(3);
+  const minAfter = v5.cover[gi];
+  assert(v5.scorch[gi] > 0, 'fire: scorch present right after the burn');
+  r.sim.runDays(75);
+  assert(v5.scorch[gi] < 0.25, `fire: scorch fades over a season (${v5.scorch[gi].toFixed(2)})`);
+  assert(v5.cover[gi] > minAfter, `fire: burnt cell regrows (${minAfter.toFixed(3)} -> ${v5.cover[gi].toFixed(3)})`);
+
+  // determinism: same seed, same fire -> identical burnt maps
+  const d1 = makeSim(16, {}), d2 = makeSim(16, {});
+  d1.sim.veg.ignite(0, 0, 24); d2.sim.veg.ignite(0, 0, 24);
+  d1.sim.runDays(10); d2.sim.runDays(10);
+  let same = true;
+  for (let i = 0; i < d1.sim.veg.nCells; i++) if (d1.sim.veg.burn[i] !== d2.sim.veg.burn[i] || d1.sim.veg.scorch[i] !== d2.sim.veg.scorch[i]) { same = false; break; }
+  assert(same, 'fire: two runs of the same seed produce identical burnt maps');
+
+  // injectEvent('fire') lights and reports
+  const ev = makeSim(17, {});
+  const rec = ev.sim.injectEvent('fire', { x: 0, z: 0, radius: 24 });
+  assert(rec && rec.type === 'fire', 'fire: injectEvent(fire) records the event');
+  assert(ev.sim.veg.fireStats().burning > 0, 'fire: injectEvent(fire) lights cells');
 }
 
 // ---------------------------------------------------------------- last report of the baseline park

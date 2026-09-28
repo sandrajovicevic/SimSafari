@@ -61,6 +61,65 @@ function computeSun() {
   S.ambient.setRGB(0.55 * amb * 0.5, 0.65 * amb * 0.5, 0.85 * amb * 0.5);
 }
 
+/** Wave P2: pin flame + smoke emitters to burning vegetation cells (world.vegetation.burn). Scans the
+ * 64² uint8 burn grid every 3rd frame: counts the front, keeps up to 16 emitter positions and the
+ * front centroid for the glow light. Flames scale with the front (1.2 -> 2.2 m); smoke is a tall
+ * buoyant column (life 9 s, size 2.4) visible at 160 m by day. A single orange PointLight rides the
+ * front centroid as the night glow. Emitters idle and the light drops to 0 when the front dies. */
+const FIRE_EMITTERS = 16;
+function updateFireFront() {
+  const veg = ctx.world.vegetation;
+  if (!veg?.burn || !particles) return;
+  if (S.fireFlames === undefined) {
+    S.fireFlames = []; S.fireSmoke = []; S.fireScan = 0; S.fireCursor = 0; S.fireCells = [];
+    S.fireGlow = new THREE.PointLight(0xff7a2a, 0, 140, 2);
+    S.fireGlow.name = 'fire-glow';
+    ctx.scene.add(S.fireGlow);
+  }
+  S.fireScan = (S.fireScan + 1) % 3;
+  if (S.fireScan !== 0) return;
+  const r = veg.res, c = veg.cell, half = ctx.world.half ?? ctx.world.size / 2;
+  const found = S.fireCells;
+  found.length = 0;
+  let burning = 0, cx = 0, cz = 0;
+  const start = (S.fireCursor = (S.fireCursor + 7) % (r * r));
+  for (let k = 0; k < r * r; k++) {
+    const i = (start + k) % (r * r);
+    if (veg.burn[i] !== 1) continue;
+    burning++;
+    const iz = (i / r) | 0, ix = i - iz * r;
+    if (found.length < FIRE_EMITTERS) found.push([(ix + 0.5) * c - half, (iz + 0.5) * c - half]);
+    cx += (ix + 0.5) * c - half; cz += (iz + 0.5) * c - half;
+  }
+  // flames read at 160 m: a 16 m burning cell is a line of 1-3 m flames; drawn a little larger than
+  // life (2.4-3.6 m sprites, fast rise) because one emitter stands in for a whole cell
+  const scale = Math.min(1.0, burning / 40);
+  const flameSize = 1.3 + scale * 0.6, flameRate = 70 + scale * 30;
+  while (S.fireFlames.length < found.length) {
+    const fl = particles.emitter('fire', { rate: flameRate, size: flameSize, life: 0.8, speed: 2.2, spread: 0.25 });
+    const sm = particles.emitter('firesmoke', { rate: 9, size: 3.0, life: 12, speed: 0.4, spread: 0.2 });
+    if (!fl || !sm) break;
+    S.fireFlames.push(fl); S.fireSmoke.push(sm);
+  }
+  const gx = burning ? cx / burning : 0, gz = burning ? cz / burning : 0;
+  const gy = burning && ctx.world.getHeight ? ctx.world.getHeight(gx, gz) : 0;
+  // physical point light (candela, inverse-square): ~800 cd lights the ground ~30-50 m round the
+  // front at night (the old min(4, burning/30) was < 0.001 lux at 20 m: invisible)
+  S.fireGlow.position.set(gx, gy + 8, gz);
+  S.fireGlow.intensity = burning ? 450 + 350 * Math.min(1, burning / 20) : 0;
+  for (let i = 0; i < S.fireFlames.length; i++) {
+    const fl = S.fireFlames[i], sm = S.fireSmoke[i];
+    if (i < found.length) {
+      const x = found[i][0], z = found[i][1];
+      const y = (ctx.world.getHeight ? ctx.world.getHeight(x, z) : 0) + 0.4;
+      fl.setPosition(x, y, z); fl.set({ rate: flameRate, size: flameSize });
+      sm?.setPosition(x, y + 2.5, z); sm?.set({ rate: 9, size: 3.0, life: 12 });
+    } else {
+      fl.set({ rate: 0 }); sm?.set({ rate: 0 });
+    }
+  }
+}
+
 function autoAmbientDust() {
   // dust hangs in the air at golden hour when it is dry and calm
   const w = ctx.world.weather;
@@ -111,6 +170,7 @@ const api = {
     return {
       quality: pipeline?.quality, enabled: pipeline ? { ...pipeline.enabled } : null, failed: pipeline ? { ...pipeline.failed } : null,
       msaa: pipeline?.msaaSamples, haze: haze?.strength ?? 0, ambientDust: S.ambientAlpha, particles: particles ? (particles.countAlive(), { ...particles.stats, capacity: particles.capacity }) : null,
+      fire: { emitters: S.fireFlames?.length ?? 0, scan: S.fireScan ?? -1, burningCells: ctx?.world?.vegetation?.burn ? [...ctx.world.vegetation.burn].reduce((a, b) => a + (b === 1), 0) : -1 },
     };
   },
 };
@@ -147,6 +207,7 @@ export default {
   update(dt, t) {
     if (!ctx) return;
     computeSun();
+    updateFireFront();
     const w = ctx.world.weather;
     haze.update({ temperature: w.temperature ?? 28, sunUp: S.sunUp });
     S.ambientAlpha = (S.ambientDust >= 0 ? S.ambientDust : autoAmbientDust()) * 0.55;
@@ -166,6 +227,9 @@ export default {
     try { ctx?.app.setRenderFn(null); } catch { /* ignore */ }
     disposeStage(ctx);
     pipeline?.dispose(); pipeline = null;
+    if (S.fireFlames) { for (const e of S.fireFlames) e?.dispose?.(); for (const e of S.fireSmoke) e?.dispose?.(); }
+    S.fireFlames = null; S.fireSmoke = null;
+    S.fireGlow?.removeFromParent(); S.fireGlow = null;
     particles?.dispose(); particles = null;
     group?.removeFromParent(); group = null;
     S.fallbackLooked = false; S.fallbackSun = null; S.lightIn = null;

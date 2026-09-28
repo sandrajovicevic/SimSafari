@@ -101,6 +101,12 @@ const api = {
   plantQuote: (type, x, z, radius) => sim?.plantQuote(type, x, z, radius) ?? { cells: 0, ha: 0, cost: 0, affordable: false },
   /** Undo a plant() using the `undo` token it returned (restores cover, refunds). → boolean. */
   unplant: (token) => sim?.unplant(token) ?? false,
+  /** Firebreak (Wave P2): clear a stroke to mineral soil ($200/ha) so fire cannot cross. → {ok, cells, ha, cost}. */
+  firebreak: (x0, z0, x1, z1, width = 12) => sim?.firebreak(x0, z0, x1, z1, width) ?? { ok: false, cells: 0, ha: 0, cost: 0 },
+  /** Water drop (Wave P2): wet a disc ($120/ha) so it cannot ignite or carry fire for ~a week. → {ok, cells, ha, cost}. */
+  waterDrop: (x, z, radius = 32) => sim?.waterDrop(x, z, radius) ?? { ok: false, cells: 0, ha: 0, cost: 0 },
+  /** Live fire counters { burning, burntHa, wetCells, fires, version } (Wave P2). */
+  fireStats: () => sim?.fireStats() ?? null,
   /** { [plantId]: cover 0..1 } of the 16 m vegetation cell at world (x, z). */
   getVegetation: (x, z) => sim?.getVegetation(x, z) ?? null,
   /** Per species in a habitat: { n, food, need, perAnimal, capacity, foodCapacity, spaceCapacity }. */

@@ -334,6 +334,17 @@ All at 960×540, `seed=1`, `quality=high`, zero console errors on every shot.
 | `night` | 22 | `tools/shots/effects-night-22.png` | 215 | 260,427 | Bloom on the 4 lit lamp heads and campfire embers, point-lit ground pools, stars visible in the upper sky band, blacks not crushed; round halos (13-tap bloom) and a cool, desaturated ground under warm lamp pools (night shift, 2026-09-25). Same horizon-band artifact as `heat` (inherited from `environment`). |
 | `off` | 17.5 | `tools/shots/effects-off-17_5.png` | 192 | 235,058 | Pipeline bypassed for the A/B above — same camera/time as `overview`. |
 
+## Fire + smoke over wildfires (Wave P2, 2026-09-26)
+
+New self-lit `fire` particle kind (KIND.fire): fast rise with flicker, shrinking radius, HDR hot
+colour (1.35-1.6) that the bloom pass carries at night — flames bypass the scene-light term in the
+particle shader (`selfLit`), so they read in any light. `updateFireFront()` scans the simulation's
+`world.vegetation.burn` grid (64² uint8) every 6th frame and round-robins up to 8 flame + 8 smoke
+emitter pairs onto burning cells (extras idle; zero cost when nothing burns — +13 draws during an
+active front, measured). Verified on the real GPU: `tools/shots/nfog-after-fire-night.png` — flame
+clusters with bloom halos over the scorched slope at 21.5 h. Gap: 8 pairs sample a 143-cell front,
+so big fires read as scattered clusters rather than a continuous wall of flame.
+
 ## Known gaps (honest)
 
 * **Effects' own showcase test-yard costs far more draw calls (157-197) than the pipeline it exists to

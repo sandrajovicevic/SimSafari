@@ -5,11 +5,13 @@
 // depth test (uSoft = 0).
 import * as THREE from 'three';
 
-export const KIND = Object.freeze({ ambient: 0, dust: 1, smoke: 2, splash: 3 });
+export const KIND = Object.freeze({ ambient: 0, dust: 1, smoke: 2, splash: 3, fire: 4, firesmoke: 5 });
 const KIND_DEFAULTS = {
   dust: { rate: 12, speed: 1.2, spread: 0.8, size: 0.45, sizeJitter: 0.5, life: 2.2, lifeJitter: 0.4 },
   smoke: { rate: 8, speed: 0.6, spread: 0.25, size: 0.55, sizeJitter: 0.4, life: 5.0, lifeJitter: 0.5 },
   splash: { rate: 40, speed: 3.2, spread: 0.5, size: 0.12, sizeJitter: 0.5, life: 0.9, lifeJitter: 0.4 },
+  fire: { rate: 22, speed: 1.6, spread: 0.45, size: 1.0, sizeJitter: 0.55, life: 0.5, lifeJitter: 0.4 },
+  firesmoke: { rate: 10, speed: 0.4, spread: 0.2, size: 3.0, sizeJitter: 0.4, life: 12.0, lifeJitter: 0.3 },
 };
 const MAX_EMITTERS = 64;
 const MAX_SPAWN_PER_FRAME = 400;
@@ -34,6 +36,7 @@ varying float vViewZ;
 varying float vRadius;
 
 void main() {
+  float selfLit = 0.0;
   vUv = uv;
   float birth = aInfo.x, life = aInfo.y, size = aInfo.z, seed = aInfo.w;
   float age = uTime - birth;
@@ -71,12 +74,35 @@ void main() {
       radius = size * (1.0 + 3.2 * t);
       alpha = smoothstep(0.0, 0.1, t) * (1.0 - t) * 0.45;
       albedo = vec3(0.42, 0.42, 0.45);
-    } else {
+    } else if (aKind < 3.5) {
       // splash droplets: ballistic
       p = aPos + aVel * age + vec3(0.0, -4.9 * age * age, 0.0);
       radius = size;
       alpha = (1.0 - t * t) * 0.9;
       albedo = vec3(0.9, 0.95, 1.05);
+    } else if (aKind > 4.5) {
+      // wildfire smoke (Wave P2): a dense column — strong buoyant rise that slows with height, little
+      // wind drift (the generic smoke leaned into a horizontal streak and read as a comet), wide
+      // late growth. Dark grey-brown, lit flat (no forward-scatter lobe), warm from below near the base.
+      float rise = 5.5 * (1.0 - exp(-0.35 * age)) / 0.35;
+      p = aPos + aVel * age + uWind * age * 0.22 + vec3(0.0, rise, 0.0)
+        + vec3(sin(age * 0.7 + seed * 9.0), 0.0, cos(age * 0.6 + seed * 5.0)) * 0.6 * age;
+      radius = size * (1.0 + 4.5 * t);
+      alpha = smoothstep(0.0, 0.08, t) * (1.0 - t) * 0.62;
+      albedo = mix(vec3(0.26, 0.23, 0.20), vec3(0.34, 0.33, 0.33), t);
+      selfLit = -1.0;
+    } else {
+      // flame (Wave P2): fast rise, flicker, shrink; self-lit hot colour (bloom catches it at night)
+      float flick = 0.75 + 0.5 * sin(age * 34.0 + seed * 61.0);
+      p = aPos + aVel * age + vec3(
+        sin(age * 22.0 + seed * 31.0) * 0.22,
+        1.6 * age,
+        cos(age * 18.0 + seed * 17.0) * 0.22);
+      radius = size * (1.15 - 0.75 * t) * (0.8 + 0.4 * flick);
+      alpha = smoothstep(0.0, 0.12, t) * (1.0 - t) * (0.75 + 0.35 * flick);
+      // yellow-white only at the root, orange-red tongues above; stretched vertically in the corner below
+      albedo = mix(vec3(1.55, 0.95, 0.30), vec3(1.25, 0.34, 0.06), smoothstep(0.1, 0.7, t)) * (0.85 + 0.25 * flick);
+      selfLit = 1.0;
     }
     rot += age * (0.6 + seed);
   }
@@ -84,9 +110,17 @@ void main() {
   vec3 viewDir = normalize(p - uCamPos);
   float fwd = pow(max(dot(viewDir, uSunDir), 0.0), 6.0);
   vec3 light = uAmbient + uSunColor * (0.45 + 1.8 * fwd);
+  if (selfLit > 0.5) light = vec3(1.0); // flames emit their own light
+  else if (selfLit < -0.5) {
+    // fire smoke: flat-lit (ambient + a third of the sun) plus a fire-lit underside for the first metres
+    float t2 = clamp(age / max(life, 0.001), 0.0, 1.0);
+    // + fire-lit from below: strong near the flames, fading up the column (warm at night, not moon-blue)
+    light = uAmbient * 0.8 + uSunColor * 0.3 + vec3(1.0, 0.42, 0.12) * (1.0 - smoothstep(0.0, 0.3, t2)) * 0.12; // x night exposure (~12): 0.9 lit the column like a lamp
+  }
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   float c = cos(rot), s = sin(rot);
   vec2 corner = position.xy * radius * 2.0;
+  if (aKind > 3.5 && aKind < 4.5) { corner = position.xy * radius * 2.0 * vec2(0.55, 1.6); c = 1.0; s = 0.0; } // flame tongue: tall, upright
   corner = vec2(corner.x * c - corner.y * s, corner.x * s + corner.y * c);
   mv.xy += corner;
   vViewZ = -mv.z;
@@ -288,7 +322,9 @@ vec4 shade(vec2 uv){
       const sp = e.speed * (0.6 + r.float() * 0.8);
       const life = e.life * (1 + (r.float() - 0.5) * 2 * e.lifeJitter);
       const size = e.size * (1 + (r.float() - 0.5) * 2 * e.sizeJitter);
-      const j = e.kind === KIND.smoke ? 0.25 : 0.15;
+      // fire: one emitter stands for a burning 16 m cell, so flames spawn along the cell (a flame line),
+      // not stacked on one point (that read as a single glowing orb)
+      const j = e.kind === KIND.fire ? 9.0 : e.kind === KIND.firesmoke ? 4.0 : e.kind === KIND.smoke ? 0.25 : 0.15;
       this.spawn(e.kind, e.position.x + (r.float() - 0.5) * j, e.position.y + (r.float() - 0.5) * j, e.position.z + (r.float() - 0.5) * j,
         t.x * sp, t.y * sp, t.z * sp, Math.max(0.1, life), Math.max(0.02, size), r.float());
     }

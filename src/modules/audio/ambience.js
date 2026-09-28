@@ -8,7 +8,7 @@ import { gain, filter, chain, lfo, noiseSource, rainBuffer, clamp, lerp } from '
 import { spatialize } from './spatial.js';
 import { BIRDS, OTHER, periodOf } from './calls.js';
 
-export const LAYER_NAMES = ['wind', 'grass', 'birds', 'insects', 'frogs', 'rain', 'thunder'];
+export const LAYER_NAMES = ['wind', 'grass', 'birds', 'insects', 'frogs', 'rain', 'thunder', 'fire'];
 
 // ----------------------------------------------------------------------------------------- layers
 export function makeWind(ac, out, rng) {
@@ -144,7 +144,7 @@ export function makeRain(ac, out, rng) {
   };
 }
 
-export const LAYER_FACTORIES = { wind: makeWind, grass: makeGrass, insects: makeInsects, frogs: makeFrogs, rain: makeRain };
+export const LAYER_FACTORIES = { wind: makeWind, grass: makeGrass, insects: makeInsects, frogs: makeFrogs, rain: makeRain, fire: makeFire };
 
 // ----------------------------------------------------------------------------------------- curves
 export function birdActivity(h) {
@@ -168,6 +168,25 @@ const _birdNames = Object.keys(BIRDS);
 const _birdWeights = new Float32Array(_birdNames.length);
 
 // --------------------------------------------------------------------------------------- Ambience
+/** Wave P2 fire crackle: a low roar (brown noise, lowpassed) plus a crackle band (white noise,
+ * highpassed, amplitude-jittered by two incommensurate square LFOs — reads as random pops). */
+export function makeFire(ac, out, rng) {
+  const g = gain(ac, 0); g.connect(out);
+  const roar = noiseSource(ac, 'brown', rng);
+  chain(roar, filter(ac, 'lowpass', 140, 0.5), gain(ac, 1.4), g);
+  const crack = noiseSource(ac, 'white', rng);
+  const cg = gain(ac, 0.55);
+  chain(crack, filter(ac, 'highpass', 2400, 0.7), filter(ac, 'bandpass', 3400, 1.6), cg, g);
+  lfo(ac, 'square', 11.3, 0.42, cg.gain);
+  lfo(ac, 'square', 7.1, 0.30, cg.gain);
+  lfo(ac, 'sine', 0.47, 0.25, g.gain);
+  roar.start(0, roar._offset); crack.start(0, crack._offset);
+  return {
+    gain: g,
+    set(level, now, k = 1) { g.gain.setTargetAtTime(level * 0.5, now, 0.35 * k); },
+  };
+}
+
 export class Ambience {
   constructor(ac, buses, rng, noise, listener) {
     this.ac = ac; this.buses = buses; this.noise = noise; this.listener = listener;
@@ -178,6 +197,7 @@ export class Ambience {
     this.insects = makeInsects(ac, out, this.rng);
     this.frogs = makeFrogs(ac, out, this.rng);
     this.rain = makeRain(ac, out, this.rng);
+    this.fire = makeFire(ac, out, this.rng);
     this.birdsOut = gain(ac, 1); this.birdsOut.connect(out);
     this.thunderOut = gain(ac, 1); this.thunderOut.connect(out);
     this.levels = new Float32Array(LAYER_NAMES.length);   // smoothed 0..1 per layer (panel / api)
@@ -214,8 +234,10 @@ export class Ambience {
     T[4] = clamp(env.water * (0.35 + 0.65 * night) + env.water * rain * 0.3, 0, 1);
     T[5] = rain;
     T[6] = now >= this.lastThunderAt ? Math.exp(-(now - this.lastThunderAt) / 3) : 0.35;
+    T[7] = clamp(env.fire ?? 0, 0, 1) * (1 - clamp(rain, 0, 0.6)); // rain douses the crackle
     L[6] = T[6];
-    if (this.snapNext) { this.snapNext = false; for (let i = 0; i < 6; i++) L[i] = T[i]; }
+    L[7] += (T[7] - L[7]) * (1 - Math.exp(-0.1 / 0.4));
+    if (this.snapNext) { this.snapNext = false; for (let i = 0; i < 6; i++) L[i] = T[i]; L[7] = T[7]; }
     // ---- layer automation, scheduled in 0.1 s steps from where the last update stopped
     const STEP = 0.1;
     let t = this.autoUntil < now ? now : this.autoUntil;
@@ -232,6 +254,7 @@ export class Ambience {
       this.insects.set(L[3], t);
       this.frogs.set(L[4], t);
       this.rain.set(L[5], t);
+      this.fire.set(L[7], t);
       t += STEP;
     }
     this.autoUntil = t;
