@@ -39,8 +39,10 @@ getEdge(id) → edge | null
 getNode(id) → node | null
 edges() → Map<id, edge>
 nodes() → Map<id, node>
-stats() → { edges, nodes, length, dirt, gravel, paved, junctions, build:{drawables,triangles,ms,junctions,bridges,edges,props} }
-rebuild()                                 // force a synchronous mesh rebuild (normally automatic next frame)
+stats() → { edges, nodes, length, dirt, gravel, paved, junctions, build:{drawables,triangles,ms,junctions,bridges,edges,props,
+                                             conformedEdges,conformMs,meshMs,propsMs} }
+rebuild(full=false)                       // force a synchronous mesh rebuild (normally automatic next frame);
+                                          //   full=true also re-conforms the terrain under every edge
 isDirty() → boolean
 setDustColor(r, g, b)                     // recolour the shoulder-dust blend uniform shared by all three kinds
 group                                     // (getter) the THREE.Group all road/bridge/prop meshes live under
@@ -136,9 +138,14 @@ the 12-edge / 5-junction / several-bridge overview network this is at most ~10 r
   (`roads-jn-top.png` before → `roads-jn-top5.png` after) and in `roads-junction-17.png`,
   `roads-overview-15.png`. Remaining nits: a hard seam where a paved apron meets a gravel/dirt leg, and
   the patch reuses a flat-ish surface (no crown continuation).
-* **A full `rebuild()` is not "a few ms"**: the critic measured `stats().build.ms` at ~1,600 ms on the
-  showcase network under SwiftShader (terrain conform dominates). It runs once per edit batch, not per
-  frame.
+* **Rebuild cost (re-measured 2026-09-28, SwiftShader, 9-edge showcase).** The critic's ~1,600 ms
+  predates terrain's changed-rows-only upload; a full rebuild now measures **138–166 ms** (terrain
+  conform 105–122 ms, meshes 31–42 ms, props ~2 ms). Terrain conform is now **incremental**: only
+  edges not yet conformed are flattened and refreshed (an external `terrain:modified` re-queues the
+  edges it touches; `terrain:ready` re-queues all), so adding one road measures **59 ms** (conform
+  11 ms). What remains is the mesh rebuild, which still regenerates every edge on any edit (~40 ms);
+  per-edge mesh caching is the next step if edits ever feel hitchy. `stats().build` reports
+  `conformMs / meshMs / propsMs / conformedEdges`. `rebuild(true)` forces a full re-conform.
 * **No traffic-facing lane geometry beyond `getLanes()`'s two-lane assumption** — every road kind
   reports exactly 2 lanes with a fixed `leftHand: true` convention; there's no notion of one-lane
   dirt tracks (realistic for a safari track) or shoulder pull-outs.

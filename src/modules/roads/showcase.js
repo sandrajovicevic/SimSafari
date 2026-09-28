@@ -161,11 +161,22 @@ function layNetworkOnTerrain(ctx, api, features) {
   const nodes = [];
   let crossings = 0;
   for (const [pts, kind] of ROUTES) {
-    const wet = longestWetRun(world, pts);
-    if (wet.len > MAX_WET_RUN) continue;
-    if (wet.len > 0 && wet.len > MAX_SKEW_RATIO * channelWidth(world, wet.x, wet.z) + 4) continue;
-    if (wet.len > 0) crossings++;
-    api.addRoad(pts, kind);
+    // Judge the BUILT edges, not the control polyline: the graph smooths/resamples the route, and the
+    // curve can take a much longer line across the water than the straight control segments (measured
+    // 2026-09-28: control points passed, built gravel edge ran 72 m wet over a 30 m channel).
+    const ids = api.addRoad(pts, kind);
+    let bad = false, wetAny = false;
+    for (const id of ids) {
+      const e = api.getEdge(id);
+      if (!e) continue;
+      const fp = [];
+      for (let i = 0; i < e.points.length; i += 2) fp.push([e.points[i], e.points[i + 1]]);
+      const wet = longestWetRun(world, fp);
+      if (wet.len > 0) wetAny = true;
+      if (wet.len > MAX_WET_RUN || (wet.len > 0 && wet.len > MAX_SKEW_RATIO * channelWidth(world, wet.x, wet.z) + 4)) { bad = true; break; }
+    }
+    if (bad) { for (const id of ids) api.removeRoad(id); continue; }
+    if (wetAny) crossings++;
     for (const p of pts) nodes.push(p);
   }
   if (!features?.pointOnRiver) return;
