@@ -100,7 +100,8 @@ void main() {
         cos(age * 18.0 + seed * 17.0) * 0.22);
       radius = size * (1.15 - 0.75 * t) * (0.8 + 0.4 * flick);
       alpha = smoothstep(0.0, 0.12, t) * (1.0 - t) * (0.75 + 0.35 * flick);
-      albedo = mix(vec3(1.35, 0.62, 0.12), vec3(1.6, 1.25, 0.45), t * flick * 0.6);
+      // yellow-white only at the root, orange-red tongues above; stretched vertically in the corner below
+      albedo = mix(vec3(1.55, 0.95, 0.30), vec3(1.25, 0.34, 0.06), smoothstep(0.1, 0.7, t)) * (0.85 + 0.25 * flick);
       selfLit = 1.0;
     }
     rot += age * (0.6 + seed);
@@ -113,11 +114,13 @@ void main() {
   else if (selfLit < -0.5) {
     // fire smoke: flat-lit (ambient + a third of the sun) plus a fire-lit underside for the first metres
     float t2 = clamp(age / max(life, 0.001), 0.0, 1.0);
-    light = uAmbient + uSunColor * 0.35 + vec3(1.2, 0.45, 0.12) * (1.0 - smoothstep(0.0, 0.18, t2)) * 0.6;
+    // + fire-lit from below: strong near the flames, fading up the column (warm at night, not moon-blue)
+    light = uAmbient * 0.8 + uSunColor * 0.3 + vec3(1.0, 0.42, 0.12) * (1.0 - smoothstep(0.0, 0.45, t2)) * 0.9;
   }
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   float c = cos(rot), s = sin(rot);
   vec2 corner = position.xy * radius * 2.0;
+  if (aKind > 3.5 && aKind < 4.5) { corner = position.xy * radius * 2.0 * vec2(0.55, 1.6); c = 1.0; s = 0.0; } // flame tongue: tall, upright
   corner = vec2(corner.x * c - corner.y * s, corner.x * s + corner.y * c);
   mv.xy += corner;
   vViewZ = -mv.z;
@@ -319,7 +322,9 @@ vec4 shade(vec2 uv){
       const sp = e.speed * (0.6 + r.float() * 0.8);
       const life = e.life * (1 + (r.float() - 0.5) * 2 * e.lifeJitter);
       const size = e.size * (1 + (r.float() - 0.5) * 2 * e.sizeJitter);
-      const j = e.kind === KIND.smoke ? 0.25 : 0.15;
+      // fire: one emitter stands for a burning 16 m cell, so flames spawn along the cell (a flame line),
+      // not stacked on one point (that read as a single glowing orb)
+      const j = e.kind === KIND.fire ? 9.0 : e.kind === KIND.firesmoke ? 4.0 : e.kind === KIND.smoke ? 0.25 : 0.15;
       this.spawn(e.kind, e.position.x + (r.float() - 0.5) * j, e.position.y + (r.float() - 0.5) * j, e.position.z + (r.float() - 0.5) * j,
         t.x * sp, t.y * sp, t.z * sp, Math.max(0.1, life), Math.max(0.02, size), r.float());
     }

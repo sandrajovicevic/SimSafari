@@ -72,7 +72,7 @@ function updateFireFront() {
   if (!veg?.burn || !particles) return;
   if (S.fireFlames === undefined) {
     S.fireFlames = []; S.fireSmoke = []; S.fireScan = 0; S.fireCursor = 0; S.fireCells = [];
-    S.fireGlow = new THREE.PointLight(0xff8c3a, 0, 260, 2);
+    S.fireGlow = new THREE.PointLight(0xff7a2a, 0, 140, 2);
     S.fireGlow.name = 'fire-glow';
     ctx.scene.add(S.fireGlow);
   }
@@ -94,19 +94,19 @@ function updateFireFront() {
   // flames read at 160 m: a 16 m burning cell is a line of 1-3 m flames; drawn a little larger than
   // life (2.4-3.6 m sprites, fast rise) because one emitter stands in for a whole cell
   const scale = Math.min(1.0, burning / 40);
-  const flameSize = 2.4 + scale * 1.2, flameRate = 40 + scale * 20;
+  const flameSize = 1.3 + scale * 0.6, flameRate = 70 + scale * 30;
   while (S.fireFlames.length < found.length) {
-    const fl = particles.emitter('fire', { rate: flameRate, size: flameSize, life: 0.7, speed: 2.4, spread: 0.35 });
+    const fl = particles.emitter('fire', { rate: flameRate, size: flameSize, life: 0.8, speed: 2.2, spread: 0.25 });
     const sm = particles.emitter('firesmoke', { rate: 9, size: 3.0, life: 12, speed: 0.4, spread: 0.2 });
     if (!fl || !sm) break;
     S.fireFlames.push(fl); S.fireSmoke.push(sm);
   }
   const gx = burning ? cx / burning : 0, gz = burning ? cz / burning : 0;
   const gy = burning && ctx.world.getHeight ? ctx.world.getHeight(gx, gz) : 0;
-  // physical point light (candela, inverse-square): ~1500 cd lights the ground ~30-60 m round the
+  // physical point light (candela, inverse-square): ~800 cd lights the ground ~30-50 m round the
   // front at night (the old min(4, burning/30) was < 0.001 lux at 20 m: invisible)
-  S.fireGlow.position.set(gx, gy + 10, gz);
-  S.fireGlow.intensity = burning ? 900 + 600 * Math.min(1, burning / 20) : 0;
+  S.fireGlow.position.set(gx, gy + 8, gz);
+  S.fireGlow.intensity = burning ? 450 + 350 * Math.min(1, burning / 20) : 0;
   for (let i = 0; i < S.fireFlames.length; i++) {
     const fl = S.fireFlames[i], sm = S.fireSmoke[i];
     if (i < found.length) {

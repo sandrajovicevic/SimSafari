@@ -113,9 +113,9 @@ vec3 tAlbedo; float tRough; float tAo; vec3 tNormalW;
     if (scorch > 0.003) {
       // char: near-black with pale ash drifts (two noise scales) — the ground photo's crack relief
       // is flattened under the ash (normal toward up, AO lifted), else a burn read as grey dried mud
-      float ashN = snoise(wxz * 0.35) * 0.5 + 0.5;
-      float ash = smoothstep(0.55, 0.85, ashN) * (0.6 + 0.4 * (snoise(wxz * 1.7) * 0.5 + 0.5));
-      vec3 charCol = mix(vec3(0.028, 0.024, 0.021), vec3(0.20, 0.19, 0.18), ash);
+      // soft, low-contrast ash (a hard high-contrast mask read as white worms at 160 m)
+      float ash = smoothstep(0.25, 0.95, snoise(wxz * 0.12) * 0.5 + 0.5) * 0.7 + 0.3 * (snoise(wxz * 0.9) * 0.5 + 0.5);
+      vec3 charCol = mix(vec3(0.030, 0.026, 0.023), vec3(0.085, 0.080, 0.075), ash);
       float sc = clamp(scorch * 1.15, 0.0, 1.0);
       tAlbedo = mix(tAlbedo, charCol, sc * 0.94);
       tRough = mix(tRough, 0.97, sc * 0.8);
@@ -185,7 +185,7 @@ export function createTerrainMaterial(ctx, layers, control) {
       .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(tNormalW, 0.0)).xyz);')
       .replace('#include <aomap_fragment>', 'reflectedLight.indirectDiffuse *= tAo; reflectedLight.directDiffuse *= mix(1.0, tAo, 0.35);');
   };
-  m.customProgramCacheKey = () => 'terrain-splat-v6';
+  m.customProgramCacheKey = () => 'terrain-splat-v7';
   return m;
 }
 
