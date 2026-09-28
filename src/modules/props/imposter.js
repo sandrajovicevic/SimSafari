@@ -212,6 +212,50 @@ export function bakeImposter(ctx, meshes, { size = 256, pad = 1.04 } = {}) {
   return { texture: tex, top, sideN, topN, topExtent: ext, crownY, width: w, height: h, baseY: _box.min.y };
 }
 
+// Shared vertex hooks: the colour material and its shadow-depth twin must place the quads identically.
+function twoViewVertex(shader) {
+  // aKind = 1 marks the horizontal crown card. Weights cross-fade on the view's downward pitch
+  // (|forward.y|): side card below ~25°, crown card above ~45°, dithered so no sorting. In the shadow
+  // pass the "view" is the sun, so a high sun casts the crown card and a low sun the side silhouette.
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute float aKind; uniform float uTopExt; uniform float uCrownY; uniform float uW; varying float vKind; varying float vW; varying vec2 vTopUv; varying vec3 vRightW; varying float vMir;')
+    .replace('#include <uv_vertex>', `#include <uv_vertex>
+  vKind = aKind;
+  float camDown = abs( viewMatrix[1][2] ); // world-up component of the camera's view axis
+  float wTop = smoothstep( 0.42, 0.72, camDown );
+  vW = aKind > 0.5 ? wTop : 1.0 - smoothstep( 0.55, 0.85, camDown );
+  vTopUv = vec2( position.x + 0.5, 0.5 - position.z );`);
+}
+
+function billboardVertex(shader) {
+  // Cylindrical billboard. The instance matrix stays a plain translate+scale so three's own
+  // project_vertex / worldpos_vertex / shadowmap_vertex chunks keep working: we only pre-rotate
+  // `transformed` so that instanceMatrix * transformed lands on the camera-facing quad.
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <beginnormal_vertex>', 'vec3 objectNormal = vec3( 0.0, 1.0, 0.0 );')
+    .replace('#include <begin_vertex>', /* glsl */ `
+vec3 transformed = vec3( position );
+#ifdef USE_INSTANCING
+  // instanceMatrix is a plain translate+scale, so column 0 x is the SIGNED width scale; using it
+  // (rather than its length) means a negative scale mirrors the card instead of shearing it.
+  float iSX = instanceMatrix[0][0];
+  vec3 camRightW = normalize( vec3( viewMatrix[0][0], 0.0, viewMatrix[2][0] ) + vec3( 1e-5, 0.0, 0.0 ) );
+  transformed = vec3( camRightW.x * position.x, position.y, camRightW.z * position.x * iSX );
+  #ifdef IMPOSTER_2VIEW
+  vRightW = camRightW; vMir = iSX < 0.0 ? -1.0 : 1.0;
+  #endif
+  #ifdef IMPOSTER_2VIEW
+  if ( aKind > 0.5 ) {
+  // crown card: instance x scale is (signed) baked width × tree scale, z scale is 1 — so x stays in
+  // baked-width units and z is converted to metres × tree scale (wAbs / uW)
+  float wAbs = abs( iSX );
+  transformed = vec3( position.x * uTopExt / uW, uCrownY, position.z * uTopExt * wAbs / uW );
+  }
+  #endif
+#endif
+`);
+}
+
 /**
  * Material for imposter quads: camera-facing, normal forced to +Y, alpha tested.
  * The unit quad geometry spans x ∈ [-0.5, 0.5], y ∈ [0, 1]; the instance matrix carries
@@ -235,14 +279,7 @@ export function imposterMaterial(ctx, texture, key, top = null, topExtent = 1, c
       shader.uniforms.uSideN = uSideN; shader.uniforms.uTopN = uTopN;
       // aKind = 1 marks the horizontal crown card. Weights cross-fade on the camera's downward
       // pitch (|forward.y|): side card below ~25°, crown card above ~45°, dithered so no sorting.
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute float aKind; uniform float uTopExt; uniform float uCrownY; uniform float uW; varying float vKind; varying float vW; varying vec2 vTopUv; varying vec3 vRightW; varying float vMir;')
-        .replace('#include <uv_vertex>', `#include <uv_vertex>
-  vKind = aKind;
-  float camDown = abs( viewMatrix[1][2] ); // world-up component of the camera's view axis
-  float wTop = smoothstep( 0.42, 0.72, camDown );
-  vW = aKind > 0.5 ? wTop : 1.0 - smoothstep( 0.55, 0.85, camDown );
-  vTopUv = vec2( position.x + 0.5, 0.5 - position.z );`);
+      twoViewVertex(shader);
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\nuniform sampler2D uTop; uniform sampler2D uSideN; uniform sampler2D uTopN; varying float vKind; varying float vW; varying vec2 vTopUv; varying vec3 vRightW; varying float vMir;')
         .replace('#include <map_fragment>', `
@@ -269,33 +306,31 @@ export function imposterMaterial(ctx, texture, key, top = null, topExtent = 1, c
   }`);
       }
     }
-    // Cylindrical billboard. The instance matrix stays a plain translate+scale so three's own
-    // project_vertex / worldpos_vertex / shadowmap_vertex chunks keep working: we only pre-rotate
-    // `transformed` so that instanceMatrix * transformed lands on the camera-facing quad.
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <beginnormal_vertex>', 'vec3 objectNormal = vec3( 0.0, 1.0, 0.0 );')
-      .replace('#include <begin_vertex>', /* glsl */ `
-vec3 transformed = vec3( position );
-#ifdef USE_INSTANCING
-  // instanceMatrix is a plain translate+scale, so column 0 x is the SIGNED width scale; using it
-  // (rather than its length) means a negative scale mirrors the card instead of shearing it.
-  float iSX = instanceMatrix[0][0];
-  vec3 camRightW = normalize( vec3( viewMatrix[0][0], 0.0, viewMatrix[2][0] ) + vec3( 1e-5, 0.0, 0.0 ) );
-  transformed = vec3( camRightW.x * position.x, position.y, camRightW.z * position.x * iSX );
-  #ifdef IMPOSTER_2VIEW
-  vRightW = camRightW; vMir = iSX < 0.0 ? -1.0 : 1.0;
-  #endif
-  #ifdef IMPOSTER_2VIEW
-  if ( aKind > 0.5 ) {
-    // crown card: instance x scale is (signed) baked width × tree scale, z scale is 1 — so x stays in
-    // baked-width units and z is converted to metres × tree scale (wAbs / uW)
-    float wAbs = abs( iSX );
-    transformed = vec3( position.x * uTopExt / uW, uCrownY, position.z * uTopExt * wAbs / uW );
-  }
-  #endif
-#endif
-`);
+    billboardVertex(shader);
   };
+  // Shadow twin (2026-09-28). Imposters used to cast no shadow, so every far tree floated on the
+  // plain with no ground shadow — the strongest remaining "blob tree" tell at overview range (blind
+  // round 8 issue 2). Three's default depth material would draw the raw, un-billboarded quad, so this
+  // twin runs the same vertex hooks and the same card/alpha choice; the caller sets it as the mesh's
+  // customDepthMaterial and turns castShadow on.
+  const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: texture, alphaTest: 0.42, side: THREE.DoubleSide });
+  if (top) depth.defines = { IMPOSTER_2VIEW: '' };
+  depth.customProgramCacheKey = () => (top ? 'imposter-depth-2view' : 'imposter-depth');
+  depth.onBeforeCompile = (shader) => {
+    if (top) {
+      shader.uniforms.uTop = uTop; shader.uniforms.uTopExt = uTopExt; shader.uniforms.uCrownY = uCrownY; shader.uniforms.uW = uW;
+      twoViewVertex(shader);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform sampler2D uTop; varying float vKind; varying float vW; varying vec2 vTopUv;')
+        .replace('#include <map_fragment>', `
+  vec4 sampledDiffuseColor = vKind > 0.5 ? texture2D( uTop, vTopUv ) : texture2D( map, vMapUv );
+  diffuseColor *= sampledDiffuseColor;
+  float ign = fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) );
+  if ( ign > vW ) diffuseColor.a = 0.0;`);
+    }
+    billboardVertex(shader);
+  };
+  mat.userData.depthMaterial = depth;
   return mat;
 }
 

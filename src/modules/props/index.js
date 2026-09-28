@@ -669,9 +669,13 @@ function ensureGroups() {
       const need = Math.max(8, Math.ceil(perVariant[v] * 1.3));
       if (variant.imposterGroup && variant.imposterGroup.cap >= perVariant[v]) continue;
       variant.imposterGroup?.dispose();
+      // far trees cast shadows through the billboarded depth twin (imposter.js) — without one they
+      // floated on the plain with no ground shadow at overview range
+      const depthMat = variant.imposter.mat.userData.depthMaterial || null;
       variant.imposterGroup = new InstGroup([{ geo: variant.imposter.geo, mat: variant.imposter.mat }], need, {
-        castShadow: false, receiveShadow: true, name: `props-${sp.kind}-v${v}-imposter`,
+        castShadow: !!depthMat, receiveShadow: true, name: `props-${sp.kind}-v${v}-imposter`,
       }).addTo(S.group);
+      if (depthMat) for (const m of variant.imposterGroup.meshes) m.customDepthMaterial = depthMat;
     }
   }
 }
@@ -1248,6 +1252,7 @@ export default {
         v.imposter.top?.userData?.renderTarget?.dispose();
         v.imposter.sideN?.userData?.renderTarget?.dispose();
         v.imposter.topN?.userData?.renderTarget?.dispose();
+        v.imposter.mat.userData.depthMaterial?.dispose();
         S.ctx.materials.untrack(v.imposter.mat); v.imposter.mat.dispose();
       }
     }
