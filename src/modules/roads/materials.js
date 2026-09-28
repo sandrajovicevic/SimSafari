@@ -29,15 +29,18 @@ float height(vec2 uv){
   float base = tfbm(uv, 5.0, 5, uSeed) * 0.5 + 0.5;
   float fine = tfbm(uv, 70.0, 2, uSeed + 4.0) * 0.5 + 0.5;
   vec3 w = tworleyId(uv, 56.0, uSeed + 1.0);
-  float peb = smoothstep(0.24, 0.08, w.x) * step(0.80, w.z);
+  // sparser and size-varied: one size of pebble on every 5th cell read as a polka-dot stud grid
+  float pr = 0.10 + 0.14 * fract(w.z * 13.7);
+  float peb = smoothstep(pr, pr * 0.35, w.x) * step(0.88, w.z);
   vec3 w2 = tworleyId(uv, 18.0, uSeed + 9.0);
-  float stone = smoothstep(0.28, 0.10, w2.x) * step(0.90, w2.z);
+  float sr = 0.14 + 0.18 * fract(w2.z * 29.3);
+  float stone = smoothstep(sr, sr * 0.4, w2.x) * step(0.965, w2.z);   // was 1 in 10 cells at one size: a 0.5 m stud lattice
   // base fbm was 0.62 of the height, and its 5-octave gradient in the normal map read as combed,
   // wind-rippled sand (critic roads r4 #4). Relief now comes mostly from discrete grit, pebbles and
   // stones: dry compacted laterite reads as fine grit plus scattered stones, not dunes.
   vec3 w3 = tworleyId(uv, 110.0, uSeed + 13.0);
-  float grit = smoothstep(0.30, 0.12, w3.x) * step(0.55, w3.z);
-  return clamp(0.35 + base * 0.22 + fine * 0.10 + grit * 0.14 + peb * 0.30 + stone * 0.42, 0.0, 1.0);
+  float grit = smoothstep(0.26, 0.10, w3.x) * step(0.82, w3.z);
+  return clamp(0.37 + base * 0.22 + fine * 0.12 + grit * 0.06 + peb * 0.26 + stone * 0.42, 0.0, 1.0);
 }`,
     albedo: HELPERS + /* glsl */ `
 vec3 albedo(vec2 uv, float h){
@@ -47,9 +50,11 @@ vec3 albedo(vec2 uv, float h){
   vec3 c = mix(laterite, tan, macro);
   c *= 0.82 + 0.34 * h;
   vec3 w = tworleyId(uv, 56.0, uSeed + 1.0);
-  float peb = smoothstep(0.24, 0.08, w.x) * step(0.80, w.z);
+  float pr = 0.10 + 0.14 * fract(w.z * 13.7);
+  float peb = smoothstep(pr, pr * 0.35, w.x) * step(0.88, w.z);
   vec3 w2 = tworleyId(uv, 18.0, uSeed + 9.0);
-  float stone = smoothstep(0.28, 0.10, w2.x) * step(0.90, w2.z);
+  float sr = 0.14 + 0.18 * fract(w2.z * 29.3);
+  float stone = smoothstep(sr, sr * 0.4, w2.x) * step(0.965, w2.z);   // was 1 in 10 cells at one size: a 0.5 m stud lattice
   vec3 pebCol = mix(vec3(0.245, 0.220, 0.190), vec3(0.150, 0.126, 0.104), w.z);
   c = mix(c, pebCol, peb * 0.45);
   c = mix(c, vec3(0.205, 0.185, 0.158) * (0.8 + 0.4 * w2.z), stone * 0.5);
@@ -329,13 +334,18 @@ ${GLSL_NOISE}`)
     // sparse repair patches (critic roads r4 #3: "featureless tar, no repair patches"): hard-edged
     // rectangles of newer, blacker tar, one lane wide, on ~1 in 4 of the 17 m cells along the road
     float cell = floor(s / 17.0);
-    float ph = fract(sin(cell * 91.7 + 13.1) * 43758.5453);
-    float side = ph > 0.5 ? 1.0 : -1.0;
+    // independent 2-D hashes per decision (a single hash re-fracted at 3.7x/5.3x/7.31x was strongly
+    // correlated: measured 2 patch cells in 40 instead of ~10)
+    float hOn = fract(sin(cell * 12.9898 + 78.233) * 43758.5453);
+    float hSide = fract(sin(cell * 12.9898 + 156.466) * 43758.5453);
+    float hLen = fract(sin(cell * 12.9898 + 234.699) * 43758.5453);
+    float hW = fract(sin(cell * 12.9898 + 312.932) * 43758.5453);
+    float side = hSide > 0.5 ? 1.0 : -1.0;
     float u0 = fract(s / 17.0);
-    float plen = 0.25 + 0.35 * fract(ph * 7.31);
-    float inPatch = step(0.74, fract(ph * 3.7)) * step(0.15, u0) * step(u0, 0.15 + plen)
-                  * step(0.05, a * side) * step(a * side, 1.9 + 0.8 * fract(ph * 5.3)) * rutMask;
-    col = mix(col, col * vec3(0.62, 0.63, 0.66), inPatch);
+    float plen = 0.25 + 0.35 * hLen;
+    float inPatch = step(0.75, hOn) * step(0.15, u0) * step(u0, 0.15 + plen)
+                  * step(0.05, a * side) * step(a * side, 1.9 + 0.8 * hW) * rutMask;
+    col = mix(col, col * vec3(0.72, 0.73, 0.76), inPatch);
     gPaint *= 1.0 - inPatch * 0.7;
     totalEmissiveRadiance += vec3(0.9, 0.85, 0.7) * paint * uNight * 0.35;
   #endif
