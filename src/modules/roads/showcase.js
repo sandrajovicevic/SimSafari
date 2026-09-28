@@ -149,6 +149,7 @@ const MAX_WET_RUN = 60;   // m: a clean crossing of the 18–50 m channel; longe
 // A crossing longer than this × the local channel width is skewed ≳ 40° off square: real tracks cross short
 // (critic roads r4 #2 re-check 2026-09-28: a 25° skew across a ~25 m channel passed the 60 m cap).
 const MAX_SKEW_RATIO = 1.5;
+const MAX_GRADE = 0.18;   // rise/run over 8 m on dry ground; steeper means rock (kopje, escarpment)
 
 /** Nearest point on the generated river to (x, z): { x, z, nx, nz, hw } from terrain features. */
 function nearestRiverPoint(features, x, z) {
@@ -273,18 +274,42 @@ function layRiverNetwork(ctx, api, graph, features) {
     }
     return wet;
   };
+  // steepest 8 m rise along the built edges: kopjes and the escarpment are rock a track would never
+  // climb (first river-frame try ran the paved spine up the escarpment face)
+  const edgeGrade = (ids) => {
+    let g = 0;
+    for (const id of ids) {
+      const e = api.getEdge(id);
+      if (!e) continue;
+      const p = e.points;
+      for (let i = 0; i + 2 < p.length; i += 2) {
+        let j = i + 2, d = 0;
+        while (j + 2 < p.length && d < 8) { d += Math.hypot(p[j] - p[j - 2], p[j + 1] - p[j - 1]); j += 2; }
+        if (d < 4) continue;
+        if (world.isWater(p[i], p[i + 1]) || world.isWater(p[j - 2], p[j - 1])) continue;   // banks under decks
+        g = Math.max(g, Math.abs(world.getHeight(p[j - 2], p[j - 1]) - world.getHeight(p[i], p[i + 1])) / d);
+      }
+    }
+    return g;
+  };
   const add = (pts, kind, crossing) => {
     const ids = api.addRoad(pts, kind);
     const wet = edgeWet(ids);
-    const ok = crossing ? (wet > 0 && wet <= MAX_WET_RUN) : wet === 0;
+    const ok = (crossing ? (wet > 0 && wet <= MAX_WET_RUN) : wet === 0) && edgeGrade(ids) <= MAX_GRADE;
     if (!ok) { for (const id of ids) api.removeRoad(id); return false; }
     return true;
   };
   const A = frame(0.44), B = frame(0.64);
   const ha = A.r.hw, hb = B.r.hw;
   const P = A.at;
-  // paved spine, square across the river at A (bank points pin the crossing square)
-  if (!add([P(-40, -260), P(-15, -150), P(0, -(ha + 45)), P(0, -(ha + 8)), P(0, ha + 8), P(0, ha + 45), P(20, 150), P(60, 260)], 'paved', true)) return null;
+  // paved spine, square across the river at A (bank points pin the crossing square); shortened
+  // until it clears rock
+  const spines = [
+    [P(-40, -260), P(-15, -150), P(0, -(ha + 45)), P(0, -(ha + 8)), P(0, ha + 8), P(0, ha + 45), P(20, 150), P(60, 260)],
+    [P(-15, -170), P(-5, -110), P(0, -(ha + 45)), P(0, -(ha + 8)), P(0, ha + 8), P(0, ha + 45), P(20, 150), P(60, 260)],
+    [P(-5, -120), P(0, -(ha + 45)), P(0, -(ha + 8)), P(0, ha + 8), P(0, ha + 45), P(20, 150)],
+  ];
+  if (!spines.some((sp) => add(sp, 'paved', true))) return null;
   // gravel loop on the far side of A, hanging off the spine (two 3-way junctions)
   add([P(0, -(ha + 45)), P(70, -(ha + 70)), P(130, -150), P(110, -225), P(40, -250), P(-15, -150)], 'gravel', false);
   // gravel spur to a camp at the spine's far end, dirt spur to a hide off the near side
@@ -306,7 +331,7 @@ function layRiverNetwork(ctx, api, graph, features) {
   if (!bridged || junctions < 1) return null;
   return {
     overview: [(A.r.x + B.r.x) * 0.5, (A.r.z + B.r.z) * 0.5],
-    paved: P(-25, -200),
+    paved: P(-2, -(ha + 75)),
     close: Q(0, -(hb + 30)),
     // look along each road (same yaw convention as the bridge preset's span direction)
     pavedYaw: (Math.atan2(-A.r.nx, -A.r.nz) * 180) / Math.PI + 20,
