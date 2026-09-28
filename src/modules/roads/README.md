@@ -133,9 +133,16 @@ the 12-edge / 5-junction / several-bridge overview network this is at most ~10 r
   dropped only if that fails too — dropping the gravel loop took all 5 junctions with it). Measured
   after: 13 edges, 5 junctions, every crossing's wet run within 2 m of its channel width (22/22,
   24/24, 24/23, 18/16, 42/40 m); `roads-overview-auto.png`, `roads-bridge-auto.png` read square.
-  **Remaining gap:** the fixed routes were authored for a straight river, and the generated river
-  meanders through the loop, so the showcase now carries ~6 bridges within ~500 m and the loop
-  S-bends to meet them. The real fix is a network authored against `terrain.getFeatures()`.
+  **Superseded 2026-09-28 by a river-frame network** (`layRiverNetwork()`): on generated terrain the
+  showcase is now authored in the real river's frame — a paved spine crossing square at river
+  t≈0.44 and a dirt track with the timber bridge square at t≈0.64, plus a gravel spur and dirt spurs.
+  Every built edge must be dry (or, for the two crossings, ≤ 60 m wet) AND no steeper than 0.18 over
+  8 m (the first try ran the spine up the escarpment face; the spine now shortens until it clears
+  rock). Measured: 10 edges, 4 junctions, **2 bridges** (32 m and 26 m of water) instead of ~6.
+  `overview`/`paved`/`close`/`junction`/`night` are re-aimed at the new subjects. If the builder
+  cannot make 2 crossings and a junction it falls back to the ROUTES + square re-routing above.
+  Gaps: the gravel loop is dropped on this seed (it touched water), so the overview reads as a
+  spine with branches rather than a loop; the concrete deck reads conspicuously pale at night.
 * **Junction patches fixed 2026-09-25** (critic r4 #1: torn/folded patch, grass through the asphalt).
   Three bugs in `ribbon.js` §3, found by dumping the real boundary of the showcase T (node n_4):
   (1) fillet corners were taken as the row's ±a ends, but ±a is relative to the EDGE direction, which

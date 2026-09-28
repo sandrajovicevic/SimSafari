@@ -6,7 +6,7 @@ import { makeGroundMaterial, makeWaterMaterial } from './materials.js';
 import { flattenHeightfield } from './terrainConform.js';
 
 export const presets = {
-  overview: { camera: { target: [-10, 80], distance: 560, pitch: 44, yaw: 22 }, tod: 15, description: 'loop network: paved spine, gravel loop, dirt tracks, 5 junctions, 2 bridges' },
+  overview: { camera: { target: [-10, 80], distance: 560, pitch: 44, yaw: 22 }, tod: 15, description: 'river-frame network: paved spine and dirt track each crossing the river square (2 bridges), gravel/dirt spurs, junctions' },
   close:    { camera: { target: [112, 156], distance: 22, pitch: 16, yaw: 262 }, tod: 16.5, description: 'dirt two-track at 20 m: ruts, dust edges, timber bridge beyond' },
   paved:    { camera: { target: [-150, -52], distance: 42, pitch: 15, yaw: 268 }, tod: 10, description: 'tar road: crown, edge lines, faded centre dashes, patches, km stone' },
   junction: { camera: { target: [40, -30], distance: 46, pitch: 32, yaw: 205 }, tod: 17, description: '3-way paved/gravel junction with fingerpost sign' },
