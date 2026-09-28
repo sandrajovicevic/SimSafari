@@ -27,6 +27,10 @@ concurrency:
 
 jobs:
   develop:
+    # PAUSED (2026-09-28) by the owner while ideas-roadmap waves P3-P6 are built on branches and
+    # merged through reviewed PRs: this job pushes straight to main and would race those merges.
+    # To resume, delete this `if:` line.
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 300
     env:
