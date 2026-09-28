@@ -788,8 +788,8 @@ console.log('\nWave P3 — biodiversity + missions');
       s4.sim.runDays(1);
       if (s4.sim.getMissionState().status !== 'active') { defEnd = s4.sim.getMissionState(); break; }
     }
-    assert(defEnd && defEnd.status === 'won' && defEnd.detail.buildingsLost === 0 && defEnd.detail.haLost <= 15,
-      `fire-season: defended park survives the season (0 buildings, ${defEnd?.detail.haLost} ha) → won ${defEnd?.stars} star(s)`);
+    assert(defEnd && defEnd.status === 'won' && defEnd.detail.buildingsLost === 0 && defEnd.detail.haLost <= defEnd.detail.maxHa,
+      `fire-season: defended park survives the season (0 buildings, ${defEnd?.detail.haLost} ha of ${defEnd?.detail.maxHa}) → won ${defEnd?.stars} star(s)`);
   }
 
   // ---- free play unchanged + reset round-trip (ideas-wave-rules #12: run → reset → identical run)

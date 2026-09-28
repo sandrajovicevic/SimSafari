@@ -941,7 +941,7 @@ function writeJson(name, data) {
       const r = results['mission-replay'];
       const per = Object.fromEntries(Object.entries(r.result.missions).map(([id, m]) => [id, {
         idle: `${m.idle.status}${m.idle.detail?.reason ? ' (' + m.idle.detail.reason + ')' : ''}`,
-        replay: `${m.replay.status} ★${m.replay.stars} day ${m.replay.endDay}`,
+        replay: `${m.replay.status} ★${m.replay.stars} day ${m.replay.day}`,
         netEnd: m.replay.netEnd, bioIndexEnd: m.replay.bioEnd.index,
       }]));
       console.log(JSON.stringify({ urlParam: r.urlParam, pass: r.result.pass, determinism: r.result.determinism, missions: per }, null, 2));

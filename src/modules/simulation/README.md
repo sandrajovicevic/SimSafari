@@ -90,6 +90,18 @@ plant(type, x, z, radius, cover=0.25)             // plant a core/Plants.js id i
                                                   //   spend(…, 'plant'); refused (nothing written or
                                                   //   charged) when cash < cost; emits vegetation:changed
 getVegetation(x, z) → { [plantId]: cover }         // the 16 m cell at (x, z)
+getBiodiversity() → { richness, shannon, evenness, bigFive, plantRichness, index }
+                                                  // Wave P3. Pure read of the ledger + vegetation
+                                                  //   (leopard: null — not in this park); cached per
+                                                  //   day + vegetation version; also on every daily
+                                                  //   report as report.biodiversity
+listMissions() → row[]                             // Wave P3: { id, name, brief, goal, deadlineDays,
+                                                  //   stars } (frozen table rows, missions.js)
+startMission(id) → { ok, error? }                  // start on the current day (resets mission state,
+                                                  //   not the park); park auto-starts one from
+                                                  //   ?mission=<id> after the demo builds
+abandonMission()                                   // back to no mission (no completed event)
+getMissionState() → { id, status 'none'|'active'|'won'|'failed', day, deadline, progress 0..1, stars, detail }
 getFoodReport(habitatId) → { [species]: {n, food, need, perAnimal, capacity, foodCapacity, spaceCapacity} }
 plantQuote(type, x, z, radius) → { cells, ha, cost, affordable }   // prices a plant() without writing (2026-09-26)
 unplant(token) → boolean   // undo: plant() now also returns `undo`; restores exact prior cover/site, refunds
@@ -104,7 +116,8 @@ getSim() → Simulation                             // raw instance (debugging /
 `report` shape (sim.js): `{day, cash, income, expenses, net, incomeBreakdown, expenseBreakdown,
 visitors, inParkPeak, lodgeNights, satisfaction, satisfactionBreakdown, reputation, attraction,
 population, happiness, habitats, born, died, left, predation, staff, staffCoverage, morale,
-prosperity, efficiency, spend, season, weather, loans, bankrupt, vegetation, events, activeEvents}`.
+prosperity, efficiency, spend, season, weather, loans, bankrupt, vegetation, biodiversity, events,
+activeEvents}` (`biodiversity` = Wave P3, see getBiodiversity).
 `report.habitats[id].species[s]` now also carries `spaceCapacity`, `foodCapacity`, `food`;
 `report.vegetation = {rain, changed}`; the daily step's timing is in `getState().vegetation.stepMs`
 (kept out of the report so same-seed reports stay byte-identical).
@@ -127,6 +140,8 @@ measured 0 births in the demo's first month — births per animal per day at ful
 | `terrain:ready`, whole-world `terrain:modified` | consumes | reseed the vegetation from the (new) biomes |
 | `visitor:sighting` | consumes | `{species, vehicleId, distance}` (feeds daily sightings) |
 | `habitat:changed`, `zone:changed`, `road:added/removed/changed`, `building:placed/removed`, `terrain:modified` | consumes | habitat-quality cache invalidation |
+| `mission:progress` | emits | Wave P3: `{id, progress, day}` once per day end while a mission is active |
+| `mission:completed` | emits | Wave P3: `{id, won, stars, day}` exactly once when a mission is won or fails (abandon emits nothing) |
 
 ## Modules consumed (all optional)
 
@@ -262,7 +277,73 @@ tiny (Plains 2.2 ha, Acacia Woodland 3.0 ha, River Wetland 0.43 ha, Pride Kopje 
 * Draw calls of the module itself: **2** (empty group + one helper); all visible geometry belongs to
   other modules.
 
+### Wave P3 — biodiversity + missions (2026-09-28, branch `claude/p3-missions`)
+
+**Biodiversity** (`biodiversity.js`, pure; `getBiodiversity()` + `report.biodiversity`): richness
+(species with n > 0 of the 12), Shannon H over counts, evenness J = H/ln(richness) (0 at ≤ 1),
+`bigFive` = elephant/rhino/buffalo/lion counts **+ leopard: null — we have no leopard and no species
+is substituted under that name**, plantRichness (plants with park-wide mean cover ≥ 0.02, one flat
+pass over the 64² × 10 cover array), and
+`index = 100 × (0.40·richness/12 + 0.30·evenness + 0.20·bigPresent/4 + 0.10·plantRichness/10)`.
+No rng, no timing; cached per (day, vegetation version). **Demo park, seed 1, day 1: index 88.45**
+(richness 11, H 2.0605, J 0.859, 4/4 big five, 6/10 plants — above the 0.02 mean line: red-oat,
+couch, lovegrass, sedge 0.0225, aloe, umbrella thorn; below: sour-plum 0.0157, knobthorn 0.0092,
+marula 0.0107, baobab 0.0122). Idle 240-day drift: 88.45 → 89.58 → 89.30 → 87.69 (wet-season plant
+growth lifts it mid-window).
+
+**Missions** (`missions.js`): table + `MissionRunner`. The evaluator runs once per day end after the
+report is built; a survive-fire mission's scheduled ignitions run at the top of the day end (so they
+land in that day's report and spread the same evening). Scheduled fire days/places draw only from
+`Rng('mission:<id>:<seed>')` — the main economy stream is untouched, and **free play (no mission) is
+bit-identical to the pre-P3 game** (all 130 pre-P3 tests pass unchanged; a started-then-abandoned
+mission leaves a 60-day run byte-identical). Each scripted fire carries its OWN stamina budget
+(`ignite()` resets the budget when nothing is burning; the schedule spaces fires ≥ ~20 days apart).
+Building losses count `fire:building` emissions during the window; hectares count the vegetation
+layer's monotone `burntOutTotal` delta — any fire in the window counts (it is a fire season).
+
+Star brackets (documented per type): population = count at the win `[n, n+2, n+4]`; hold = streak
+days then the run's mean above the floor `[days, +2, +4]`; cash = amount then the share of the
+deadline left `[amount, 0.25, 0.5]`; survive-fire = loss limits `[{1 b/20 ha}, {0 b/10 ha}, {0 b/4 ha}]`.
+
+**Calibration (measured on the demo park, seed 1, fresh page loads; every placeholder the spec gave
+was changed with the reason recorded — see docs/requests/p3.md for the full measurement table):**
+
+| mission | spec placeholder | shipped | measured reason |
+|---|---|---|---|
+| pride | 6 lions / 180 d | unchanged | idle drifts 3 → 2 lions and fails; buying 3 (\$27k) wins on day 2 |
+| balanced-range | index ≥ demo+10 for 60 d | **≥ 92** | demo+10 = 98.45 is unreachable: richness 11/12 and evenness 0.86 are near ceiling; max achievable is +3.33 (12th species) + ~1/plant. Idle peaks 89.58 (never ≥ 92); the replay (cheetah + sour-plum/knobthorn/marula plantings, \$32.8k) holds ~93–95 and wins day 61 (mean 93.25 → ★1) |
+| in-the-black | ≥ \$1.5 M by day 365 | **≥ \$800,000** | idle 365-day net is \$791,777 — every "positive" script earns LESS than idle (attraction is clamped at 1.0; cheaper tickets overcrowd past ~225 visitors/day). The only lever found: the demo runs 2 rangers against a need of 1 — trimming one is coverage-neutral and banks \$130/day → \$838,521, crossing \$800k on ~day 343 (★1) |
+| fire-season | 3 fires, stamina 150, ≤ 1 building, ≤ 15 ha | **≤ 20 ha** | idle loses 2 buildings by day 73 (hard fail) but only 4.58 ha; the weekly-water-drop defence saves every building yet loses **15.62 ha** — three stamina-150 fires alone burn ~11.5 ha, so a 15 ha cap punished the defender for saving buildings |
+
+Harness: `biodiversity` (remove-zebra / add-rhino, both directions, pass) and `mission-replay`
+(4 missions × idle+replay from fresh loads, URL-param check, replay-twice determinism). Unit tests:
+48 new (Shannon/evenness edges, each goal type met/missed/deadline-edge against synthetic reports,
+star brackets, reset clears the mission, second scripted fire's own stamina, idle-fails/defended-wins
+fire season, run → reset → re-run byte-identical with a mission running). 178/178 total.
+
 ## Known gaps (honest)
+
+* **Wave P3:**
+  * **`reset()` is a ledger reset, not a whole-game restart.** In the headless Node game it is a
+    byte-identical round trip (tested), but in the live game `world.animals` belongs to the animals
+    module — the ledger restore cannot un-spawn a previous run's births — and park rebuilds flatten
+    terrain, so same-page A/B variants drift (measured $791,777 → $722,696 across variants). The
+    mission-replay harness therefore loads a fresh page per variant; the spec's one-page fallback is
+    only safe headless.
+  * **The fire-season hectares limit counts every fire in the window**, including natural strikes —
+    a natural fire during the season adds to the mission's tally (intended: it is a fire season; the
+    20 ha calibration leaves ~4 ha of headroom for one natural strike on seed 1).
+  * **Mission fires pick their site near a stream-chosen building** (70 m out, random bearing) — a
+    fire season should threaten something. A building standing on bare/impervious ground can yield a
+    0-cell ignition; the mission then falls back to the deterministic fuel-richest site.
+  * **`in-the-black` is a thin mission** on the current demo park (idle $791,777 vs replay $838,521 —
+    the trim-one-reanger lever); see docs/requests/p3.md for the measurement table and proposals.
+  * No `mission:started` event (spec lists exactly progress + completed; the park's start toast
+    covers the feedback).
+  * Biodiversity plantRichness costs one flat pass over the cover array per day (~41 k float adds,
+    ≪ 0.5 ms) rather than the spec's literal O(species + plants); the mean cannot be maintained
+    incrementally because planting/unplanting/burns edit cover outside the daily step.
+
 
 * **Food web (Wave P1):**
   * **No insectivores** among our 12 species, so the original's "insects come free with grass/shrub
