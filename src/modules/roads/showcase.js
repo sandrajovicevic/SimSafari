@@ -115,20 +115,40 @@ function layNetwork(api) {
   return ids;
 }
 
-/** Longest continuous under-water run along the polyline, metres (sampled every 4 m). */
+/** Longest continuous under-water run along the polyline (sampled every 4 m) → { len, x, z } (mid point). */
 function longestWetRun(world, pts) {
-  let best = 0, run = 0;
+  let best = 0, run = 0, bx0 = 0, bz0 = 0, rx = 0, rz = 0, mx = 0, mz = 0;
   for (let i = 1; i < pts.length; i++) {
     const [ax, az] = pts[i - 1], [bx, bz] = pts[i];
     const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 4)), step = Math.hypot(bx - ax, bz - az) / n;
     for (let k = 1; k <= n; k++) {
-      if (world.isWater(ax + (bx - ax) * k / n, az + (bz - az) * k / n)) { run += step; if (run > best) best = run; } else run = 0;
+      const x = ax + (bx - ax) * k / n, z = az + (bz - az) * k / n;
+      if (world.isWater(x, z)) {
+        if (run === 0) { rx = x; rz = z; }
+        run += step;
+        if (run > best) { best = run; bx0 = rx; bz0 = rz; mx = x; mz = z; }
+      } else run = 0;
     }
+  }
+  return { len: best, x: (bx0 + mx) * 0.5, z: (bz0 + mz) * 0.5 };
+}
+
+/** Local channel width at (x, z): the shortest wet chord through the point over 18 directions (metres). */
+function channelWidth(world, x, z) {
+  let best = Infinity;
+  for (let a = 0; a < 18; a++) {
+    const t = (a / 18) * Math.PI, dx = Math.cos(t), dz = Math.sin(t);
+    let len = 0;
+    for (const s of [1, -1]) for (let d = 1; d <= 200; d++) { if (!world.isWater(x + dx * d * s, z + dz * d * s)) break; len++; }
+    if (len < best) best = len;
   }
   return best;
 }
 
 const MAX_WET_RUN = 60;   // m: a clean crossing of the 18–50 m channel; longer means the route follows the river
+// A crossing longer than this × the local channel width is skewed ≳ 40° off square: real tracks cross short
+// (critic roads r4 #2 re-check 2026-09-28: a 25° skew across a ~25 m channel passed the 60 m cap).
+const MAX_SKEW_RATIO = 1.5;
 
 /**
  * On generated terrain the river does not follow riverX, so some fixed routes ran along the channel on
@@ -142,8 +162,9 @@ function layNetworkOnTerrain(ctx, api, features) {
   let crossings = 0;
   for (const [pts, kind] of ROUTES) {
     const wet = longestWetRun(world, pts);
-    if (wet > MAX_WET_RUN) continue;
-    if (wet > 0) crossings++;
+    if (wet.len > MAX_WET_RUN) continue;
+    if (wet.len > 0 && wet.len > MAX_SKEW_RATIO * channelWidth(world, wet.x, wet.z) + 4) continue;
+    if (wet.len > 0) crossings++;
     api.addRoad(pts, kind);
     for (const p of pts) nodes.push(p);
   }
@@ -161,7 +182,7 @@ function layNetworkOnTerrain(ctx, api, features) {
         const dx = nd[0] - end[0], dz = nd[1] - end[1], d = Math.hypot(dx, dz);
         // outward only (away from the river along the crossing normal), so the road never hooks back
         if ((dx * r.nx + dz * r.nz) * side < d * 0.3) continue;
-        if (d < bd && d > 8 && longestWetRun(world, [end, nd]) === 0) { bd = d; best = nd; }
+        if (d < bd && d > 8 && longestWetRun(world, [end, nd]).len === 0) { bd = d; best = nd; }
       }
       if (best) { if (side < 0) crossing.unshift(best); else crossing.push(best); }
     }
