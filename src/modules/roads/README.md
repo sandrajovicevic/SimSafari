@@ -124,8 +124,18 @@ the 12-edge / 5-junction / several-bridge overview network this is at most ~10 r
   60 m (a clean crossing of the 18–50 m channel), adds crossings perpendicular to the real river from
   `terrain.getFeatures().pointOnRiver()` if fewer than two survive, and joins their ends only outward
   to dry-reachable nodes. The `junction` preset re-targets onto the nearest real ≥3-way node.
-  Verified in `roads-overview-15.png` (4 short crossings, full loop), `roads-bridge-9.png`,
-  `roads-junction-17.png`. Remaining: one loop crossing is oblique (~55 m, inside the 60 m rule).
+  **Re-checked 2026-09-28: that verification was wrong.** The 60 m rule was applied to the sparse
+  control polyline, but the graph builds a smoothed curve that takes a different line across the
+  water: measured on the built edges, the gravel loop ran 72 m wet over a 30 m channel and the hero
+  `bridge` was a ~25° skew. Now every route is judged on its **built** edges (wet run ≤ 60 m and
+  ≤ 1.5 × the local channel width, measured as the narrowest wet chord through the crossing), and a
+  failing crossing is **re-routed square** at the nearest real river point (`squareCrossing()`,
+  dropped only if that fails too — dropping the gravel loop took all 5 junctions with it). Measured
+  after: 13 edges, 5 junctions, every crossing's wet run within 2 m of its channel width (22/22,
+  24/24, 24/23, 18/16, 42/40 m); `roads-overview-auto.png`, `roads-bridge-auto.png` read square.
+  **Remaining gap:** the fixed routes were authored for a straight river, and the generated river
+  meanders through the loop, so the showcase now carries ~6 bridges within ~500 m and the loop
+  S-bends to meet them. The real fix is a network authored against `terrain.getFeatures()`.
 * **Junction patches fixed 2026-09-25** (critic r4 #1: torn/folded patch, grass through the asphalt).
   Three bugs in `ribbon.js` §3, found by dumping the real boundary of the showcase T (node n_4):
   (1) fillet corners were taken as the row's ±a ends, but ±a is relative to the EDGE direction, which
