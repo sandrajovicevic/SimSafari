@@ -1,0 +1,56 @@
+name: CI
+
+# Fast, browser-free gate on every PR and every push to main: lint, build, the simulation's
+# deterministic unit tests, a syntax check of every tools/*.mjs script, and a structural check of
+# the fidelity harness (tools/check-harness.mjs). The full fidelity harness and screenshots need a
+# WebGL browser and ~1 h, so they stay a local/verifier step (see CLAUDE.md), not CI.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Simulation unit tests
+        run: node src/modules/simulation/test.mjs
+
+      - name: Syntax-check tools scripts
+        run: |
+          status=0
+          for f in tools/*.mjs; do
+            node --check "$f" || { echo "::error file=$f::syntax error"; status=1; }
+          done
+          exit $status
+
+      - name: Fidelity harness structure
+        run: node tools/check-harness.mjs
