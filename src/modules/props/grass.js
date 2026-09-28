@@ -153,8 +153,23 @@ export class GrassField {
       color: 0xffffff, roughness: 1.0, metalness: 0,
       side: THREE.DoubleSide, vertexColors: true,
     });
-    mat.userData.cacheKeyExtra = 'grass';
+    mat.userData.cacheKeyExtra = 'grass-v2';
     ctx.materials.withWind(mat, { strength: 0.14, pivotY: 0.0, frequency: 1.6 });
+    // DoubleSide flips the normal of every back face, so a blade seen from behind got a normal pointing
+    // DOWN and rendered near-black — the up-bent normals above exist precisely to stop that. On LOD2's
+    // wide single-triangle blades (0.09 m × 2.4) each back-facing blade became a dark wedge: the
+    // close-range "worm/scribble mottle" four blind rounds recorded (round-8 issue 3), isolated
+    // 2026-09-28 by hiding each LOD in the `close` 14 h view (only hiding LOD2 removed it). Grass is
+    // thin and translucent-ish: both faces take the same up-bent normal.
+    const prevHook = mat.onBeforeCompile;
+    mat.onBeforeCompile = (shader, renderer) => {
+      prevHook?.(shader, renderer);
+      shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
+#ifdef DOUBLE_SIDED
+  normal *= faceDirection;
+  nonPerturbedNormal = normal;
+#endif`);
+    };
     this.material = mat;
 
     for (let i = 0; i < 3; i++) {
