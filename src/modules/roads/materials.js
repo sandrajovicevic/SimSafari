@@ -32,7 +32,12 @@ float height(vec2 uv){
   float peb = smoothstep(0.24, 0.08, w.x) * step(0.80, w.z);
   vec3 w2 = tworleyId(uv, 18.0, uSeed + 9.0);
   float stone = smoothstep(0.28, 0.10, w2.x) * step(0.90, w2.z);
-  return clamp(base * 0.62 + fine * 0.20 + peb * 0.20 + stone * 0.34, 0.0, 1.0);
+  // base fbm was 0.62 of the height, and its 5-octave gradient in the normal map read as combed,
+  // wind-rippled sand (critic roads r4 #4). Relief now comes mostly from discrete grit, pebbles and
+  // stones: dry compacted laterite reads as fine grit plus scattered stones, not dunes.
+  vec3 w3 = tworleyId(uv, 110.0, uSeed + 13.0);
+  float grit = smoothstep(0.30, 0.12, w3.x) * step(0.55, w3.z);
+  return clamp(0.35 + base * 0.22 + fine * 0.10 + grit * 0.14 + peb * 0.30 + stone * 0.42, 0.0, 1.0);
 }`,
     albedo: HELPERS + /* glsl */ `
 vec3 albedo(vec2 uv, float h){
@@ -173,7 +178,9 @@ float height(vec2 uv){
 vec3 albedo(vec2 uv, float h){
   float id = floor(uv.y * 8.0);
   float v = hash12(vec2(id * 3.1, uSeed + 1.0));
-  vec3 a = vec3(0.340, 0.255, 0.170), b = vec3(0.440, 0.355, 0.265), g = vec3(0.300, 0.280, 0.250);
+  // weathered African timber reads mid grey-brown; the old values (0.34-0.44) read pale, near-white
+  // at distance and glaring at night (critic roads r4 #6)
+  vec3 a = vec3(0.235, 0.170, 0.108), b = vec3(0.310, 0.235, 0.160), g = vec3(0.215, 0.200, 0.180);
   vec3 c = mix(mix(a, b, v), g, smoothstep(0.4, 0.9, hash12(vec2(id, 7.0 + uSeed))) * 0.6);
   float grain = tnoise(vec2(uv.x * 2.0, uv.y * 30.0), 3.0, uSeed + id) * 0.5 + 0.5;
   c *= 0.8 + 0.35 * grain;
@@ -189,9 +196,13 @@ vec3 albedo(vec2 uv, float h){
     key: 'roads2:concrete', size, seed: 63, normalStrength: 0.02,
     height: /* glsl */ `float height(vec2 uv){ return clamp(0.5 + tfbm(uv, 40.0, 3, uSeed) * 0.25 + tfbm(uv, 6.0, 2, uSeed + 2.0) * 0.15, 0.0, 1.0); }`,
     albedo: /* glsl */ `vec3 albedo(vec2 uv, float h){
+  // weathered concrete: darker base, dust-warmed, with water/rust stain runs (was 0.36-0.46 flat grey,
+  // the palest surface in every bridge and night shot)
   float stain = tfbm(uv, 3.0, 3, uSeed + 5.0) * 0.5 + 0.5;
-  vec3 c = mix(vec3(0.355, 0.345, 0.325), vec3(0.455, 0.440, 0.410), h);
-  c *= 0.85 + 0.25 * stain;
+  float runs = smoothstep(0.55, 0.85, tfbm(vec2(uv.x * 9.0, uv.y * 1.5), 4.0, 3, uSeed + 11.0) * 0.5 + 0.5);
+  vec3 c = mix(vec3(0.255, 0.240, 0.215), vec3(0.330, 0.310, 0.278), h);
+  c *= 0.82 + 0.26 * stain;
+  c = mix(c, c * vec3(0.78, 0.72, 0.62), runs * 0.6);
   return c;
 }`,
     roughness: /* glsl */ `float rough(vec2 uv, float h){ return 0.8 + h * 0.1; }`,
@@ -246,7 +257,8 @@ export function makeRoadMaterial(materials, sets, kind, uni) {
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
   });
   materials.applyPbr(mat, set, { repeatMetres: ROAD_REPEAT[kind] });
-  mat.normalScale.set(kind === 'paved' ? 0.8 : 1.2, kind === 'paved' ? 0.8 : 1.2);
+  const ns = kind === 'paved' ? 0.8 : kind === 'dirt' ? 0.75 : 1.2;   // dirt 1.2 → 0.75: see the dirt height() note
+  mat.normalScale.set(ns, ns);
   mat.defines = { ['ROAD_' + kind.toUpperCase()]: 1 };
   mat.name = 'road-' + kind;
   mat.userData.kind = kind;
@@ -314,6 +326,17 @@ ${GLSL_NOISE}`)
     col = mix(col, vec3(0.42, 0.41, 0.37), paint * 0.85);
     float tyre = exp(-pow((aa - 1.0) / 0.35, 2.0)) * rutMask * 0.5 + exp(-pow((aa - 2.2) / 0.35, 2.0)) * rutMask * 0.5;
     col *= 1.0 - 0.12 * tyre * (0.5 + 0.5 * wear2);
+    // sparse repair patches (critic roads r4 #3: "featureless tar, no repair patches"): hard-edged
+    // rectangles of newer, blacker tar, one lane wide, on ~1 in 4 of the 17 m cells along the road
+    float cell = floor(s / 17.0);
+    float ph = fract(sin(cell * 91.7 + 13.1) * 43758.5453);
+    float side = ph > 0.5 ? 1.0 : -1.0;
+    float u0 = fract(s / 17.0);
+    float plen = 0.25 + 0.35 * fract(ph * 7.31);
+    float inPatch = step(0.74, fract(ph * 3.7)) * step(0.15, u0) * step(u0, 0.15 + plen)
+                  * step(0.05, a * side) * step(a * side, 1.9 + 0.8 * fract(ph * 5.3)) * rutMask;
+    col = mix(col, col * vec3(0.62, 0.63, 0.66), inPatch);
+    gPaint *= 1.0 - inPatch * 0.7;
     totalEmissiveRadiance += vec3(0.9, 0.85, 0.7) * paint * uNight * 0.35;
   #endif
   // edge dust blend toward terrain colour, broken up by noise
@@ -339,7 +362,7 @@ ${GLSL_NOISE}`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 roughnessFactor = clamp(roughnessFactor - gRut * 0.12 + gDust * 0.06 - gPaint * 0.15, 0.3, 1.0);`);
   };
-  mat.customProgramCacheKey = () => 'road3-' + kind;
+  mat.customProgramCacheKey = () => 'road4-' + kind;
   return mat;
 }
 
