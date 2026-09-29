@@ -10,9 +10,9 @@ const BIG_FIVE = ['elephant', 'rhino', 'buffalo', 'lion'];
 /** goal → { line, stars } summary for the picker cards (static, no live numbers). */
 function goalText(m) {
   const g = m.goal;
-  if (g.type === 'population') return { line: `${g.n} ${g.species}s in the park`, stars: `${g.stars[0]} / ${g.stars[1]} / ${g.stars[2]} at the win` };
-  if (g.type === 'hold') return { line: `hold ${titleCase((g.metric || '').split('.').pop())} ≥ ${g.min} for ${g.days} days`, stars: `1★ / mean +${g.stars[1]} / +${g.stars[2]} over the floor` };
-  if (g.type === 'cash') return { line: `${fmtMoney(g.amount)} net of loans`, stars: `by the deadline / with ${Math.round(g.stars[1] * 100)}% / ${Math.round(g.stars[2] * 100)}% of it left` };
+  if (g.type === 'population') return { line: `${g.n} ${g.species}s in the park`, stars: `${m.stars[0]} / ${m.stars[1]} / ${m.stars[2]} at the win` };
+  if (g.type === 'hold') return { line: `hold ${titleCase((g.metric || '').split('.').pop())} ≥ ${g.min} for ${g.days} days`, stars: `1★ / mean +${m.stars[1]} / +${m.stars[2]} over the floor` };
+  if (g.type === 'cash') return { line: `${fmtMoney(g.amount)} net of loans`, stars: `by the deadline / with ${Math.round(m.stars[1] * 100)}% / ${Math.round(m.stars[2] * 100)}% of it left` };
   return { line: `survive ${g.fires} fires — lose ≤ ${g.maxBuildingsLost} building${g.maxBuildingsLost === 1 ? '' : 's'}, ≤ ${g.maxHa} ha`, stars: `≤ ${m.stars[1].buildings} b / ≤ ${m.stars[1].ha} ha → 2★ · ≤ ${m.stars[2].ha} ha → 3★` };
 }
 
@@ -51,8 +51,8 @@ export function createObjectives(root, s) {
       el('div.bio-h', null,
         el('span.bio-index', { style: `color:${scoreColor(clamp01(b.index / 100))}` }, String(Math.round(b.index))),
         el('span', null,
-          el('div.kv', null, el('span.muted', { text: 'Species richness' }), el('b', { text: `${b.richness} / 12` })),
-          el('div.kv', null, el('span.muted', { text: 'Plant richness' }), el('b', { text: `${b.plantRichness} / 10` })),
+          el('div.kv', null, el('span.muted', { text: 'Species' }), el('b', { text: `${b.richness} / 12` })),
+          el('div.kv', null, el('span.muted', { text: 'Plants' }), el('b', { text: `${b.plantRichness} / 10` })),
           el('div.kv', null, el('span.muted', { text: 'Evenness' }), el('b', { text: b.evenness.toFixed(2) })))),
       el('div.sub', null, 'The Big Five — ', row));
   }
@@ -135,8 +135,7 @@ export function createObjectives(root, s) {
     const modal = el('div.modal.panel.pe', { role: 'dialog' },
       el('div.modal-h', null, el('span.ico', null, icon('target')),
         el('span.t', null, el('b', { text: 'Objectives' }), el('i', { text: s.parkName + ' · free play unless a mission is started' })),
-        st.status === 'active' ? el('span.chip.warn', { text: 'Mission in progress' }) : null,
-        el('button.btn.icon.ghost', { 'data-tip': 'Close', 'data-key': 'Esc', onclick: hide }, icon('close'))),
+        st.status === 'active' ? el('span.chip.warn', { text: 'Mission in progress' }) : null,        el('button.btn.icon.ghost', { 'data-tip': 'Close', 'data-key': 'Esc', onclick: hide }, icon('close'))),
       el('div.modal-b', null, body, bio ? el('div', { style: 'margin-top:10px' }, bio) : null));
     const backdrop = el('div.backdrop.pe', { onclick: (e) => { if (e.target === backdrop) hide(); } }, modal);
     return backdrop;
