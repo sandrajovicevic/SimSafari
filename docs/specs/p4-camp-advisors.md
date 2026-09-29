@@ -1,5 +1,44 @@
 # Wave P4 — Camp-side management lite + advisors (contract)
 
+Shipped 2026-09-29 on `claude/p4-camp`. Below the fold is the original contract; measured results
+here (full tables: the module READMEs' "Wave P4" sections; deviations with reasons:
+`docs/requests/p4.md`).
+
+* **Tiers** — `setRoomRate` / `getLodging` / `report.lodging` per §1 (refRate 60/110/180, ε
+  1.4/1.0/0.6, quality 0.55/0.70/0.85, base share 0.5/0.3/0.2 — all as proposed and confirmed by
+  measurement). One extension: **half of a tier's unmet demand spills up one tier** — without it a
+  park with full budget beds strands the demand (the no-spillover version failed the economy
+  tests; docs/requests/p4.md #2). Harness `lodging-elasticity` PASS: measured instantaneous
+  elasticity **tent 1.44 > cottage 1.22 > lodge 0.41** (wants 40/24/13 at 0.7×/1×/1.5×), occupancy
+  non-increasing in rate per tier over 30-day runs, every tier occupied at 1×.
+* **Demo-park numbers, old → new (30-day means, seed 1; the intended move of §5):** lodge income
+  **$2,970 → $3,219/day** at the $25 baseline and **$4,594 → $5,793/day** at $15; baseline net/day
+  **−$2,496.83 → −$2,883** (the cottage's $520/day upkeep, partly offset); **$15 break-even
+  +$433.13 → +$941.23**. `determinism.identical` unchanged (true).
+* **Village trust** — per §3 (start 0.6, 0.03/layoff capped 0.3/day, 2%/day drift,
+  `+0.06×max(0, 0.5−trust)` inside the existing poachP clamp, no new rng draws). Harness
+  `layoff-chain` PASS: trust 0.488 vs 0.607 at day 5 and still 0.624 vs 0.696 at day 45 with
+  everyone re-hired on day 25; expected poach rate Σ 0.235 vs 0.194; **event counts 0 vs 0** —
+  strict count separation is unmeasurable at the demo's ~0.26%/day exposure (pass = rate strictly
+  higher + count not lower; docs/requests/p4.md #3). The 60% layoff is taken over the combined
+  keepers+maintenance crew (per-role rounding left trust above the 0.5 line).
+* **Advisors** — `advisors.js` pure and node-tested; shipped signature `advise(report, state) →
+  {messages, state}` (a bare prev-list cannot carry the 3-day cooldown clock; docs/requests/p4.md
+  #1). 13 rules across ecologist/treasurer/liaison with hysteresis bands, cooldown-after-clear and
+  critical-first ordering; `getAdvice()` exposes the rows.
+* **buildings/park/ui** — `cottage` catalogue row + procedural builder (verified in
+  `p4-cottage-close-16` / `p4-cottage-night-21_5`: stone plinth, plaster walls, corrugated gable,
+  screened veranda, rain tank, door lantern glowing at night); `tier` on all guest rows (and on the
+  sim's fallback rows — tent/cottage sit ABOVE lodge there, the 'camp' keyword trap); the demo
+  pitches one of each tier and sets the reference rates; ui "Camp & Advisors" panel (`C`): tier
+  rate sliders + occupancy cards, the three personas with expandable messages, village-trust
+  readout (`ui-camp-auto-dom`). All captures read, 0 console errors.
+* **Tests** — 205/205 (178 pre-P4 + 27 P4: tier demand monotone per tier, measured ε ordering,
+  zero-beds tier, ledger round-trip, trust drop/cap/no-restore-on-rehire/10-day memory/poach term,
+  advise hysteresis + cooldown + ranking + determinism, byte-identical tiered runs). The shared
+  worldgen fixture is unchanged — a building-list change rippled into the fire/economy tests, so
+  tiers are tested on a dedicated in-test park.
+
 Agenda: `docs/ideas-roadmap.md` Wave P4. Mechanics source: `docs/ideas-simsafari-1998.md` (patterns
 only; advisor names, texts and numbers are ours). After P3, whose missions may reference occupancy
 and cash. Read `ideas-wave-rules.md` first. Branch: `claude/p4-camp`.
