@@ -145,7 +145,27 @@ export class MissionRunner {
       this.fire = { buildings: 0, haStart: this.sim.veg.burntOutTotal };
     }
     this.detail = this._goalSummary();
+    this._seedProgress();
     return { ok: true };
+  }
+
+  /** Fill progress/detail from the live park at start, so getMissionState() is right before the first
+   * day end (step() only runs then; a fresh mission used to read 0 / target with 3 lions already in
+   * the park — critic simulation-round8 issue 1). Read-only and side-effect free: it never wins or
+   * fails a mission, emits nothing and touches no rng — step() still decides at the day end. Only the
+   * types whose numbers were misleading at 0 are seeded: hold and survive-fire start at a genuine 0. */
+  _seedProgress() {
+    const g = this.mission.goal, eco = this.sim.world.economy;
+    if (g.type === 'population') {
+      const n = this.sim.population()[g.species] ?? 0;
+      this.progress = clamp01(n / g.n);
+      this.detail = { ...this.detail, count: n, target: g.n };
+    } else if (g.type === 'cash') {
+      // same rounding as the report (cash and loans rounded separately), so start and step agree
+      const net = Math.round(eco?.cash ?? 0) - Math.round(eco?.loans || 0);
+      this.progress = clamp01(Math.max(0, net) / g.amount);
+      this.detail = { ...this.detail, net: Math.round(net), target: g.amount };
+    }
   }
 
   /** Give up: back to no mission (no completed event — nothing was completed). */
