@@ -118,6 +118,14 @@ const api = {
   abandonMission: () => sim?.abandonMission(),
   /** { id, status 'none'|'active'|'won'|'failed', day, deadline, progress, stars, detail }. */
   getMissionState: () => sim?.getMissionState() ?? { id: null, status: 'none', day: 1, deadline: null, progress: 0, stars: 0, detail: null },
+  /** Room rate for a lodging tier (Wave P4): 'tent' | 'cottage' | 'lodge', clamped 10..500. */
+  setRoomRate: (tier, rate) => sim?.setRoomRate(tier, rate) ?? null,
+  /** Per-tier lodging (Wave P4): { [tier]: { beds, occupied, want, rate, occupancy, revenue } }. */
+  getLodging: () => sim?.getLodging() ?? null,
+  /** Village trust 0..1 (Wave P4) — a lagged memory of layoffs (also report.villageTrust). */
+  getVillageTrust: () => sim?.getVillageTrust() ?? 0.6,
+  /** Today's advisor messages (Wave P4): [{advisor, level, key, text, since}] — pure data. */
+  getAdvice: () => sim?.getAdvice() ?? [],
   /** { [plantId]: cover 0..1 } of the 16 m vegetation cell at world (x, z). */
   getVegetation: (x, z) => sim?.getVegetation(x, z) ?? null,
   /** Per species in a habitat: { n, food, need, perAnimal, capacity, foodCapacity, spaceCapacity }. */

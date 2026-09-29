@@ -753,6 +753,43 @@ function buildTent(bc) {
 }
 
 // ---------------------------------------------------------------------------------------------------------
+// GUEST COTTAGE (Wave P4): stone-plinth plaster cottage under a corrugated gable, screened veranda
+// ---------------------------------------------------------------------------------------------------------
+function buildCottage(bc) {
+  const st = bc.f('stone'), pl = bc.f('plaster'), ti = bc.f('timber'), ir = bc.f('iron'), po = bc.f('pole');
+  const X = 4.7, ZB = -3.1, ZF = 2.7, Y0 = 0.25, EAVE = 3.0, RIDGE = 4.55;
+  // stone plinth with a slight batter, plastered walls on a timber roof plate
+  plinth(st, -X - 0.35, ZB - 0.35, X + 0.35, ZF + 0.35, -0.35, Y0, TILE.stone, 0.12);
+  walledBox(bc, -X, ZB, X, ZF, Y0 - 0.05, EAVE, { base: 0, wall: 'plaster', roofPlate: true });
+  // corrugated gable roof (ridge along x — ironRoof's fixed axis) + plaster gable ends on ±x
+  ironRoof(ir, -X - 0.45, ZB - 0.45, X + 0.45, ZF + 0.45, RIDGE, EAVE - 0.05, TILE.iron, 0.5);
+  const gUV = (ZF - ZB) / TILE.plaster / 2;
+  for (const gx of [-X, X]) {
+    pl.tri3([gx, EAVE, ZB], [gx, EAVE, ZF], [gx, RIDGE - 0.05, (ZB + ZF) / 2], [0, 0], [0, gUV * 2], [gUV, gUV]);
+    pl.tri3([gx, EAVE, ZF], [gx, EAVE, ZB], [gx, RIDGE - 0.05, (ZB + ZF) / 2], [0, 0], [0, gUV * 2], [gUV, gUV]);
+  }
+  // front (+z): door between two windows; side windows on both gables
+  door(bc, 'plaster', 0, ZF, Y0, 0.5, 2.15, '+z', TILE.plaster);
+  window4(bc, 'plaster', -2.8, ZF, Y0 + 0.85, Y0 + 2.15, 0.62, '+z', TILE.plaster);
+  window4(bc, 'plaster', 2.8, ZF, Y0 + 0.85, Y0 + 2.15, 0.62, '+z', TILE.plaster);
+  window4(bc, 'plaster', -X, -0.6, Y0 + 0.85, Y0 + 2.15, 0.55, '-x', TILE.plaster);
+  window4(bc, 'plaster', X, 0.6, Y0 + 0.85, Y0 + 2.15, 0.55, '+x', TILE.plaster);
+  // veranda: deck, skirt rail, two posts carrying the eave beam, a bench and a table
+  deck(ti, -X - 0.35, ZF, X + 0.35, ZF + 1.75, Y0, TILE.timber, 0.13, 0.19, false);
+  railing(ti, -X - 0.35, ZF + 1.75, X + 0.35, ZF + 1.75, Y0, 0.8, TILE.timber);
+  for (const px of [-X - 0.15, X + 0.15]) po.cyl(px, ZF + 1.6, Y0, EAVE + 0.35, 0.09, 0.08, 8, TILE.pole, '');
+  ti.box(-X + 0.15, EAVE + 0.3, ZF + 1.7, X - 0.15, EAVE + 0.42, ZF + 1.82, TILE.timber, '-y');
+  ti.box(2.4, Y0, ZF + 0.35, 3.9, Y0 + 0.4, ZF + 1.05, TILE.timber, '-y');
+  ti.box(2.4, Y0 + 0.4, ZF + 0.35, 3.9, Y0 + 0.85, ZF + 0.62, TILE.timber, '-y');
+  ti.cyl(-3.1, ZF + 0.85, Y0, Y0 + 0.68, 0.32, 0.32, 8, TILE.timber, 'top');
+  // rain tank behind (−z), stone step at the veranda, lantern by the door
+  waterTank(bc, 0, ZB - 1.0, Y0, 1.5, 0.62, 1.05);
+  stair(bc, 0, ZF + 1.75, ZF + 2.55, Y0, -0.05, 1.1, 2);
+  lantern(bc, 1.15, Y0 + 2.2, ZF + 0.06, '+z', 0.3);
+  return { top: RIDGE + 0.25 };
+}
+
+// ---------------------------------------------------------------------------------------------------------
 // CAR PARK
 // ---------------------------------------------------------------------------------------------------------
 function buildParking(bc) {
@@ -830,6 +867,7 @@ export const BUILDERS = {
   gate: buildGate,
   lodge: buildLodge,
   tent: buildTent,
+  cottage: buildCottage,
   restaurant: buildRestaurant,
   shop: buildShop,
   ranger: buildRanger,

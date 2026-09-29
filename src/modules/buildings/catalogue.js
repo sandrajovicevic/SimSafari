@@ -18,16 +18,23 @@ export const TYPES = Object.freeze({
   lodge: T({
     key: 'lodge', name: 'Safari Lodge', category: 'guest',
     w: 38, d: 32, height: 11.2, builder: 'lodge',
-    cost: 320000, upkeep: 1850, staff: 12, capacity: 24, appeal: 0.95, jobs: 12, beds: 24,
+    cost: 320000, upkeep: 1850, staff: 12, capacity: 24, appeal: 0.95, jobs: 12, beds: 24, tier: 'lodge',
     rules: { roadAccess: 30, maxSlope: 9, allowWater: false, zone: null, flatten: true },
     desc: '12 rooms in two wings around a thatched great room on a stone plinth, timber deck and pool.',
   }),
   tent: T({
     key: 'tent', name: 'Tented Camp Unit', category: 'guest',
     w: 7, d: 6.5, height: 3.6, builder: 'tent',
-    cost: 13000, upkeep: 95, staff: 0, capacity: 2, appeal: 0.55, jobs: 0, beds: 2,
+    cost: 13000, upkeep: 95, staff: 0, capacity: 2, appeal: 0.55, jobs: 0, beds: 2, tier: 'tent',
     rules: { roadAccess: 45, maxSlope: 10, allowWater: false, zone: null, flatten: true },
     desc: 'Canvas safari tent with a fly sheet on a raised timber deck.',
+  }),
+  cottage: T({
+    key: 'cottage', name: 'Guest Cottage', category: 'guest',
+    w: 13.5, d: 10.5, height: 5.4, builder: 'cottage',
+    cost: 88000, upkeep: 520, staff: 2, capacity: 6, appeal: 0.75, jobs: 2, beds: 6, tier: 'cottage',
+    rules: { roadAccess: 32, maxSlope: 9, allowWater: false, zone: null, flatten: true },
+    desc: 'Two-room stone cottage: plastered walls under a corrugated gable, a screened veranda and rain tank.',
   }),
   restaurant: T({
     key: 'restaurant', name: 'Restaurant & Bar', category: 'food',
@@ -133,6 +140,7 @@ export function catalogueRows() {
       w: t.w, d: t.d, height: t.height,
       cost: t.cost, upkeep: t.upkeep, staff: t.staff, capacity: t.capacity, appeal: t.appeal,
       beds: t.beds || 0, houses: t.houses || 0, jobs: t.jobs || 0,
+      tier: t.tier || null,
       rules: { ...t.rules },
     };
   });

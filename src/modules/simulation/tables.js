@@ -42,7 +42,11 @@ export const HABITAT_WEIGHTS = Object.freeze({ grass: 0.20, trees: 0.15, water: 
  * upkeep = $/day. Effects are read by the simulation only.
  */
 export const BUILDINGS = Object.freeze([
-  { key: 'lodge',      match: ['lodge', 'camp', 'hotel'],       upkeep: 400, beds: 40, quality: 0.70, rate: 90 },
+  // guest rows carry `tier` (Wave P4); tent/cottage must sit ABOVE lodge — 'Tented Camp Unit'
+  // normalizes to 'tentedcampunit', which contains 'camp' and would otherwise inherit the lodge row
+  { key: 'tent',      match: ['tent'],                        upkeep: 95,  beds: 2, quality: 0.55, rate: 60,  tier: 'tent' },
+  { key: 'cottage',   match: ['cottage', 'cabin', 'chalet'],  upkeep: 450, beds: 6, quality: 0.70, rate: 110, tier: 'cottage' },
+  { key: 'lodge',     match: ['lodge', 'camp', 'hotel'],      upkeep: 400, beds: 40, quality: 0.70, rate: 90, tier: 'lodge' },
   { key: 'gate',       match: ['gate', 'entrance'],             upkeep: 60 },
   { key: 'hide',       match: ['hide', 'blind', 'viewpoint'],   upkeep: 25, closeness: 0.12 },
   { key: 'tower',      match: ['tower', 'lookout'],             upkeep: 40, closeness: 0.10 },
@@ -68,6 +72,33 @@ export const ROADS = Object.freeze({
   dirt:   { upkeepPerKm: 40,  comfort: 0.45 },
   gravel: { upkeepPerKm: 70,  comfort: 0.70 },
   paved:  { upkeepPerKm: 120, comfort: 1.00 },
+});
+
+// ---------------------------------------------------------------- Wave P4: lodging tiers + village trust
+
+/**
+ * Lodging tiers (Wave P4, docs/specs/p4-camp-advisors.md). Every guest building declares a tier in
+ * the buildings catalogue; the simulation owns the economics. Per tier:
+ *   refRate  reference room rate ($) — the rate at which the price factor is exactly 1
+ *   eps      price elasticity of demand, want_t ∝ (refRate/rate)^eps (budget travellers more elastic)
+ *   quality  per-tier stay quality (the satisfaction lodge term keeps using the aggregate)
+ *   share    travellers' base preference for the tier (renormalised over the tiers that have beds)
+ * Placeholder numbers calibrated on the demo park — see the simulation README "Wave P4".
+ */
+export const LODGING_TIERS = Object.freeze({
+  tent:    Object.freeze({ refRate: 60,  eps: 1.4, quality: 0.55, share: 0.50 }),
+  cottage: Object.freeze({ refRate: 110, eps: 1.0, quality: 0.70, share: 0.30 }),
+  lodge:   Object.freeze({ refRate: 180, eps: 0.6, quality: 0.85, share: 0.20 }),
+});
+export const TIER_ORDER = Object.freeze(Object.keys(LODGING_TIERS));
+
+/** Village trust (Wave P4): a layoff is a memory, not an event. */
+export const TRUST = Object.freeze({
+  start: 0.6,        // a new park starts in the village's good books
+  layoffHit: 0.03,   // trust lost per person fired
+  layoffDayCap: 0.3, // ... capped per day
+  drift: 0.02,       // daily drift toward 0.5×prosperity + 0.5×employment (a ~5-week memory)
+  poachK: 0.06,      // poachP += poachK × max(0, 0.5 − trust) — calibrated: trust 0 adds ~0.03/day
 });
 
 /** Staff roles: reference daily wage and what one person covers. */
