@@ -201,6 +201,18 @@ building contributes again. Cannot-afford buildings stay burnt and retry daily. 
 `fire-response` harness scenario: an unprotected wildfire burned 7 demo buildings; the defended
 run (firebreak + water drops) lost 0.
 
+## Camp tiers + opening rates (Wave P4, 2026-09-29)
+
+The demo now pitches **one of each lodging tier** beside the lodge: the 12-tent camp (tent), one
+**guest cottage** (6 beds, buildings' new procedural builder — stone plinth, plaster walls,
+corrugated gable, screened veranda) and the lodge itself, and sets the opening room rates to each
+tier's reference (tent $60 / cottage $110 / lodge $180) through `simulation.setRoomRate`. Measured
+30-day means vs the pre-P4 demo: lodge income $2,970 → **$3,219/day** at the $25 baseline and
+$4,594 → **$5,793/day** at $15 (the tiers monetize better than the old flat rate); net/day
+−$2,496.83 → **−$2,883** at $25 (the cottage's $520/day upkeep, partly offset) and the $15
+break-even +$433.13 → **+$941.23**. The cottage is deliberately scarce (6 beds, always full at
+these rates) — the obvious player move is to build more of the mid tier.
+
 ## Missions wiring (Wave P3, 2026-09-28)
 
 * **`&mission=<id>` URL param.** After the demo park builds (`loadDemo()`/`newGame()` resolve —

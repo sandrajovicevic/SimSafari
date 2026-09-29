@@ -108,9 +108,18 @@ the same object stored in `world.buildings`.
 
 ## Catalogue
 
-16 types: `gate` `lodge` `tent` `restaurant` `shop` `ranger` `clinic` `workshop` `hide` `tower`
+17 types: `gate` `lodge` `tent` `cottage` (Wave P4) `restaurant` `shop` `ranger` `clinic` `workshop` `hide` `tower`
 `pump` `feeder` `house` `toilets` `parking` `fencegate`. Footprint, cost, upkeep, staff, capacity,
 visitor appeal and placement rules per type are in `catalogue.js`.
+
+### Guest cottage (Wave P4, 2026-09-29)
+
+`cottage` — the mid lodging tier (6 beds, `tier: 'cottage'` in the catalogue row, $88k, $520/day
+upkeep): stone plinth, plastered walls under a corrugated gable roof with plaster gable ends,
+door + four windows, a screened veranda (deck, skirt rail, posts, bench and table), rain tank on a
+stand and a lantern by the door. Every guest row (`tent`/`cottage`/`lodge`) now declares its
+`tier`; the simulation owns the economics (per-tier demand, rates and revenue — see the simulation
+README "Wave P4"). One instance in the demo park beside the tented camp.
 
 ## Presets
 
