@@ -234,6 +234,10 @@ export class GrassField {
     const step = chunkSize / n;
     // cheap deterministic hash from the sample index — no Math.random, no per-candidate noise call
     let h = ((ix * 73856093) ^ (iz * 19349663)) >>> 0;
+    // xorshift is stuck at 0 forever: chunk (0,0) hashes to 0, so every rnd() was 0 — no jitter, no
+    // density culling, a perfect lattice of identical tufts at the world origin (critic props-round5 #1).
+    // Only the zero seed is replaced, so every other chunk's stream — and today's field — is unchanged.
+    if (h === 0) h = 0x9e3779b9;
     const rnd = () => {
       h ^= h << 13; h >>>= 0; h ^= h >> 17; h ^= h << 5; h >>>= 0;
       return h / 4294967296;
