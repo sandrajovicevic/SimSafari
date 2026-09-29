@@ -362,11 +362,11 @@ particularly on first load or after a large camera jump (e.g. a showcase preset 
 
 ## Known gaps (honest)
 
-* **Imposters still have no cast shadow and one silhouette per view.** The overview crowns now shade
-  as volumes, but they don't drop a shadow on the ground (the LOD geometry does), and the crown card is
-  one top-down bake, so every tree of a variant has the same outline from above (mirroring halves the
-  repetition). An octahedral multi-view bake would fix the silhouette; a ground-shadow quad in the same
-  draw call would fix the missing shadow. Not done.
+* **Imposters have one silhouette per view.** The overview crowns shade as volumes and now cast a shadow
+  (a depth-material twin, see "Imposter shadows" below — verified at 14 h; the critic could not see it at
+  17 h, round 5), but the crown card is one top-down bake, so every tree of a variant has the same outline
+  from above (mirroring halves the repetition). An octahedral multi-view bake would fix the silhouette. Not done.
+  (This bullet used to say imposters cast no shadow; that stopped being true on 2026-09-28.)
 * **Vegetation grid gaps.** (1) Dead trees, boulders, termite mounds and logs never react — a fire
   leaves them standing (by design, per the task; P2 may want charred dead trees). (2) The terrain's
   ground colour doesn't change: a burnt disc shows unburnt photo ground with no grass on it — terrain's
