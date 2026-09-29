@@ -78,7 +78,7 @@ Draw calls/triangles are frame totals (props' own share is the bulk of the diffe
 
 ## Ranked issues (most damaging first)
 
-1. **[major] Chunk (0,0) renders as a perfectly regular lattice of grass rows.**
+1. **[major] Chunk (0,0) renders as a perfectly regular lattice of grass rows.** *(Resolved after this round by PR #14, `3dc851e`: the zero seed is replaced, and the same `low` 14 h crop now shows scattered tufts. Score above is as of the round.)*
    - **What:** one 16 m square of the sward, at the world origin, is a rectilinear grid of tufts: uniform spacing, uniform height, aligned rows and cross-rows, no gaps. It sits in the middle of the frame.
    - **Where:** `r5-game-low-14.png` (patch left of the elephants; faintly visible at night in `r5-game-low-21.5.png`), crop `tools/shots/crit-lowgrid.png` vs `tools/shots/crit-lowgrid-ng.png` with grass disabled (the grid is gone). The game's `low` preset targets (0,0), and (0,0) is where the park's default stage and camera land, so this is the first place a player looks.
    - **Why it matters:** this is exactly the "sampling grid is visible" defect round 4 ranked major and STATUS.json marked resolved. It is not resolved at the one place that matters.
