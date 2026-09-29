@@ -747,7 +747,10 @@ async function scenarioMissionReplay(browser) {
    * optional per-day policy. Everything goes through public simulation APIs. */
   const SCRIPTS = {
     pride: [{ day: 1, buy: ['lion', 3] }],
-    'balanced-range': [{ day: 1, buy: ['cheetah', 1] }, { day: 1, plant: ['sour_plum', 0, -300, 135, 0.45] }, { day: 1, plant: ['knobthorn', 250, 300, 200, 0.3] }, { day: 1, plant: ['marula', -300, 250, 205, 0.25] }],
+    // the cheetah is released into the lions' kopje (prey-rich, 3.6 ha — the only habitat with room
+    // for it): a buy's optional third element is the ANCHOR species whose habitat receives the buy,
+    // because habitatOf('cheetah') finds nothing before the first cheetah exists
+    'balanced-range': [{ day: 1, buy: ['cheetah', 1, 'lion'] }, { day: 1, plant: ['sour_plum', 0, -300, 135, 0.45] }, { day: 1, plant: ['knobthorn', 250, 300, 200, 0.3] }, { day: 1, plant: ['marula', -300, 250, 205, 0.25] }],
     'in-the-black': [{ day: 1, price: 15 }, { day: 1, fire: ['ranger', 1] }],
     'fire-season': [], // policy: weekly water drops on every building through the season
   };
@@ -770,7 +773,7 @@ async function scenarioMissionReplay(browser) {
         if (scripted) {
           for (const a of actions.filter((x) => x.day === d)) {
             let r = null;
-            if (a.buy) r = sim.buyAnimals(a.buy[0], habitatOf(a.buy[0]), a.buy[1]);
+            if (a.buy) r = sim.buyAnimals(a.buy[0], habitatOf(a.buy[2] || a.buy[0]), a.buy[1]);
             else if (a.plant) r = sim.plant(...a.plant);
             else if (a.price != null) r = { ok: true, price: sim.setTicketPrice(a.price) };
             else if (a.fire) r = { ok: true, n: sim.fire(a.fire[0], a.fire[1]) };
