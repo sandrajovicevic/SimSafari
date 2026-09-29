@@ -189,6 +189,23 @@ organic mottled burn patch reads against unburnt grassland (`tools/shots/p2-scor
 
 ## Known gaps (honest)
 
+* **World-border seam fixed (2026-09-28).** A ruler-straight line crossed the game's default overview at
+  the east border: inside, the splat reads its baked 2 m biome control (blocky dirt/grass patches);
+  the apron has no control and derives plains weights analytically, so the two patch patterns met
+  along the border. Located by projecting the world square into the camera and a 3× contrast crop
+  (shadows and apron shadow-receiving were ruled out first). The splat now fades its layer weights
+  to the apron's exact formula over the last 80 m (and fades riverbed/dust tints), cache key
+  `terrain-splat-v9`. Verified: game `overview` 14 h before/after + contrast crops. Remaining: where
+  the escarpment meets the border its cliff still ends in a short straight cut (geometry, not
+  texture); props (trees) also stop at the border by design.
+* **Mud crack scale fixed (2026-09-28, critic r5 "metre-scale angular voronoi webbing").** Every layer
+  is sampled at two tiles (A = 3.7 m, B = 29 m, mixed ~50/50). Mud's crack cells (9 per tile) are
+  0.4 m plates at A but became **3.2 m polygons at B** — the webbing on every bank. Mud's B lookup is
+  now mip-biased +5 in `sampleLayer()` (cache key `terrain-splat-v8`), so B adds only tone. Before/
+  after at the same camera: `terrain-close-before.png` / `terrain-close-auto.png`,
+  `terrain-river-before.png` / `terrain-river-auto.png`. Remaining: steep banks take the triplanar
+  path (6.5 m tile → ~0.7 m plates), which still shows a few polygons at close range — within real
+  dried-mud plate sizes, left as is; the stripe/terrace pattern along bank edges is unrelated.
 * **Edit cost (2026-09-25).** `afterEdit()` used to re-pack the whole 513² splat control texture on
   every edit (~135 ms each, so every frame of a brush drag). It now calls `packControlRect()` for the
   edited sample rect (+1 for the blur): verified byte-identical weight textures against a full repack,

@@ -13,27 +13,48 @@ let meshes = [];
 let dirty = false, dirtyAt = 0, selfEdit = false, moon = null;
 let lastBuild = { drawables: 0, triangles: 0, ms: 0, junctions: 0, bridges: 0, edges: 0 };
 let lastVersionBuilt = -1;
+// Edge ids whose ground is already flattened + dusted. Conforming is incremental: a rebuild only conforms
+// (and asks terrain to refresh) the edges not in here, so one road edit costs its own footprint instead of
+// re-flattening the whole network (critic roads r4 #5: 1.6 s per edit). Cleared when the terrain is
+// regenerated; an external terrain edit drops the edges it touches so they re-conform.
+const conformed = new Set();
 
 function nightFactor(h) {
   const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
   return h >= 12 ? ss(18, 19.5, h) : 1 - ss(5, 6.5, h);
 }
 
-/** Flatten the terrain under every edge and paint road dust, then refresh the terrain module's meshes. */
+/** Flatten the terrain under every not-yet-conformed edge and paint road dust, then refresh the terrain module's meshes. */
 function conformTerrain() {
   const terrain = ctx.modules.get('terrain');
-  if (!terrain || graph.edges.size === 0) return false;
+  for (const id of conformed) if (!graph.edges.has(id)) conformed.delete(id);
+  if (!terrain || graph.edges.size === 0) return 0;
+  const todo = [];
+  for (const e of graph.edges.values()) if (!conformed.has(e.id)) todo.push(e);
+  if (!todo.length) return 0;
   const world = ctx.world;
   selfEdit = true;
   try {
     const isWater = typeof terrain.isWaterAt === 'function' ? (x, z) => terrain.isWaterAt(x, z) : null;
-    const bbox = flattenHeightfield(world, graph, { paint: true, isWater });
-    const n = refreshTerrain(terrain, world, bbox, ctx.log);
-    lastBuild.terrainRefreshes = n;
+    const bbox = flattenHeightfield(world, graph, { paint: true, isWater, edges: todo });
+    refreshTerrain(terrain, world, bbox, ctx.log);
+    for (const e of todo) conformed.add(e.id);
   } catch (err) {
     ctx.log.warn('[roads] terrain conform failed: ' + (err?.message || err));
   } finally { selfEdit = false; }
-  return true;
+  return todo.length;
+}
+
+/** Forget the conform state of every edge whose footprint overlaps an external terrain edit. */
+function unconformRect(r) {
+  if (!r || !Number.isFinite(r.x0)) { conformed.clear(); return; }
+  for (const e of graph.edges.values()) {
+    if (!conformed.has(e.id)) continue;
+    const p = e.points, m = e.width * 0.5 + 6;
+    for (let i = 0; i < p.length; i += 2) {
+      if (p[i] >= r.x0 - m && p[i] <= r.x1 + m && p[i + 1] >= r.z0 - m && p[i + 1] <= r.z1 + m) { conformed.delete(e.id); break; }
+    }
+  }
 }
 
 function disposeMeshes() {
@@ -41,13 +62,14 @@ function disposeMeshes() {
   meshes = [];
 }
 
-/** Rebuild every road mesh from the graph. Synchronous; a 20-edge network takes a few ms. */
+/** Rebuild every road mesh from the graph (terrain conform is incremental, see `conformed`). Synchronous. */
 function rebuild() {
   if (!ctx) return;
   const t0 = performance.now();
   dirty = false;
   graph.markOccupancy();
-  conformTerrain();
+  const conformedEdges = conformTerrain();
+  const tConform = performance.now();
   disposeMeshes();
   const terrain = ctx.modules.get('terrain');
   const isWater = terrain && typeof terrain.isWaterAt === 'function' ? (x, z) => terrain.isWaterAt(x, z) : null;
@@ -70,10 +92,12 @@ function rebuild() {
     group.add(m); meshes.push(m);
     tris += g.index.count / 3; drawables++;
   }
+  const tMesh = performance.now();
   const props = kit.place(built.junctions, [...graph.edges.values()], ctx.world, ctx.rng.fork('props' + graph.version()));
   lastBuild = {
     drawables: drawables + kit.meshes.length, triangles: Math.round(tris), ms: +(performance.now() - t0).toFixed(1),
     junctions: built.junctions.length, bridges: built.bridgeSpans.length, edges: graph.edges.size, props,
+    conformedEdges, conformMs: +(tConform - t0).toFixed(1), meshMs: +(tMesh - tConform).toFixed(1), propsMs: +(performance.now() - tMesh).toFixed(1),
   };
   lastVersionBuilt = graph.version();
   ctx.log.info(`[roads] rebuilt: ${lastBuild.edges} edges, ${lastBuild.junctions} junctions, ${lastBuild.bridges} bridges, ${lastBuild.triangles} tris, ${lastBuild.drawables} drawables in ${lastBuild.ms} ms`);
@@ -106,8 +130,8 @@ const api = {
   edges() { return graph.edges; },
   nodes() { return graph.nodes; },
   stats() { return { ...graph.stats(), build: lastBuild }; },
-  /** Force a synchronous mesh rebuild (normally happens automatically on the next frame). */
-  rebuild() { rebuild(); },
+  /** Force a synchronous mesh rebuild (normally happens automatically on the next frame). full = re-conform every edge. */
+  rebuild(full = false) { if (full) conformed.clear(); rebuild(); },
   isDirty() { return dirty; },
   /** Colour the road edges blend towards (terrain dust). */
   setDustColor(r, g, b) { uni.uDust.value.setRGB(r, g, b); },
@@ -146,8 +170,8 @@ export default {
     } catch (err) {
       ctx.log.error('[roads] init failed building materials', err);
     }
-    ctx.events.on('terrain:ready', () => { dirty = true; });
-    ctx.events.on('terrain:modified', () => { if (!selfEdit && graph.edges.size) { dirty = true; dirtyAt = ctx.app.time + 0.4; } });
+    ctx.events.on('terrain:ready', () => { conformed.clear(); dirty = true; });
+    ctx.events.on('terrain:modified', (r) => { if (!selfEdit && graph.edges.size) { unconformRect(r); dirty = true; dirtyAt = ctx.app.time + 0.4; } });
     ctx.events.on('time:set', () => { uni.uNight.value = nightFactor(ctx.world.time.hour); });
     // world.roads is owned by us; expose kinds table for tools/ui
     ctx.world.roads.kinds = KINDS;
@@ -174,7 +198,7 @@ export default {
     ctx.textures.dispose('roads:signAtlas'); ctx.textures.dispose('roads2:waterN');
     if (moon) { moon.removeFromParent(); moon = null; }
     group?.removeFromParent();
-    ctx = null; group = null; graph = null; meshes = [];
+    ctx = null; group = null; graph = null; meshes = []; conformed.clear();
   },
 
   showcase: {
