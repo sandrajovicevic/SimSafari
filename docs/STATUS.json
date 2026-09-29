@@ -274,52 +274,65 @@
     "ui": {
       "wave": 1,
       "domain": "built",
-      "round": 5,
-      "score": 7,
+      "round": 6,
+      "score": 6,
       "status": "fail",
-      "errors": 0,
-      "drawCalls": 0,
-      "reviewedBy": "independent-critic-agent",
+      "errors": 4,
+      "drawCalls": 68,
+      "reviewedBy": "critic-sweep-swiftshader",
       "presetsSeen": [
+        "objectives 15 + objectives-won 15 (1280x720 --dom)",
+        "objectives / objectives-won 1080",
+        "report 15 + scrolled",
         "overview 15",
-        "report 15",
         "panel 16.5",
         "toolbar 15",
         "close 16.5",
         "night 21.5",
-        "toolbar 8 @1920x1080 + DOM eval (extra)"
+        "settings 15",
+        "abandon-confirm live eval",
+        "main baseline toolbar + night (error attribution)",
+        "game overview 14 h / 21.5 h with ?mission=pride"
       ],
       "issues": [
         {
-          "sev": "major",
-          "text": "Animal panel Facts grid broken (panel preset, any resolution): key and value run together (\"AGE29 years\", \"SEXMale\"); \"HERDHerd #80 · 7 animals\" spills into the next cell and \"HABITATKopje Springs\" spills past the panel edge. Cause: .sf .fact .col has no display rule, so .k/.v are inline spans and the nowrap/ellipsis on inline .v does nothing. Fix: .col {display:flex; flex-direction:column}, .v {display:block}."
+          "sev": "blocker",
+          "text": "Console errors on ui presets toolbar (3x '[tools] building.update threw TypeError: Cannot read properties of undefined (reading 0)') and night (1x THREE computeBoundingSphere NaN). Identical on origin/main 418fcb3 (not caused by P3); round 5 logged 0 on both. Caps the score at 6 per the brief; owning module undetermined."
         },
         {
           "sev": "major",
-          "text": "HUD surfaces overlap at 1280x720, the README's stated minimum width: in toolbar/close the minimap covers the item panel's left column and second row; in close the item panel runs under the side panel (Hippopotamus card cut off); in panel the side panel overlaps the toolbar View button. .tb-items is max-width 1180px, centred, and ignores the minimap and side panel. There is no overlap at 1920x1080."
-        },
-        {
-          "sev": "major",
-          "text": "Daily report contradicts itself: Treasury \"+$30,599 today\" vs header \"Profit $4,430\" (18,640 - 14,210). Cause: mock.js overwrites the last cash-history point with e.cash without adjusting the series; the report takes the delta from the last two points (also visible as a kink at the end of the sparkline)."
+          "text": "Big-Five row (objectives panel and report) is unreadable without hover: elephant/rhino/buffalo/lion are near-identical ~14 px quadruped glyphs with only a count."
         },
         {
           "sev": "minor",
-          "text": "Active-tool pill shows the raw id \"Building.Place\" instead of \"Safari Lodge · $320,000\"; findItem does not resolve building.place with options.type, and no card is highlighted as active."
+          "text": "Label/value collision 'Species12 / 12' in the objectives biodiversity tile at 1280 and 1920 (same defect class as round-5 Facts grid)."
         },
         {
           "sev": "minor",
-          "text": "Hover tooltip covers the item panel header hint (toolbar preset, both resolutions). All 16 building cards use the same generic house glyph."
+          "text": "Two-step Abandon confirmation is cancelled by any daily mission:progress (refresh rebuilds the modal and zeroes confirmAbandon); verified live: 'Abandon - sure?' reverts to 'Abandon mission'."
         },
         {
           "sev": "minor",
-          "text": "Selected subjects not in the 3D view (panel: orphan selection ring, no elephant; night: lodge out of frame) because mock entities are never spawned. Top-bar temperature fixed at 28° at 08:00, 15:00 and 21:30."
+          "text": "No persistent mission tracker in the HUD; progress lives only in a modal that covers the park."
         },
         {
           "sev": "minor",
-          "text": "Disclosed gaps still open: empty notification container can appear; graph panel is a stub. ui updateMs 2.1-2.8 ms (software GL), above the 1.5 ms guide: watch item."
+          "text": "Report biodiversity tile: index drawn as '94 %', richness only in a tooltip, tile below the fold at 1280x720."
+        },
+        {
+          "sev": "minor",
+          "text": "Showcase: objectives-won shows a duplicate completion toast (showcase.js:77 adds a copy of the real one); mock top bar 'Day 34' vs panel 'day 4 of 181'; modal covers the toasts at 1280."
+        },
+        {
+          "sev": "minor",
+          "text": "Picker Start ignores startMission().ok; top bar 'Day 34 DRY SEASON' wraps to three lines at night at 1280; carried: tooltip covers neighbouring cards, ~10 building cards share one glyph, selected subjects absent in 3D."
         }
       ],
-      "good": "Both round-4 majors verified fixed at the root cause: the toolbar pill DOM readback has no stray \"null\" node, and the panel shows 68% Content consistent with its need bars. Visual language is close to CS2; the report modal is rich; night legibility is excellent. 0 console errors on 7 captures, lint clean, API matches the README, dispose() is thorough.",
+      "good": "Round-5 majors verified fixed: Facts grid, 1280x720 HUD overlaps, self-contradicting report (+$4,430 = profit), raw-id pill, temperature. Objectives panel is clean and reads the simulation API only (drives a real mission in the showcase). ui updateMs 0.17-0.79 ms (was 2.1-2.8). 13 ui captures (11 presets/sizes + 2 eval runs) of which 2 have errors (both identical on main), plus 2 full-game captures with 0 errors; lint ok.",
+      "previous": {
+        "round": 5,
+        "score": 7
+      },
       "deferral": {
         "date": "2026-09-25",
         "decision": "open visual/polish items explicitly deferred so the ideas phase can start (docs/ideas-roadmap.md entry gate 1); they are fixed when a P-wave next opens this module, as part of that wave's exit, unless listed under prerequisites",
@@ -334,42 +347,53 @@
     "simulation": {
       "wave": 1,
       "domain": "sim",
-      "round": 7,
-      "score": 8.5,
-      "status": "pass",
+      "round": 8,
+      "score": 8,
+      "status": "fail",
       "errors": 0,
-      "drawCalls": 100,
-      "reviewedBy": "critic-sweep",
+      "drawCalls": 365,
+      "reviewedBy": "critic-sweep-swiftshader",
       "presetsSeen": [
-        "overview (15)",
-        "boom (11)",
-        "bust (17)",
-        "close (16.5)",
-        "night (21.5)",
-        "overview (6.5) extra",
-        "bust (3) extra",
-        "test.mjs 89/89 run directly",
-        "fidelity poaching re-run (byte-identical)"
+        "Wave P3 on PR #15 head 11f54e7: node test.mjs 178/178 (+ main 130/130 baseline diff)",
+        "fidelity biodiversity + mission-replay (11 fresh loads)",
+        "P3 slice timing (node)",
+        "game overview 14 h and 21.5 h with ?mission=pride (1920x1080)"
       ],
       "issues": [
         {
-          "sev": "minor",
-          "text": "Poaching targets animals-module 'appeal' (overwriting rarity), so zebra/ostrich are high-value targets; keep a separate poaching-value field"
+          "sev": "resolved",
+          "text": "FIXED post-round by PR #17 (7eece62) and verified by the critic: MissionRunner._seedProgress() fills progress/detail from the live park at start() for population and cash goals (read-only: no win/fail, no emit, no rng); 184/184 tests, the 3 new assertions fail on the old code; live game ?mission=pride at day 1 now reads Lions 3/6, 50% (was 0/6, 0%) | was: A freshly started mission reports wrong progress until the first day end: start() sets detail without count, so the panel shows Lions 0/6, 0% while the park has 3 lions (getBiodiversity().bigFive.lion = 3); seen in game ?mission=pride at 14 h and 21.5 h."
+        },
+        {
+          "sev": "major",
+          "text": "pride stars reward overbuying: the mission ends the first day the count reaches 6, so 2/3 stars (8/10 lions at that moment) need an overshoot in one purchase; the staged win buys 6 lions ($54k), reaches 10, awards 3 stars while the (staged) top bar reads -$6,596/day."
+        },
+        {
+          "sev": "major",
+          "text": "in-the-black is barely non-vacuous: target cut from $1.5M to $800k, idle ~$791,777 (99%), only lever is firing a ranger, replay wins on day 348 by $1,776 (netEnd $801,776); brittle to any economy retune."
         },
         {
           "sev": "minor",
-          "text": "No lasting consequences: reputation recovers through the satisfaction EMA after poaching massacres; a bankrupt park keeps frozen pre-collapse sentiment and 85% staff morale with $0 income"
+          "text": "test.mjs asserts whole-day <5 ms but labels it as the P3 slice <0.5 ms; measured slice is 0.055 ms biodiversity + 0.0008 ms evaluator (budget met)."
         },
         {
           "sev": "minor",
-          "text": "The $20 overview park is net-negative day-to-day (median -$284/d; gain is event windfalls); fidelity harness says $15 is break-even (+$433/day, reproduced exactly)"
+          "text": "PR description says zebra removal takes the index 88.45 -> 87.6x; the scenario measures 84.22 (README not affected)."
         },
         {
           "sev": "minor",
-          "text": "Disclosed fidelity simplifications: aggregate visitors, scalar village, event-based poaching, speed(n)/ui multiplier doubling"
+          "text": "survive-fire progress is elapsed calendar time, not survival, so the bar reads 100% at the deadline regardless of losses."
+        },
+        {
+          "sev": "minor",
+          "text": "Disclosed: reset() is a ledger reset; fire-season ha counts natural fires; balanced-range floor 92 (demo+10 unreachable). Carried: poaching targets appeal, no lasting bankruptcy/poaching consequences."
         }
       ],
-      "good": "Every README preset number reproduces exactly (42/6/134, +$16,577, -284 median, 310/d +39%, +$58,809, 140 cap, bust 6/21/178 -$418,852 bankrupt, close 108/15, night 109/+$28,745); staged runs bit-identical across capture tods; 89/89 tests re-run; fidelity price-sweep re-run reproduces +$433/day at $15 with 11 births and 0 migrations; world.animals.size == sim.count() at every preset; honest panel narratives; 0 console errors; ~2 own draws, ~0.01 ms update."
+      "good": "Every PR claim reproduced except one PR-text figure: 178/178 tests, biodiversity and mission-replay scenarios pass with 0 console errors, idle fails and replay wins all four missions, replay-twice identical. Free play verified bit-identical to main (same test on both heads, identical baseline block; 130 -> 178 passes). P3 slice 0.056 ms/day vs 0.5 ms budget. Calibration changes honestly documented; leopard stays null.",
+      "previous": {
+        "round": 7,
+        "score": 8.5
+      }
     },
     "audio": {
       "wave": 1,
@@ -1586,6 +1610,20 @@
       "module": "props",
       "round": 5,
       "score": 7.5,
+      "by": "critic-sweep",
+      "date": "2026-09-29"
+    },
+    {
+      "module": "simulation",
+      "round": 8,
+      "score": 8,
+      "by": "critic-sweep",
+      "date": "2026-09-29"
+    },
+    {
+      "module": "ui",
+      "round": 6,
+      "score": 6,
       "by": "critic-sweep",
       "date": "2026-09-29"
     }
