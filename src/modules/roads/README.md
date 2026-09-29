@@ -113,6 +113,16 @@ the 12-edge / 5-junction / several-bridge overview network this is at most ~10 r
 
 ## Known gaps (honest)
 
+* **Surfaces re-authored (2026-09-28, critic r4 #3/#4/#6).** Dirt: the height was 62 % 5-octave fbm,
+  which the normal map turned into combed wind-ripple sand; relief now comes from fine grit, sparse
+  pebbles and rare size-varied stones (normal scale 1.2 → 0.75). Two over-regular intermediate
+  versions (a pebble polka-dot grid, then a 0.5 m stone lattice) were caught in screenshots and
+  thinned. Timber planks darkened to weathered grey-brown and concrete to a dust-warmed grey with
+  stain runs (both read near-white before, glaring at night). Asphalt: sparse hard-edged repair
+  patches of newer tar, one lane wide, on ~1 in 4 of the 17 m cells (independent per-decision
+  hashes; the first hash was correlated and placed 2 patches in 40 cells). Before/after: `close`,
+  `paved`, `bridge`, `night`. Remaining: faint ripple inside the wheel ruts at grazing light;
+  patches cover the centre dashes (no repaint); no crack lines on the asphalt.
 * **`sampleEdge(edgeId, s, out)` allocates a fresh `{position:Vector3, tangent:Vector3}` only when
   `out` is falsy** — pass `null` the first time and reuse the same object on every later call to stay
   allocation-free. Passing a plain `{x,z}`-shaped object instead (rather than one with real `Vector3`
