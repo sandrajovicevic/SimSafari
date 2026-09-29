@@ -10,6 +10,7 @@ import { createToolbar } from './toolbar.js';
 import { createSidePanel } from './sidepanel.js';
 import { createReport, buildFallbackReport } from './report.js';
 import { createObjectives } from './objectives.js';
+import { createCamp } from './camp.js';
 import { createMinimap } from './minimap.js';
 import { createSettings } from './settings.js';
 import { icon } from './icons.js';
@@ -25,12 +26,13 @@ const handle = { get parts() { return parts; }, get state() { return s; }, api: 
 const api = {
   /** Toast: level 'info'|'warn'|'error'|'good'; opts {title, sub, x, z, ttl(seconds, -1 sticky)}. */
   notify(level, text, opts) { if (parts) parts.notifications.push(level, text, opts); },
-  /** 'report' | 'settings' | 'objectives' | 'selection' | a toolbar category id ('terrain','roads','zones','buildings','animals','view'). */
+  /** 'report' | 'settings' | 'objectives' | 'camp' | 'selection' | a toolbar category id ('terrain','roads','zones','buildings','animals','view'). */
   openPanel(name) {
     if (!parts) return false;
-    if (name === 'report') { parts.settings.hide(); parts.objectives.hide(); parts.report.show(currentReport()); return true; }
-    if (name === 'settings') { parts.report.hide(); parts.objectives.hide(); parts.settings.show(); return true; }
-    if (name === 'objectives') { parts.report.hide(); parts.settings.hide(); parts.objectives.show(); return true; }
+    if (name === 'report') { parts.settings.hide(); parts.objectives.hide(); parts.camp.hide(); parts.report.show(currentReport()); return true; }
+    if (name === 'settings') { parts.report.hide(); parts.objectives.hide(); parts.camp.hide(); parts.settings.show(); return true; }
+    if (name === 'objectives') { parts.report.hide(); parts.settings.hide(); parts.camp.hide(); parts.objectives.show(); return true; }
+    if (name === 'camp') { parts.report.hide(); parts.settings.hide(); parts.objectives.hide(); parts.camp.show(); return true; }
     if (name === 'selection') { const sel = s.world.selection; return sel?.kind ? parts.sidepanel.show(sel.kind, sel.id) : false; }
     parts.toolbar.openCategory(name);
     return parts.toolbar.getOpen() === name;
@@ -41,6 +43,7 @@ const api = {
     if (parts.report.isOpen()) { parts.report.hide(); return true; }
     if (parts.settings.isOpen()) { parts.settings.hide(); return true; }
     if (parts.objectives.isOpen()) { parts.objectives.hide(); return true; }
+    if (parts.camp.isOpen()) { parts.camp.hide(); return true; }
     if (parts.toolbar.getOpen()) { parts.toolbar.openCategory(null); return true; }
     if (parts.sidepanel.isOpen()) { parts.sidepanel.hide(); return true; }
     return false;
@@ -89,7 +92,7 @@ function onKey(e) {
   const w = s.world;
   switch (e.code) {
     case 'Escape':
-      if (parts.report.isOpen() || parts.settings.isOpen() || parts.objectives.isOpen()) { parts.report.hide(); parts.settings.hide(); parts.objectives.hide(); }
+      if (parts.report.isOpen() || parts.settings.isOpen() || parts.objectives.isOpen() || parts.camp.isOpen()) { parts.report.hide(); parts.settings.hide(); parts.objectives.hide(); parts.camp.hide(); }
       else if (s.activeTool) requestTool(null, null, null);
       else if (parts.toolbar.getOpen()) parts.toolbar.openCategory(null);
       else if (parts.sidepanel.isOpen()) { ctx.events.emit('selection:clear', {}); if (!ctx.modules.get('tools')) { w.selection.kind = null; w.selection.id = null; } parts.sidepanel.hide(); }
@@ -100,6 +103,7 @@ function onKey(e) {
     case 'KeyJ': parts.report.isOpen() ? parts.report.hide() : api.openPanel('report'); break;
     case 'KeyO': parts.settings.isOpen() ? parts.settings.hide() : api.openPanel('settings'); break;
     case 'KeyG': parts.objectives.isOpen() ? parts.objectives.hide() : api.openPanel('objectives'); break;
+    case 'KeyC': parts.camp.isOpen() ? parts.camp.hide() : api.openPanel('camp'); break;
     case 'KeyM': parts.minimap.el.hidden = !parts.minimap.el.hidden; break;
     case 'KeyH': api.setVisible(!api.isVisible()); break;
     default: {
@@ -142,12 +146,13 @@ export default {
       const sidepanel = createSidePanel(root, s);
       const report = createReport(root, s);
       const objectives = createObjectives(root, s);
+      const camp = createCamp(root, s);
       const minimap = createMinimap(root, s);
       const settings = createSettings(root, s);
       const fps = el('div.fps.panel.mono', { hidden: true }, el('b', { text: '— fps' }), ' · ', el('span', { text: '— ms' }), ' · ', el('span', { text: '— draws' }));
       root.appendChild(fps);
       root.appendChild(tooltip.el); // keep the tooltip on top
-      parts = { tooltip, notifications, topbar, toolbar, sidepanel, report, objectives, minimap, settings, fps };
+      parts = { tooltip, notifications, topbar, toolbar, sidepanel, report, objectives, camp, minimap, settings, fps };
       globalThis.__SIMSAFARI_UI__ = handle;
 
       // speed: reflect whatever core/showcase set
@@ -174,6 +179,7 @@ export default {
           if (r.bankrupt) parts.notifications.push('error', 'The park is bankrupt. Take a loan or sell animals to continue.', { title: 'Bankruptcy', ttl: -1 });
         }
         parts.topbar.refresh();
+        if (parts.camp.isOpen()) parts.camp.refresh(); // Wave P4: sliders/occupancy/advice update at day end
       });
       ev.on('selection:changed', (p) => { if (!parts) return; if (p?.kind) parts.sidepanel.show(p.kind, p.id); else parts.sidepanel.hide(); lastSelKey = p?.kind ? p.kind + ':' + p.id : ''; });
       // Wave P3 missions: the objectives panel refreshes on mission events (never per frame); a

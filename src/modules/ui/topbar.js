@@ -60,9 +60,10 @@ export function createTopbar(root, s) {
 
   // --- buttons
   const btnObjectives = el('button.btn.icon', { 'data-tip': 'Objectives & biodiversity', 'data-key': 'G', 'data-tip-pos': 'below', onclick: () => s.api.openPanel('objectives') }, icon('target'));
+  const btnCamp = el('button.btn.icon', { 'data-tip': 'Camp & advisors', 'data-key': 'C', 'data-tip-pos': 'below', onclick: () => s.api.openPanel('camp') }, icon('lodge'));
   const btnReport = el('button.btn.icon', { 'data-tip': 'Daily report', 'data-key': 'J', 'data-tip-pos': 'below', onclick: () => s.api.openPanel('report') }, icon('report'));
   const btnSettings = el('button.btn.icon', { 'data-tip': 'Settings', 'data-key': 'O', 'data-tip-pos': 'below', onclick: () => s.api.openPanel('settings') }, icon('gear'));
-  const btns = el('div.tb-seg.end.tb-btns', null, btnObjectives, btnReport, btnSettings);
+  const btns = el('div.tb-seg.end.tb-btns', null, btnCamp, btnObjectives, btnReport, btnSettings);
 
   const node = el('div.topbar.pe', null, park, cash, visitors, reputation, clock, weather, btns);
   root.appendChild(node);
