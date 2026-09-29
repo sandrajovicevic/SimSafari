@@ -102,7 +102,7 @@ export const CSS = `
   background: linear-gradient(145deg, #f2b23e, #c8781e); color: #2a1a05; box-shadow: 0 1px 0 rgba(255,255,255,0.25) inset;
 }
 .sf .park .sub { font-size: 10.5px; font-weight: 500; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; display: block; line-height: 1.1; }
-.sf .park .name { display: block; line-height: 1.15; }
+.sf .park .name { display: block; line-height: 1.15; white-space: nowrap; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 .sf .cash { display: flex; align-items: center; gap: 8px; }
 .sf .cash .ic { color: var(--accent); }
 .sf .cash .val { font-size: 16px; font-weight: 650; letter-spacing: 0.01em; min-width: 92px; }
@@ -140,7 +140,7 @@ export const CSS = `
 .sf .weather .ic.rain { color: #8cc4f2; }
 .sf .weather .ic.cloud { color: #c5ced9; }
 .sf .weather .t { font-weight: 600; }
-.sf .weather .w { font-size: 11px; color: var(--muted); display: block; line-height: 1.1; }
+.sf .weather .w { font-size: 11px; color: var(--muted); display: block; line-height: 1.1; white-space: nowrap; }
 .sf .tb-btns { display: flex; gap: 4px; }
 .sf .tb-btns .btn { height: 30px; }
 .sf .satbar { width: 54px; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.12); overflow: hidden; margin-top: 3px; }
