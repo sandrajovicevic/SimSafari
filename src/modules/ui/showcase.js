@@ -3,11 +3,13 @@ import { populateMockWorld, mockReport, mockPopHistory } from './mock.js';
 
 export const presets = {
   overview: { camera: { target: [0, 40], distance: 520, pitch: 42, yaw: 35 }, tod: 15, description: 'Full HUD: top bar, toolbar, minimap, three notifications over the park at 15 h' },
-  report:   { camera: { target: [0, 40], distance: 520, pitch: 42, yaw: 35 }, tod: 15, description: 'Daily report modal with 30-day sparklines, breakdowns, population and events' },
+  report:   { camera: { target: [0, 40], distance: 520, pitch: 42, yaw: 35 }, tod: 15, description: 'Daily report modal with 30-day sparklines, breakdowns, population, biodiversity and events' },
   settings: { camera: { target: [0, 40], distance: 520, pitch: 42, yaw: 35 }, tod: 15, description: 'Settings modal open over the park, including the CC-BY credits section' },
   panel:    { camera: { target: [110, -140], distance: 70, pitch: 24, yaw: 60 }, tod: 16.5, description: 'Animal selected: side panel with happiness ring, needs bars, facts and actions' },
   toolbar:  { camera: { target: [0, 40], distance: 420, pitch: 40, yaw: 35 }, tod: 15, description: 'Buildings category open in the toolbar, a card hovered with its tooltip' },
   close:    { camera: { target: [-130, 80], distance: 60, pitch: 20, yaw: 60 }, tod: 16.5, description: 'Close camera; habitat selected (quality, resources, fit per species); animals category open' },
+  objectives: { camera: { target: [0, 40], distance: 420, pitch: 40, yaw: 35 }, tod: 15, description: 'Objectives panel mid-mission (Wave P3): progress bar, days left, star brackets, biodiversity strip' },
+  'objectives-won': { camera: { target: [0, 40], distance: 420, pitch: 40, yaw: 35 }, tod: 15, description: 'Objectives panel on a completed mission (Wave P3): stars awarded, result rows, completion toast' },
   night:    { camera: { target: [60, 300], distance: 140, pitch: 25, yaw: 120 }, tod: 21.5, description: 'HUD at night: moon glyph, lodge selected, poacher warning toast' },
 };
 
@@ -50,6 +52,31 @@ export async function stage(ctx, presetName, ui) {
       if (mock.habitat) sel('habitat', mock.habitat);
       api.openPanel('animals');
       break;
+    case 'objectives':
+    case 'objectives-won': {
+      // Wave P3: drive a real mission through the simulation API (present in this showcase's
+      // dependency closure) — the panel itself only ever reads state, never computes it.
+      s.settings.autoReport = false; // runDays would auto-open the report modal over this panel
+      const sim = ctx.modules.get('simulation');
+      const won = presetName === 'objectives-won';
+      if (sim?.startMission) {
+        try {
+          sim.startMission('pride');
+          let hid = null;
+          for (const a of ctx.world.animals.values()) {
+            if (a.species !== 'lion') continue;
+            hid = a.habitat ?? a.habitatId ?? (ctx.world.grid.habitatId[ctx.world.cellAt(a.x, a.z).index] || 0);
+            break;
+          }
+          if (hid == null) hid = [...ctx.world.habitats.keys()][0] ?? 1;
+          sim.buyAnimals('lion', hid, won ? 6 : 1);
+          sim.runDays(won ? 1 : 3);
+        } catch (err) { ctx.log.warn('objectives stage: ' + err.message); }
+      }
+      api.openPanel('objectives');
+      if (won) api.notify('good', 'The Pride Grows complete — ★★★', { title: 'Objective', ttl: -1 });
+      break;
+    }
     case 'night':
       if (mock.lodge) sel('building', mock.lodge);
       api.notify('error', 'Poachers spotted near the north fence — rangers dispatched.', { title: 'Alert', x: -300, z: 240, ttl: -1 });

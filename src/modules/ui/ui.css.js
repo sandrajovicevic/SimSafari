@@ -344,6 +344,29 @@ export const CSS = `
 .sf .gameover { position: absolute; inset: 0; background: rgba(4,7,12,0.7); display: flex; align-items: center; justify-content: center; }
 .sf .gameover .panel { width: 480px; padding: 24px; text-align: center; }
 .sf .gameover h2 { margin: 0 0 8px; font-size: 22px; }
+/* ---------- objectives panel (Wave P3) ---------- */
+.sf .obj-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sf .obj-card { background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: var(--r-s); padding: 12px 14px; display: flex; flex-direction: column; }
+.sf .obj-card .actions { padding-top: 10px; margin-top: auto; }
+.sf .obj-h { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.sf .obj-h .t { display: flex; align-items: center; gap: 10px; font-size: 15px; flex: 1; min-width: 0; }
+.sf .brief { margin: 0 0 10px; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.sf .obj-progress { margin: 4px 0 10px; }
+.sf .obj-progress .bar { height: 12px; border-radius: 6px; }
+.sf .obj-progress-lab { display: flex; justify-content: space-between; padding-top: 5px; font-size: 12px; }
+.sf .obj-progress-lab b { font-size: 14px; }
+.sf .kv.good b { color: var(--good); }
+.sf .kv.bad b { color: var(--bad); }
+.sf .tile.bio .bio-h { display: flex; gap: 16px; align-items: center; margin: 4px 0 8px; }
+.sf .bio-index { font-size: 34px; font-weight: 750; line-height: 1; min-width: 58px; text-align: center; }
+.sf .bio-h .rows { flex: 1; }
+.sf .big5 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sf .big5-item { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; background: rgba(255,255,255,0.06); font-size: 12px; }
+.sf .big5-item .ic { width: 17px; height: 17px; color: var(--text); }
+.sf .big5-item.off { opacity: 0.55; }
+.sf .big5-item.off .ic, .sf .big5-item.off b { color: var(--muted); }
+.sf .sub { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
 
 @keyframes sf-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes sf-slide { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }

@@ -107,6 +107,17 @@ const api = {
   waterDrop: (x, z, radius = 32) => sim?.waterDrop(x, z, radius) ?? { ok: false, cells: 0, ha: 0, cost: 0 },
   /** Live fire counters { burning, burntHa, wetCells, fires, version } (Wave P2). */
   fireStats: () => sim?.fireStats() ?? null,
+  /** Biodiversity of the park (Wave P3): { richness, shannon, evenness, bigFive, plantRichness, index }
+   *  — leopard is reported as null (not in this park). Pure read; no mission needed. */
+  getBiodiversity: () => sim?.getBiodiversity() ?? null,
+  /** Mission rows (Wave P3): { id, name, brief, goal, deadlineDays, stars }[]. */
+  listMissions: () => sim?.listMissions() ?? [],
+  /** Start a mission by id (resets mission state, not the park) → { ok, error? }. */
+  startMission: (id) => sim?.startMission(id) ?? { ok: false, error: 'simulation not ready' },
+  /** Abandon the active mission (back to no mission). */
+  abandonMission: () => sim?.abandonMission(),
+  /** { id, status 'none'|'active'|'won'|'failed', day, deadline, progress, stars, detail }. */
+  getMissionState: () => sim?.getMissionState() ?? { id: null, status: 'none', day: 1, deadline: null, progress: 0, stars: 0, detail: null },
   /** { [plantId]: cover 0..1 } of the 16 m vegetation cell at world (x, z). */
   getVegetation: (x, z) => sim?.getVegetation(x, z) ?? null,
   /** Per species in a habitat: { n, food, need, perAnimal, capacity, foodCapacity, spaceCapacity }. */

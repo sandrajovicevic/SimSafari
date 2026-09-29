@@ -46,6 +46,7 @@ export class Vegetation {
     this.fireVersion = 0;                          // bumped whenever any fire state changes
     this.fireStamina = Infinity;                   // cells this fire may still claim (natural fires self-contain)
     this.lastNaturalFire = -999;
+    this.burntOutTotal = 0;                        // monotone count of cells that have burned out (Wave P3: mission loss accounting)
     v.burn = this.burn; v.scorch = this.scorch; v.wet = this.wet; v.fireVersion = 0;
     this.seeded = false;
     this.lastStepMs = 0;
@@ -117,6 +118,7 @@ export class Vegetation {
     this.burn.fill(0); this.burnDays.fill(0); this.scorch.fill(0); this.wet.fill(0); this.cleared.fill(0);
     this.fireStamina = Infinity;
     this.lastNaturalFire = -999;
+    this.burntOutTotal = 0;
     this.fireVersion++;
     this.world.vegetation.fireVersion = this.fireVersion;
   }
@@ -340,6 +342,7 @@ export class Vegetation {
       cover[k] *= FIRE.residue[p.form] ?? 0.1;
     }
     this.burn[i] = 2; this.burnDays[i] = 0; this.scorch[i] = 1;
+    this.burntOutTotal++; // monotone (survive-fire missions read the delta over their window)
   }
 
   /** A deterministic ignition site: among cells sampled every 2 cells with real fuel, `t` in [0,1)
@@ -498,6 +501,20 @@ export class Vegetation {
   clearPressure() { this.pressure.fill(0); }
 
   invalidateHabitats() { this._hc?.clear(); }
+
+  /** Park-wide mean cover per plant, in core/Plants.js order (one flat pass over the cover array,
+   * reusing a scratch buffer — the biodiversity stat calls this once per day). */
+  plantMeanCover() {
+    if (!this._plantMeans) this._plantMeans = new Float64Array(NT);
+    const out = this._plantMeans, N = this.nCells, cover = this.cover;
+    for (let t = 0; t < NT; t++) {
+      let s = 0;
+      const base = t * N;
+      for (let i = 0; i < N; i++) s += cover[base + i];
+      out[t] = s / N;
+    }
+    return out;
+  }
 
   /** Covered area (ha) of one plant: Σ cells with cover ≥ threshold, optionally inside a disc. */
   coveredHa(type, threshold = 0.1, x = null, z = null, radius = Infinity) {

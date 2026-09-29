@@ -3,6 +3,8 @@ import { el, clear, fmtMoney, fmtInt, fmtCompact, titleCase, clamp01, scoreColor
 import { icon, animalIconName } from './icons.js';
 import { speciesFacts } from './species.js';
 
+const BIG5 = [['elephant', 'Elephant'], ['rhino', 'Rhino'], ['buffalo', 'Buffalo'], ['lion', 'Lion']];
+
 export function createReport(root, s) {
   let node = null;
   let currentReport = null;
@@ -113,6 +115,19 @@ export function createReport(root, s) {
     const gauge = (v, label, text) => el('div.gauge', null, ringSmall(v, label), el('div.txt', { style: 'font-size:12px;color:var(--muted);line-height:1.4' }, text));
 
     const day = report.day ?? world.time.day;
+    // biodiversity tile (Wave P3): index ring + richness + the Big-Five row. The report carries the
+    // simulation's own reading; the mock report provides one for the showcase.
+    const bio = report.biodiversity || null;
+    const bioTile = bio ? el('div.tile', null,
+      el('h4', null, icon('species'), 'Biodiversity'),
+      el('div.bio-h', null,
+        ringSmall(clamp01(bio.index / 100), 'INDEX', `${bio.index.toFixed(0)} / 100 — richness ${bio.richness}/12 species, ${bio.plantRichness}/10 plants, evenness ${bio.evenness.toFixed(2)}`)),
+      el('div.big5', null,
+        ...BIG5.map(([sp, label]) => el('span.big5-item' + ((bio.bigFive?.[sp] ?? 0) > 0 ? '' : '.off'),
+          { 'data-tip': `${label} — ${bio.bigFive?.[sp] > 0 ? bio.bigFive[sp] + ' in the park' : 'none'}`, 'data-tip-pos': 'below' },
+          icon(animalIconName(sp)), el('b', { text: (bio.bigFive?.[sp] ?? 0) > 0 ? String(bio.bigFive[sp]) : '—' }))),
+        el('span.big5-item.off.leopard', { 'data-tip': 'Leopard — not in this park', 'data-tip-pos': 'below' }, icon('paw'), el('b', { text: '—' })))) : null;
+
     const modal = el('div.modal.panel.pe', { role: 'dialog' },
       el('div.modal-h', null, el('span.ico', null, icon('report')),
         el('span.t', null, el('b', { text: 'Daily report — Day ' + day }), el('i', { text: (world.weather?.season === 'wet' ? 'Wet season' : 'Dry season') + ' · ' + s.parkName + ' · ticket ' + fmtMoney(world.economy.ticketPrice || 0) })),
@@ -127,8 +142,9 @@ export function createReport(root, s) {
             gauge(satisfaction, 'SATISF.', satisfaction >= 0.7 ? 'Visitors are delighted — variety and close sightings are paying off.' : satisfaction >= 0.45 ? 'Mixed reviews. More species and smoother roads would help.' : 'Visitors are unhappy. Check ticket price and sightings.'),
             el('div', { style: 'height:8px' }),
             gauge(reputation, 'REPUT.', 'Word of mouth drives tomorrow\'s arrivals. ' + (report.arrivalsTomorrow ? 'Expected: ' + fmtInt(report.arrivalsTomorrow) + '.' : '')))),
-        el('div.grid2', { style: 'margin-top:10px' },
+        el('div.grid' + (bioTile ? '3' : '2'), { style: 'margin-top:10px' },
           el('div.tile', null, el('h4', null, icon('paw'), 'Population & happiness'), popWrap),
+          bioTile,
           el('div.tile', null, el('h4', null, icon('info'), 'Events'), evWrap))),
       el('div.modal-f', null,
         el('label.checkbox', null, el('input', { type: 'checkbox', checked: s.settings.autoReport ? true : undefined, onchange: (e) => { s.settings.autoReport = e.target.checked; } }), 'Open automatically each day'),

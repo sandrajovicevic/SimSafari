@@ -19,8 +19,10 @@ const api = {
   async loadDemo() {
     if (!ctx) return null;
     clearPark(ctx);
+    rebuilds.length = 0; // buildings.clear() removed their owners; stale rebuilds would charge cash
     const report = await buildPark(ctx, { seed: ctx.world.seed });
     built = true;
+    startUrlMission();
     return report;
   },
   /** Start a fresh game. If `seed` differs from the current world seed, terrain is regenerated on it
@@ -30,6 +32,7 @@ const api = {
   async newGame(seed) {
     if (!ctx) return null;
     clearPark(ctx);
+    rebuilds.length = 0;
     const terrain = ctx.modules.get('terrain');
     const useSeed = Number.isFinite(seed) ? seed : ctx.world.seed;
     if (terrain?.generate && useSeed !== ctx.world.seed) {
@@ -38,10 +41,46 @@ const api = {
     }
     const report = await buildPark(ctx, { seed: useSeed });
     built = true;
+    startUrlMission();
     return report;
   },
   isBuilt: () => built,
+  /** Wave P3 (harness/demo): undo the fire damage this module tracked — drop the rebuild queue and
+   * un-burn every burnt building. sim.reset() restores vegetation and fire state but not buildings
+   * (their burnt state and the rebuild charges would otherwise leak into the next run). → count of
+   * buildings restored. */
+  clearFireDamage() {
+    if (!ctx) return 0;
+    const buildings = ctx.modules.get('buildings');
+    let n = 0;
+    for (const r of rebuilds) { try { buildings?.setState?.(r.id, { state: 'ok' }); n++; } catch {} }
+    rebuilds.length = 0;
+    if (buildings?.setState) {
+      for (const b of ctx.world.buildings.values()) {
+        if (b?.state !== 'burnt') continue;
+        try { buildings.setState(b.id, { state: 'ok' }); n++; } catch {}
+      }
+    }
+    return n;
+  },
 };
+
+/** &mission=<id> (Wave P3): start that mission after the demo park builds — the harness and the
+ * mission screenshots use it; without the param the game stays in free play. */
+function startUrlMission() {
+  if (!ctx) return;
+  const id = String(ctx.params?.mission || '');
+  if (!id) return;
+  const sim = ctx.modules.get('simulation');
+  if (!sim?.startMission) { ctx.log.warn(`[park] ?mission=${id}: simulation module absent`); return; }
+  const r = sim.startMission(id);
+  if (r?.ok) {
+    const m = (sim.listMissions?.() || []).find((x) => x.id === id);
+    ctx.events.emit('ui:notify', { level: 'good', text: `${m?.name ?? id} — ${m?.deadlineDays ?? ''} days`, title: 'Mission started' });
+  } else {
+    ctx.log.warn(`[park] ?mission=${id} failed to start: ${r?.error ?? 'unknown'}`);
+  }
+}
 
 export default {
   id: 'park',

@@ -150,11 +150,20 @@ export function mockReport(ctx, s) {
   const pop = {}, hap = {};
   for (const a of w.animals.values()) { pop[a.species] = (pop[a.species] || 0) + 1; hap[a.species] = (hap[a.species] || 0) + a.happiness; }
   for (const k in hap) hap[k] /= pop[k];
+  // mock biodiversity (Wave P3): same formula as simulation/biodiversity.js over the mock herds
+  let total = 0, richness = 0, H = 0;
+  for (const n of Object.values(pop)) { richness++; total += n; }
+  for (const n of Object.values(pop)) { const p = n / total; H -= p * Math.log(p); }
+  const evenness = richness > 1 ? H / Math.log(richness) : 0;
+  const bigFive = { elephant: pop.elephant ?? 0, rhino: pop.rhino ?? 0, buffalo: pop.buffalo ?? 0, lion: pop.lion ?? 0, leopard: null };
+  const plantRichness = 7;
+  const index = 100 * (0.40 * richness / 12 + 0.30 * evenness + 0.20 * Object.values(bigFive).filter((v) => v > 0).length / 4 + 0.10 * plantRichness / 10);
   return {
     day: w.time.day, cash: w.economy.cash, income: w.economy.income, expenses: w.economy.expenses,
     visitors: w.visitors.count, satisfaction: w.visitors.satisfaction, reputation: s.reputation, arrivalsTomorrow: 1310,
     breakdown: { income: { tickets: 12480, lodge: 4890, shop: 1270 }, expenses: { staff: 6200, upkeep: 3950, animals: 2860, roads: 640, interest: 560 } },
     population: pop, happiness: hap,
+    biodiversity: { richness, shannon: +H.toFixed(4), evenness: +evenness.toFixed(4), bigFive, plantRichness, index: +index.toFixed(2) },
     events: [
       { level: 'good', text: 'Two zebra foals were born in Acacia Flats.', when: '06:40' },
       { level: 'info', text: 'A tour group watched the lion pride hunt at dusk (+8% satisfaction).', when: '18:10' },

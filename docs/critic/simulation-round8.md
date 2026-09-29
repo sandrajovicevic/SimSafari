@@ -67,7 +67,7 @@ through the real mission API in the ui and full-game captures below. Every claim
   documented per type.
 
 ## Ranked issues (most damaging first)
-1. **[major] A freshly started mission reports the wrong progress until the first day end.**
+1. **[major] A freshly started mission reports the wrong progress until the first day end.** *(Resolved after this round by PR #17, `7eece62`: `start()` now seeds progress and count from the live park; live game at day 1 reads Lions 3 / 6, 50 %. Score above is as of the round.)*
    - **What:** `start()` sets `detail` with the goal but no `count`, and only `step()` (once per day end) fills it, so the
      panel shows **Lions 0 / 6, progress 0** while the park already has 3 lions.
    - **Where:** `p3-game-overview-14-mission-dom.png` / `-21_5-…`; API readback in the JSON:

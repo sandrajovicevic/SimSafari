@@ -9,6 +9,7 @@ import { createTopbar } from './topbar.js';
 import { createToolbar } from './toolbar.js';
 import { createSidePanel } from './sidepanel.js';
 import { createReport, buildFallbackReport } from './report.js';
+import { createObjectives } from './objectives.js';
 import { createMinimap } from './minimap.js';
 import { createSettings } from './settings.js';
 import { icon } from './icons.js';
@@ -24,11 +25,12 @@ const handle = { get parts() { return parts; }, get state() { return s; }, api: 
 const api = {
   /** Toast: level 'info'|'warn'|'error'|'good'; opts {title, sub, x, z, ttl(seconds, -1 sticky)}. */
   notify(level, text, opts) { if (parts) parts.notifications.push(level, text, opts); },
-  /** 'report' | 'settings' | 'selection' | a toolbar category id ('terrain','roads','zones','buildings','animals','view'). */
+  /** 'report' | 'settings' | 'objectives' | 'selection' | a toolbar category id ('terrain','roads','zones','buildings','animals','view'). */
   openPanel(name) {
     if (!parts) return false;
-    if (name === 'report') { parts.settings.hide(); parts.report.show(currentReport()); return true; }
-    if (name === 'settings') { parts.report.hide(); parts.settings.show(); return true; }
+    if (name === 'report') { parts.settings.hide(); parts.objectives.hide(); parts.report.show(currentReport()); return true; }
+    if (name === 'settings') { parts.report.hide(); parts.objectives.hide(); parts.settings.show(); return true; }
+    if (name === 'objectives') { parts.report.hide(); parts.settings.hide(); parts.objectives.show(); return true; }
     if (name === 'selection') { const sel = s.world.selection; return sel?.kind ? parts.sidepanel.show(sel.kind, sel.id) : false; }
     parts.toolbar.openCategory(name);
     return parts.toolbar.getOpen() === name;
@@ -38,6 +40,7 @@ const api = {
     if (!parts) return false;
     if (parts.report.isOpen()) { parts.report.hide(); return true; }
     if (parts.settings.isOpen()) { parts.settings.hide(); return true; }
+    if (parts.objectives.isOpen()) { parts.objectives.hide(); return true; }
     if (parts.toolbar.getOpen()) { parts.toolbar.openCategory(null); return true; }
     if (parts.sidepanel.isOpen()) { parts.sidepanel.hide(); return true; }
     return false;
@@ -86,7 +89,7 @@ function onKey(e) {
   const w = s.world;
   switch (e.code) {
     case 'Escape':
-      if (parts.report.isOpen() || parts.settings.isOpen()) { parts.report.hide(); parts.settings.hide(); }
+      if (parts.report.isOpen() || parts.settings.isOpen() || parts.objectives.isOpen()) { parts.report.hide(); parts.settings.hide(); parts.objectives.hide(); }
       else if (s.activeTool) requestTool(null, null, null);
       else if (parts.toolbar.getOpen()) parts.toolbar.openCategory(null);
       else if (parts.sidepanel.isOpen()) { ctx.events.emit('selection:clear', {}); if (!ctx.modules.get('tools')) { w.selection.kind = null; w.selection.id = null; } parts.sidepanel.hide(); }
@@ -96,6 +99,7 @@ function onKey(e) {
     case 'Period': { const i = SPEED_STEPS.indexOf(s.speedMult); setSpeed(w.time.paused ? SPEED_STEPS[0] : SPEED_STEPS[Math.min(SPEED_STEPS.length - 1, i + 1)]); break; }
     case 'KeyJ': parts.report.isOpen() ? parts.report.hide() : api.openPanel('report'); break;
     case 'KeyO': parts.settings.isOpen() ? parts.settings.hide() : api.openPanel('settings'); break;
+    case 'KeyG': parts.objectives.isOpen() ? parts.objectives.hide() : api.openPanel('objectives'); break;
     case 'KeyM': parts.minimap.el.hidden = !parts.minimap.el.hidden; break;
     case 'KeyH': api.setVisible(!api.isVisible()); break;
     default: {
@@ -137,12 +141,13 @@ export default {
       const toolbar = createToolbar(root, s);
       const sidepanel = createSidePanel(root, s);
       const report = createReport(root, s);
+      const objectives = createObjectives(root, s);
       const minimap = createMinimap(root, s);
       const settings = createSettings(root, s);
       const fps = el('div.fps.panel.mono', { hidden: true }, el('b', { text: '— fps' }), ' · ', el('span', { text: '— ms' }), ' · ', el('span', { text: '— draws' }));
       root.appendChild(fps);
       root.appendChild(tooltip.el); // keep the tooltip on top
-      parts = { tooltip, notifications, topbar, toolbar, sidepanel, report, minimap, settings, fps };
+      parts = { tooltip, notifications, topbar, toolbar, sidepanel, report, objectives, minimap, settings, fps };
       globalThis.__SIMSAFARI_UI__ = handle;
 
       // speed: reflect whatever core/showcase set
@@ -171,6 +176,16 @@ export default {
         parts.topbar.refresh();
       });
       ev.on('selection:changed', (p) => { if (!parts) return; if (p?.kind) parts.sidepanel.show(p.kind, p.id); else parts.sidepanel.hide(); lastSelKey = p?.kind ? p.kind + ':' + p.id : ''; });
+      // Wave P3 missions: the objectives panel refreshes on mission events (never per frame); a
+      // finished mission also raises a toast. Progress/state itself is the simulation's.
+      ev.on('mission:progress', () => { if (parts && parts.objectives.isOpen()) parts.objectives.refresh(); });
+      ev.on('mission:completed', (p) => {
+        if (!parts) return;
+        const m = ctx.modules.get('simulation')?.listMissions?.().find((x) => x.id === p?.id);
+        if (p?.won) parts.notifications.push('good', `${m?.name ?? 'Mission'} complete — ${'★'.repeat(p.stars || 1)}`, { title: 'Objective' });
+        else parts.notifications.push('error', `${m?.name ?? 'Mission'} failed${p?.id === 'fire-season' ? ' — the fire season won' : ''}`, { title: 'Objective' });
+        if (parts.objectives.isOpen()) parts.objectives.refresh();
+      });
       ev.on('module:failed', (p) => parts && parts.notifications.push('error', `Module "${p?.id}" failed during ${p?.phase}.`, { sub: String(p?.error || '').slice(0, 120), ttl: 20 }));
       ev.on('animal:spawned', () => parts && parts.minimap.redraw());
       ev.on('building:placed', () => parts && parts.minimap.redraw());

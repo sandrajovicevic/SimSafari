@@ -72,7 +72,13 @@ newGame(seed) → Promise<report>
 // what this does and does not reseed), then builds the demo exactly as loadDemo() does.
 
 isBuilt() → boolean
+
+clearFireDamage() → number     // Wave P3: drop the rebuild queue + un-burn burnt buildings
+                               //   (harness variants; sim.reset() does not restore buildings)
 ```
+
+Both `loadDemo()`/`newGame()` honour the `&mission=<id>` URL param (Wave P3): after the build
+completes they start that mission via `simulation.startMission(id)` and toast it.
 
 `report` (also returned internally to the showcase, and usable for debugging):
 ```js
@@ -194,6 +200,30 @@ its base cost once the park can afford the spend — `fire:rebuilt {id, cost, da
 building contributes again. Cannot-afford buildings stay burnt and retry daily. Verified in the
 `fire-response` harness scenario: an unprotected wildfire burned 7 demo buildings; the defended
 run (firebreak + water drops) lost 0.
+
+## Missions wiring (Wave P3, 2026-09-28)
+
+* **`&mission=<id>` URL param.** After the demo park builds (`loadDemo()`/`newGame()` resolve —
+  after `markStart`, so the mission starts from the opening state), the park starts that mission
+  through `simulation.startMission(id)` and raises a toast. Unknown ids log a warning and leave the
+  game in free play; without the param nothing changes (the harness's `mission-replay` and the
+  mission screenshots load `?mission=pride`).
+* **`clearFireDamage()` → number of buildings restored** — drops the rebuild queue and un-burns
+  every burnt building. `simulation.reset()` restores vegetation/fire/mission state but *not*
+  buildings, so a harness variant that ended with burnt buildings would leak rebuild charges into
+  the next run (measured: sequential one-page variants contaminate each other — see the reset
+  caveat below). The fidelity `mission-replay` scenario calls it defensively after its fire-season
+  variants.
+* `loadDemo()`/`newGame()` now clear the rebuild queue before rebuilding (a queued rebuild whose
+  building `buildings.clear()` just removed would still charge cash when its day came).
+* **Reset caveat (measured, why `mission-replay` uses fresh page loads):** `loadDemo()` re-charges
+  the demo planting (≈ $4.6k) on every rebuild and building `flatten` permanently edits terrain, so
+  a second build on the same terrain places differently — a rebuild is *not* a byte-identical
+  restart, and neither is `simulation.reset()` alone (`world.animals` belongs to the animals
+  module; the sim's ledger restore cannot un-spawn the previous run's births). Sequential
+  same-page variants measured $791,777 → $722,696 → … drifting with every variant. Each
+  `mission-replay` variant therefore loads a fresh page, exactly as the P3 spec's "replayed from a
+  fresh load" asks; same-seed fresh loads are byte-identical (idle 365-day cash $791,777 twice).
 
 ## Known gaps (honest)
 

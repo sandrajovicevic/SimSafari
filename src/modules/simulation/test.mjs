@@ -7,6 +7,7 @@ import { Simulation } from './sim.js';
 import { createPlainWorld, buildPark, applyPark } from './worldgen.js';
 import { PLANTS, PLANT_INDEX } from '../../core/Plants.js';
 import { VEG } from './tables.js';
+import { computeBiodiversity } from './biodiversity.js';
 
 const failures = [];
 const passes = [];
@@ -593,7 +594,268 @@ console.log('\nWave P2 — fire');
   assert(ev.sim.veg.fireStats().burning > 0, 'fire: injectEvent(fire) lights cells');
 }
 
-// ---------------------------------------------------------------- last report of the baseline park
+// ---------------------------------------------------------------- Wave P3: biodiversity + missions
+console.log('\nWave P3 — biodiversity + missions');
+{
+  const T = PLANT_INDEX;
+  // ---- computeBiodiversity edge cases (pure function, synthetic inputs)
+  {
+    const zero = computeBiodiversity({}, new Array(10).fill(0));
+    assert(zero.richness === 0 && zero.shannon === 0 && zero.evenness === 0 && zero.plantRichness === 0 && zero.index === 0
+      && zero.bigFive.leopard === null && zero.bigFive.lion === 0, 'biodiversity: empty park → all zeros, leopard null');
+    const one = computeBiodiversity({ lion: 5 }, new Array(10).fill(0));
+    assert(one.richness === 1 && one.shannon === 0 && one.evenness === 0, `biodiversity: one species → H 0, J 0 by definition (richness ${one.richness}, H ${one.shannon})`);
+    const eq = computeBiodiversity({ a: 10, b: 10, c: 10 }, new Array(10).fill(0));
+    assert(Math.abs(eq.shannon - Math.log(3)) < 1e-12 && Math.abs(eq.evenness - 1) < 1e-12, `biodiversity: equal counts → H ln 3, J exactly 1 (H ${eq.shannon.toFixed(4)}, J ${eq.evenness.toFixed(4)})`);
+    const dom = computeBiodiversity({ a: 97, b: 1, c: 1, d: 1 }, new Array(10).fill(0));
+    assert(dom.evenness < 0.5, `biodiversity: a dominant herd crushes evenness (J ${dom.evenness.toFixed(3)})`);
+    const pr = computeBiodiversity({ lion: 2 }, [0, 0.0199, 0.02, 0.5, 0, 0, 0, 0, 0, 0]);
+    assert(pr.plantRichness === 2, `biodiversity: plant counts at mean cover ≥ 0.02 exactly (${pr.plantRichness} of [0.0199, 0.02, 0.5])`);
+    assert(pr.bigFive.lion === 2 && pr.bigFive.leopard === null, 'biodiversity: big five carries counts, leopard stays null');
+    const idx = computeBiodiversity({ lion: 2 }, new Array(10).fill(1));
+    const expect = 100 * (0.40 * 1 / 12 + 0.30 * 0 + 0.20 * 1 / 4 + 0.10 * 10 / 10);
+    assert(Math.abs(idx.index - expect) < 1e-9, `biodiversity: index formula = 100 × (0.40 r/12 + 0.30 J + 0.20 big/4 + 0.10 p/10) = ${expect.toFixed(2)}`);
+  }
+
+  // ---- getBiodiversity() on the synthetic park + richness sensitivity
+  {
+    const s = makeSim(35);
+    const b0 = s.sim.getBiodiversity();
+    assert(b0.richness === 12 && b0.plantRichness > 0 && b0.index > 50, `biodiversity: synthetic park reads ${b0.richness} species, ${b0.plantRichness} plants, index ${b0.index}`);
+    assert(b0.bigFive.elephant === 6 && b0.bigFive.rhino === 3 && b0.bigFive.leopard === null, 'biodiversity: big five counts the herd sizes');
+    for (const m of s.sim.pop.values()) if (m.has('zebra')) m.get('zebra').n = 0;
+    s.sim.clock.day++; // bust the per-day cache
+    const b1 = s.sim.getBiodiversity();
+    assert(b1.richness === b0.richness - 1 && b1.index < b0.index, `biodiversity: removing every zebra drops richness exactly 1 (${b0.richness} → ${b1.richness}) and the index (${b0.index} → ${b1.index})`);
+    // planting a sparse species park-wide lifts plantRichness: baobab over ~14% of the map
+    const p = makeSim(36);
+    const pb0 = p.sim.getBiodiversity();
+    p.world.economy.cash = 1e9;
+    p.sim.plant('baobab', 0, 0, 430, 0.15);
+    p.sim.clock.day++;
+    const pb1 = p.sim.getBiodiversity();
+    assert(pb1.plantRichness === pb0.plantRichness + 1 && pb1.index > pb0.index, `biodiversity: planting baobab over ~14% of the park adds the plant (${pb0.plantRichness} → ${pb1.plantRichness}) and index points`);
+    // the report carries it
+    const rep = makeSim(37); rep.sim.runDays(1);
+    assert(rep.sim.getReport().biodiversity?.index === rep.sim.getBiodiversity().index, 'biodiversity: the daily report carries the same reading');
+  }
+
+  // ---- goal types against synthetic reports (met / missed / deadline edge day)
+  {
+    const mkRunner = () => { const s = makeSim(38); return { s, mr: s.sim.mission }; };
+    const rep = (o) => ({ population: {}, biodiversity: { index: 50 }, cash: 0, loans: 0, ...o });
+    // population: met on the deadline day itself, missed the day after the deadline
+    {
+      const { s, mr } = mkRunner();
+      mr.start({ id: 't-pop', name: 't', brief: '', goal: { type: 'population', species: 'lion', n: 6 }, deadlineDays: 10, stars: [6, 8, 10] }, 1);
+      for (let d = 1; d <= 10; d++) mr.step(d, rep({ population: { lion: 5 } }));
+      assert(mr.status === 'active', 'population: 5 lions for 10 days → still active on the deadline day');
+      mr.step(11, rep({ population: { lion: 5 } }));
+      assert(mr.status === 'failed', 'population: deadline day ends under target → failed');
+      mr.start({ id: 't-pop', name: 't', brief: '', goal: { type: 'population', species: 'lion', n: 6 }, deadlineDays: 10, stars: [6, 8, 10] }, 1);
+      mr.step(11, rep({ population: { lion: 6 } }));
+      assert(mr.status === 'won' && mr.stars === 1, 'population: the deadline-day report itself counts (won at exactly 6 → 1 star)');
+      void s;
+    }
+    // population stars: 8 → 2 stars, 10 → 3 stars, evaluated at the moment of the win
+    {
+      const { mr } = mkRunner();
+      for (const [n, stars] of [[6, 1], [8, 2], [10, 3], [14, 3]]) {
+        mr.start({ id: 't-pop', name: 't', brief: '', goal: { type: 'population', species: 'lion', n: 6 }, deadlineDays: 10, stars: [6, 8, 10] }, 1);
+        mr.step(2, rep({ population: { lion: n } }));
+        assert(mr.status === 'won' && mr.stars === stars, `population stars: ${n} lions at the win → ${stars} star(s)`);
+      }
+    }
+    // hold: streak resets on an out-of-range day; stars from the run's mean above the floor
+    {
+      const { mr } = mkRunner();
+      const row = { id: 't-hold', name: 't', brief: '', goal: { type: 'hold', metric: 'biodiversity.index', min: 68, days: 5 }, deadlineDays: 40, stars: [5, 2, 4] };
+      mr.start(row, 1);
+      mr.step(1, rep({ biodiversity: { index: 70 } }));
+      mr.step(2, rep({ biodiversity: { index: 71 } }));
+      mr.step(3, rep({ biodiversity: { index: 67.9 } })); // out of range: streak resets
+      assert(mr.status === 'active' && mr.detail.streak === 0, 'hold: one day under the floor resets the streak');
+      mr.step(4, rep({ biodiversity: { index: 70 } }));
+      mr.step(5, rep({ biodiversity: { index: 70 } }));
+      mr.step(6, rep({ biodiversity: { index: 70 } }));
+      mr.step(7, rep({ biodiversity: { index: 70 } }));
+      assert(mr.status === 'active' && mr.detail.streak === 4, 'hold: 4 of 5 consecutive days → still active');
+      mr.step(8, rep({ biodiversity: { index: 70.5 } }));
+      assert(mr.status === 'won' && mr.stars === 2, `hold: streak of 5 at mean 70.2 (+2.2 over the floor) → 2 stars (mean ${mr.detail.mean})`);
+      mr.start(row, 1);
+      for (let d = 1; d <= 5; d++) mr.step(d, rep({ biodiversity: { index: 69.5 } }));
+      assert(mr.status === 'won' && mr.stars === 1, `hold stars: run mean +1.5 over the floor → 1 star (mean ${mr.detail.mean})`);
+      mr.start(row, 1);
+      for (let d = 1; d <= 5; d++) mr.step(d, rep({ biodiversity: { index: 71 } }));
+      assert(mr.status === 'won' && mr.stars === 2, 'hold stars: run mean +3 over the floor → 2 stars');
+      mr.start(row, 1);
+      for (let d = 1; d <= 5; d++) mr.step(d, rep({ biodiversity: { index: 73 } }));
+      assert(mr.status === 'won' && mr.stars === 3, 'hold stars: run mean +5 over the floor → 3 stars');
+      // a metric the report lacks never counts as in range
+      mr.start({ id: 't-hold2', name: 't', brief: '', goal: { type: 'hold', metric: 'nope.nope', min: 1, days: 2 }, deadlineDays: 5, stars: [2, 1, 2] }, 1);
+      for (let d = 1; d <= 6; d++) mr.step(d, rep({}));
+      assert(mr.status === 'failed', 'hold: a missing metric never satisfies the range');
+    }
+    // cash: net of loans; deadline-earliness stars
+    {
+      const { mr } = mkRunner();
+      const row = { id: 't-cash', name: 't', brief: '', goal: { type: 'cash', amount: 1000 }, deadlineDays: 100, stars: [1000, 0.25, 0.5] };
+      mr.start(row, 1);
+      mr.step(5, rep({ cash: 1500, loans: 600 }));
+      assert(mr.status === 'active' && mr.detail.net === 900, 'cash: loans count against the goal (net 900 < 1000 → active)');
+      mr.step(90, rep({ cash: 1500, loans: 499 }));
+      assert(mr.status === 'won' && mr.stars === 1, 'cash: crossing with 11% of the window left → won 1 star');
+      mr.start(row, 1);
+      mr.step(60, rep({ cash: 1000, loans: 0 }));
+      assert(mr.status === 'won' && mr.stars === 2, 'cash stars: 41% of the window left → 2 stars');
+      mr.start(row, 1);
+      mr.step(20, rep({ cash: 1000, loans: 0 }));
+      assert(mr.status === 'won' && mr.stars === 3, 'cash stars: 80% of the window left → 3 stars');
+    }
+    // API surface + events
+    {
+      const s = makeSim(39);
+      const evs = [];
+      const onP = (p) => evs.push(['progress', p]);
+      const onC = (p) => evs.push(['completed', p]);
+      s.sim.hooks.emit = (n, p) => { if (n === 'mission:progress') onP(p); if (n === 'mission:completed') onC(p); };
+      assert(s.sim.listMissions().length === 4 && s.sim.listMissions().every((m) => m.goal && m.deadlineDays && m.stars.length === 3), 'missions: listMissions() exposes the four starter rows');
+      assert(s.sim.getMissionState().status === 'none', 'missions: no mission by default (free play)');
+      assert(s.sim.startMission('nope').ok === false, 'missions: unknown id rejected');
+      const st = s.sim.startMission('pride');
+      assert(st.ok && s.sim.getMissionState().id === 'pride' && s.sim.getMissionState().status === 'active' && s.sim.getMissionState().deadline === 1 + 180, 'missions: startMission sets active state with start-day deadline');
+      // the state is right on frame one, before any day end (critic simulation-round8 issue 1):
+      // the demo has lions already, so a fresh pride mission must not read "0 / 6, 0 %"
+      const lions0 = s.sim.population().lion ?? 0;
+      const st0 = s.sim.getMissionState();
+      assert(lions0 > 0 && st0.detail.count === lions0 && st0.detail.target === 6 && Math.abs(st0.progress - Math.min(1, lions0 / 6)) < 1e-3,
+        `missions: a fresh mission shows the live count before the first day end (${st0.detail.count} / ${st0.detail.target}, progress ${st0.progress}, ${lions0} lions in the park)`);
+      assert(evs.length === 0 && st0.status === 'active', 'missions: seeding at start emits nothing and does not resolve the mission');
+      s.sim.runDays(2);
+      assert(evs.filter((e) => e[0] === 'progress').length === 2, 'missions: mission:progress emitted daily while active');
+      // buying to the target wins and emits completed once
+      const lionHab = [...s.world.habitats.keys()].find((h) => (s.sim.pop.get(h)?.get('lion')?.n ?? 0) > 0);
+      s.sim.buyAnimals('lion', lionHab, 3);
+      s.sim.runDays(1);
+      const done = evs.filter((e) => e[0] === 'completed');
+      assert(s.sim.getMissionState().status === 'won' && done.length === 1 && done[0][1].won === true, 'missions: mission:completed fires exactly once on the win');
+      // reset clears mission state
+      s.sim.reset(39);
+      assert(s.sim.getMissionState().status === 'none', 'missions: reset() clears mission state');
+      // abandon returns to the picker without a completed event
+      s.sim.startMission('pride');
+      s.sim.abandonMission();
+      assert(s.sim.getMissionState().status === 'none', 'missions: abandonMission() returns to no-mission');
+    }
+    // start-of-mission seeding: cash goal, and a goal that is already satisfied when the mission starts
+    {
+      const c = makeSim(39);
+      c.sim.startMission('in-the-black');
+      const eco = c.world.economy, cs = c.sim.getMissionState();
+      const net = Math.round(eco.cash) - Math.round(eco.loans || 0);
+      assert(cs.detail.net === net && Math.abs(cs.progress - Math.min(1, Math.max(0, net) / 800000)) < 1e-3,
+        `missions: a fresh cash mission shows the live net of loans (${cs.detail.net}, progress ${cs.progress})`);
+      const p = makeSim(39);
+      const hab = [...p.world.habitats.keys()].find((h) => (p.sim.pop.get(h)?.get('lion')?.n ?? 0) > 0);
+      p.sim.buyAnimals('lion', hab, 3);
+      p.sim.startMission('pride');
+      const ps = p.sim.getMissionState();
+      assert(ps.progress === 1 && ps.status === 'active', 'missions: an already-met goal reads 100 % at start but stays active until the day-end evaluator decides');
+      p.sim.runDays(1);
+      assert(p.sim.getMissionState().status === 'won', 'missions: the day-end evaluator then wins it');
+      // seeding must not perturb the simulation: start-then-abandon stays byte-identical (also asserted above), and
+      // a seeded start does not change the reports of a mission run vs the same mission run after a no-op seed
+      const q1 = makeSim(39), q2 = makeSim(39);
+      q1.sim.startMission('in-the-black'); q2.sim.startMission('in-the-black'); q2.sim.getMissionState();
+      q1.sim.runDays(20); q2.sim.runDays(20);
+      assert(JSON.stringify(q1.sim.getReports(20)) === JSON.stringify(q2.sim.getReports(20)), 'missions: reading the mission state is side-effect free');
+    }
+  }
+
+  // ---- fire-season: scheduling, own stamina per fire, idle loss / defended win
+  {
+    // a compact fire mission on the synthetic park (2 fires in 30 days, stamina 12 for a small burn;
+    // loss limits non-binding so the run cannot hard-fail before the second ignition)
+    const row = { id: 't-fire', name: 't', brief: '', goal: { type: 'survive-fire', fires: 2, stamina: 12, maxBuildingsLost: 99, maxHa: 999 }, deadlineDays: 30, stars: [{ buildings: 0, ha: 15 }, { buildings: 0, ha: 8 }, { buildings: 0, ha: 3 }] };
+    const s = makeSim(40);
+    s.sim.mission.start(row, 1);
+    const sched = s.sim.mission.schedule;
+    assert(sched.length === 2 && sched[0].day >= 2 && sched[1].day > sched[0].day && sched[1].day <= 30, `fire-season: ${sched.length} ignitions scheduled inside the window (days ${sched.map((x) => x.day).join(', ')})`);
+    // same seed + same mission → same schedule
+    const s2 = makeSim(40);
+    s2.sim.mission.start(row, 1);
+    assert(JSON.stringify(s2.sim.mission.schedule) === JSON.stringify(sched), 'fire-season: schedule days deterministic per seed');
+    // run to the SECOND ignition: it must carry its own stamina (the P2 bug: a second fire inherited
+    // the first fire's spent budget and never spread)
+    let sawSecond = null;
+    let lastBurnt = 0;
+    for (let d = 1; d <= 30; d++) {
+      s.sim.runDays(1);
+      if (d === sched[1].day) {
+        // the ignition happens at the top of day end: right after runDays the new fire is burning
+        // and the budget was RESET to the goal's stamina (nothing was burning when it ignited)
+        sawSecond = s.sim.veg.fireStats().burning > 0 ? s.sim.veg.fireStamina : null;
+      }
+      if (s.sim.mission.status !== 'active') break;
+      lastBurnt = s.sim.veg.burntOutTotal;
+    }
+    assert(sawSecond === 12, `fire-season: the second scripted fire gets its own stamina (${sawSecond} cells)`);
+    assert(lastBurnt > 12, `fire-season: fires burned beyond a single budget (${lastBurnt} cells burnt out across the season)`);
+    // idle on the full-size mission loses buildings → failed (the synthetic park has 12 buildings)
+    const s3 = makeSim(1);
+    s3.sim.startMission('fire-season');
+    let idleEnd = null;
+    for (let d = 0; d < 95; d++) { s3.sim.runDays(1); if (s3.sim.getMissionState().status !== 'active') { idleEnd = s3.sim.getMissionState(); break; } }
+    assert(idleEnd && idleEnd.status === 'failed' && idleEnd.detail.buildingsLost > idleEnd.detail.maxBuildingsLost,
+      `fire-season: an idle park fails on building losses (${idleEnd.detail.buildingsLost} buildings vs limit ${idleEnd.detail.maxBuildingsLost})`);
+    // defended (water drops on every building, refreshed weekly) wins the season
+    const s4 = makeSim(1);
+    s4.sim.startMission('fire-season');
+    const drops = [...s4.world.buildings.values()].map((b) => [b.x, b.z]);
+    let defEnd = null;
+    for (let d = 0; d < 95; d++) {
+      if (d % 6 === 0) for (const [x, z] of drops) s4.sim.waterDrop(x, z, 40);
+      s4.sim.runDays(1);
+      if (s4.sim.getMissionState().status !== 'active') { defEnd = s4.sim.getMissionState(); break; }
+    }
+    assert(defEnd && defEnd.status === 'won' && defEnd.detail.buildingsLost === 0 && defEnd.detail.haLost <= defEnd.detail.maxHa,
+      `fire-season: defended park survives the season (0 buildings, ${defEnd?.detail.haLost} ha of ${defEnd?.detail.maxHa}) → won ${defEnd?.stars} star(s)`);
+  }
+
+  // ---- free play unchanged + reset round-trip (ideas-wave-rules #12: run → reset → identical run)
+  {
+    const a = makeSim(41), b = makeSim(41);
+    // free play stays byte-identical between two same-seed runs WITH and WITHOUT a mission started
+    // (then abandoned before any day passes — the mission must not draw from the main stream)
+    b.sim.startMission('pride'); b.sim.abandonMission();
+    a.sim.runDays(60); b.sim.runDays(60);
+    assert(JSON.stringify(a.sim.getReports(60)) === JSON.stringify(b.sim.getReports(60)), 'missions: a started-and-abandoned mission leaves free play byte-identical');
+    // run → reset → identical run (mission active during the run, mission fires included)
+    const c = makeSim(42);
+    c.sim.startMission('fire-season');
+    let days = 0;
+    while (c.sim.getMissionState().status === 'active' && days < 95) { c.sim.runDays(1); days++; }
+    const run1 = JSON.stringify(c.sim.getReports(95));
+    const end1 = JSON.stringify(c.sim.getMissionState());
+    // reset() with NO argument restores the exact construction seed (rng.fork('sim')) — passing a
+    // seed explicitly is "restart with a NEW seed" and deliberately uses a different stream
+    c.sim.reset();
+    assert(c.sim.getMissionState().status === 'none' && c.sim.veg.burntOutTotal === 0, 'missions: reset() clears the mission and the fire counters');
+    c.sim.startMission('fire-season');
+    let days2 = 0;
+    while (c.sim.getMissionState().status === 'active' && days2 < 95) { c.sim.runDays(1); days2++; }
+    assert(JSON.stringify(c.sim.getReports(95)) === run1 && JSON.stringify(c.sim.getMissionState()) === end1,
+      `missions: run → reset → re-run is byte-identical, mission outcome included (${days} days, end ${end1.slice(0, 60)}…)`);
+    // daily cost of the evaluator + biodiversity (budget: < 0.5 ms/day)
+    const t = makeSim(43);
+    t.sim.startMission('balanced-range');
+    const t0 = performance.now();
+    t.sim.runDays(30);
+    const perDay = (performance.now() - t0) / 30;
+    assert(perDay < 5, `missions+biodiversity: whole-day step incl. evaluator ${perDay.toFixed(2)} ms/day mean (budget: the P3 slice alone < 0.5 ms)`);
+  }
+}
+
 const R = base.sim.getReport();
 console.log(`\nbaseline day ${R.day}: cash $${fmt(R.cash)}  income $${fmt(R.income)}  expenses $${fmt(R.expenses)}  visitors ${R.visitors}  sat ${(R.satisfaction * 100).toFixed(0)} %  rep ${(R.reputation * 100).toFixed(0)} %  morale ${(R.morale * 100).toFixed(0)} %  village ${(R.prosperity * 100).toFixed(0)} %  season ${R.season}`);
 console.log('  population: ' + Object.entries(R.population).map(([s, n]) => `${s} ${n} (${(R.happiness[s] * 100).toFixed(0)} %)`).join(', '));
