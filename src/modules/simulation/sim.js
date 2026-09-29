@@ -6,6 +6,8 @@ import { Rng } from '../../core/Rng.js';
 import { SPECIES, SPECIES_ORDER, HABITAT_WEIGHTS, BUILDINGS, ROADS, STAFF, STAFF_ORDER, CONST, FOOD, DIET, PREY_YIELD, VEG } from './tables.js';
 import { PLANTS, PLANT_INDEX } from '../../core/Plants.js';
 import { Vegetation, PLANT_COUNT } from './vegetation.js';
+import { MissionRunner } from './missions.js';
+import { computeBiodiversity } from './biodiversity.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -85,6 +87,7 @@ export class Simulation {
     this._food = new Map();                 // habitatId → { version, Y: Float64Array(plants) } yield cache
     this._Pt = new Float64Array(PLANT_COUNT);
     this.veg = new Vegetation(world, this.seed);
+    this.mission = new MissionRunner(this); // Wave P3: mission state (cleared by _init/reset)
     this.seedVegetation();
     this._init();
   }
@@ -138,6 +141,12 @@ export class Simulation {
     this.habitatStats = new Map();
     this.totals = { born: 0, died: 0, left: 0, poached: 0, predation: 0, adopted: 0, unmanaged: 0, planted: 0, plantCost: 0 };
     this.vegToday = { rain: 0, stepMs: 0, changed: null };
+    // Wave P2 fire counters + Wave P3 mission/biodiversity state: reset() must return a run to the
+    // byte-identical start (natural-fire recency and the ignition counter are part of that)
+    this.firesIgnited = 0;
+    this._lastNaturalFire = -999;
+    this._bioCache = null;
+    this.mission.reset();
     if (w.visitors) {
       w.visitors.count = 0; w.visitors.inPark = 0;
       if (!(w.visitors.seenSpecies instanceof Map)) w.visitors.seenSpecies = new Map();
@@ -593,6 +602,7 @@ export class Simulation {
           this._fireSeenBuildings.add(b.id);
           const rebuildCost = Math.round((this.building(b.type)?.cost ?? 5000) * 0.4);
           this._emit('fire:building', { id: b.id, type: b.type, x: b.x, z: b.z, day: this.clock.day, rebuildCost });
+          this.mission.noteBuildingLost(); // Wave P3: counts against a survive-fire mission's limit
           this._addEvent(this.clock.day, { type: 'fire', level: 'error', text: `The ${b.type} at ${Math.round(b.x)}, ${Math.round(b.z)} caught fire and burned down!` });
         }
       }
@@ -758,8 +768,12 @@ export class Simulation {
 
   _endDay(day) {
     const w = this.world;
-    // 0. take the animals module's counts as truth if it is running
+    // 0a. take the animals module's counts as truth if it is running
     this.reconcileFromWorld();
+    // 0b. Wave P3: a survive-fire mission's scheduled ignition for today — before the vegetation/
+    // fire step so the fire starts spreading this evening and the ignition lands in today's report.
+    // No mission active → no-op, no rng draw (free play stays bit-identical).
+    this.mission.ignitions(day);
     // 1. visitors of the day → satisfaction → reputation
     const vis = this._visitorsEndDay();
     // 2a. vegetation: herd grazing pressure → growth / overgrazing (food web, docs/specs/p1-food-web.md)
@@ -785,11 +799,15 @@ export class Simulation {
       spend: Object.fromEntries(Object.entries(this.spendToday).map(([k, v]) => [k, Math.round(v)])),
       season: this.dayPlan.season, weather: this.dayPlan.weather, loans: Math.round(w.economy?.loans || 0), bankrupt: this.bankrupt,
       vegetation: { ...this.vegToday },
+      biodiversity: this.getBiodiversity(),
       events: this.eventsToday.slice(), activeEvents: this.activeEvents.map((e) => ({ type: e.type, daysLeft: e.until - day, species: e.species })),
     };
     this.lastReport = report;
     this.reports.push(report);
     if (this.reports.length > 120) this.reports.shift();
+    // 7. Wave P3 mission evaluator — once per day end, after the report is built (docs/specs/
+    // p3-biodiversity-missions.md §3). Reads the fresh report; free play (no mission) is a no-op.
+    this.mission.step(day, report);
     if (w.visitors) {
       w.visitors.satisfaction = vis.satisfaction;
       w.visitors.log.push({ day, arrivals: vis.arrivals, satisfaction: +vis.satisfaction.toFixed(3), sightings: vis.sightings });
@@ -1385,6 +1403,35 @@ export class Simulation {
 
   /** Live fire counters: { burning, burntHa, wetCells, fires, version }. */
   fireStats() { return this.veg.fireStats(); }
+
+  // ------------------------------------------------------------------ Wave P3: biodiversity + missions
+
+  /** Biodiversity of the park (docs/specs/p3-biodiversity-missions.md §1):
+   * { richness, shannon, evenness, bigFive, plantRichness, index } — leopard is reported as null
+   * (not in this park). Pure function of the ledger + vegetation; cached per (day, veg version). */
+  getBiodiversity() {
+    const key = this.clock.day + ':' + (this.world.vegetation?.version ?? 0);
+    if (this._bioCache && this._bioCache.key === key) return this._bioCache.value;
+    const b = computeBiodiversity(this.population(), this.veg.plantMeanCover());
+    const value = {
+      richness: b.richness, shannon: +b.shannon.toFixed(4), evenness: +b.evenness.toFixed(4),
+      bigFive: b.bigFive, plantRichness: b.plantRichness, index: +b.index.toFixed(2),
+    };
+    this._bioCache = { key, value };
+    return value;
+  }
+
+  /** Mission table rows (frozen): { id, name, brief, goal, deadlineDays, stars }. */
+  listMissions() { return this.mission.list(); }
+
+  /** Start a mission by id (resets mission state, not the park) → { ok, error? }. */
+  startMission(id) { return this.mission.start(id, this.clock.day); }
+
+  /** Abandon the active mission (back to no mission; no completed event). */
+  abandonMission() { this.mission.abandon(); }
+
+  /** { id, status: 'none'|'active'|'won'|'failed', day, deadline, progress, stars, detail }. */
+  getMissionState() { return this.mission.state(); }
 
   /**
    * Food report for a habitat: per species present (and every herbivore the habitat's plants attract)

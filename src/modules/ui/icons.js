@@ -79,6 +79,8 @@ const P = {
   dry: '<path d="M12 3.5v6M8 6.5l8 0M6 20c0-3 2.5-5 6-5s6 2 6 5"/><path d="M4 20h16"/>',
   wet: '<path d="M8 15.5c-2 3-2 5.5 0 5.5s2-2.5 0-5.5zM16 15.5c-2 3-2 5.5 0 5.5s2-2.5 0-5.5z"/><path d="M7 12.5h9.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 5.6 6.3 3.2 3.2 0 0 0 7 12.5z"/>',
   species: '<path d="M4 20l3-7 2 2 3-5 2 3 3-6 3 13z"/>',
+  target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/>',
+  trophy: '<path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 5H4.5a3 3 0 0 0 3 4M17 5h2.5a3 3 0 0 1-3 4"/><path d="M12 14v3M8.5 20.5h7M9.5 17h5"/>' ,
   ruler: '<path d="M3.5 15.5l12-12 5 5-12 12z"/><path d="M8 11l1.5 1.5M10.5 8.5L12 10M13 6l1.5 1.5"/>',
   weight: '<path d="M5 20h14l-1.5-11h-11z"/><circle cx="12" cy="6.5" r="2.5"/>',
   herd: '<circle cx="7" cy="8" r="2.2"/><circle cx="14" cy="6.5" r="2.2"/><circle cx="17.5" cy="12" r="2.2"/><path d="M3 18a4 4 0 0 1 8 0M10 16.5a4 4 0 0 1 8 0M13.5 21.5a4 4 0 0 1 8 0"/>',
