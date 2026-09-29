@@ -624,8 +624,8 @@
       ],
       "issues": [
         {
-          "sev": "major",
-          "text": "Grass chunk (0,0) is a perfect regular lattice of tufts (16 m square at the world origin, visible in game low preset, gone with grass disabled): grass.js _genChunk seeds xorshift with (ix*73856093)^(iz*19349663) = 0 for chunk (0,0), and xorshift(0) returns 0 forever, so jitter is constant and no candidate is culled. Round-4 grid issue therefore not resolved at the park centre. Fix: OR a non-zero constant into the seed."
+          "sev": "resolved",
+          "text": "FIXED post-round by PR #14 (3dc851e) and verified by the critic: grass.js _genChunk replaces the zero xorshift seed (if (h === 0) h = 0x9e3779b9), so chunk (0,0) gets jitter and density culling; every other chunk keeps its stream; game low 14 h crop of the same camera shows scattered tufts instead of the lattice, 0 console errors, lint ok | was: Grass chunk (0,0) is a perfect regular lattice of tufts (16 m square at the world origin, visible in game low preset, gone with grass disabled): grass.js _genChunk seeds xorshift with (ix*73856093)^(iz*19349663) = 0 for chunk (0,0), and xorshift(0) returns 0 forever, so jitter is constant and no candidate is culled. Round-4 grid issue therefore not resolved at the park centre. Fix: OR a non-zero constant into the seed."
         },
         {
           "sev": "major",
