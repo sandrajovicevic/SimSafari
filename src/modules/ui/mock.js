@@ -52,11 +52,17 @@ export function populateMockWorld(ctx, preset) {
 
   // ---- roads
   if (w.roads.edges.size === 0) {
+    // world.roads IS the road graph's storage when the roads module is loaded, so mock edges must have
+    // the real edge shape ({ …, length, cum, ys }, nodes with an `edges` list): without `cum`,
+    // roads.nearestEdge threw inside buildings.canPlace and the toolbar preset logged 3 console errors
+    // (`[tools] building.update threw TypeError`, critic ui-round6).
     const add = (kind, width, pts) => {
       const id = w.nextId('r');
       const a = w.nextId('n'), b = w.nextId('n');
-      w.roads.nodes.set(a, { id: a, x: pts[0], z: pts[1] }); w.roads.nodes.set(b, { id: b, x: pts[pts.length - 2], z: pts[pts.length - 1] });
-      w.roads.edges.set(id, { id, a, b, kind, width, points: pts, traffic: rng.range(0.2, 0.9) });
+      const n = pts.length >> 1, cum = new Float32Array(n);
+      for (let i = 1; i < n; i++) cum[i] = cum[i - 1] + Math.hypot(pts[i * 2] - pts[i * 2 - 2], pts[i * 2 + 1] - pts[i * 2 - 1]);
+      w.roads.nodes.set(a, { id: a, x: pts[0], z: pts[1], edges: [id] }); w.roads.nodes.set(b, { id: b, x: pts[pts.length - 2], z: pts[pts.length - 1], edges: [id] });
+      w.roads.edges.set(id, { id, a, b, kind, width, points: pts, length: cum[n - 1], cum, ys: null, traffic: rng.range(0.2, 0.9) });
       return id;
     };
     out.road = add('paved', 6, curve([0, 400, 10, 360, 40, 330, 60, 300], 12));
@@ -69,7 +75,9 @@ export function populateMockWorld(ctx, preset) {
 
   // ---- buildings
   if (w.buildings.size === 0) {
-    const put = (type, x, z, rot, w_, d, staff, visitors, extra = {}) => { const id = w.nextId('b'); w.buildings.set(id, { id, type, x, z, rot, w: w_, d, state: 'operating', staff, visitors, ...extra }); return id; };
+    // real building records carry `y` (tools' selection ring drapes from it): without it the `night`
+    // preset's selected lodge gave NaN ring heights and THREE logged a NaN bounding sphere (critic ui-round6)
+    const put = (type, x, z, rot, w_, d, staff, visitors, extra = {}) => { const id = w.nextId('b'); w.buildings.set(id, { id, type, x, y: w.getHeight(x, z), z, rot, w: w_, d, state: 'operating', staff, visitors, ...extra }); return id; };
     put('gate', 0, 400, 0, 12, 6, 2, 22);
     out.lodge = put('lodge', 60, 300, 0.4, 30, 18, 12, 86, { name: 'Baobab Lodge', capacity: 120, income: 6800 });
     put('shop', 30, 330, 0, 12, 8, 3, 14);
