@@ -34,7 +34,7 @@ const URL_BASE = args.url || process.env.SIM_URL || 'http://127.0.0.1:5173';
 const SEED = +(args.seed || 1);
 const DAYS = +(args.days || 30);
 const TIMEOUT = +(args.timeout || 300000); // this machine's SwiftShader needs ~150 s to ready the full game
-const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep', 'plant-aloe', 'remove-prey', 'spread', 'fire-response', 'fire-regrowth', 'biodiversity', 'mission-replay', 'lodging-elasticity', 'layoff-chain']);
+const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep', 'plant-aloe', 'remove-prey', 'spread', 'fire-response', 'fire-regrowth', 'biodiversity', 'mission-replay', 'lodging-elasticity', 'layoff-chain', 'drought-water', 'locusts', 'salt-lick']);
 
 async function launch() {
   const gpuArgs = ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-gpu-sandbox', '--no-sandbox', '--autoplay-policy=no-user-gesture-required'];
@@ -939,6 +939,150 @@ async function scenarioLayoffChain(browser) {
   return result;
 }
 
+/** drought-water (Wave P5): a 30-day injected drought on the demo park, wetland with vs without
+ * its water mitigation (the dry variant strips every pump/waterhole first). Pass: deaths+leavers
+ * greater without water; hippo/buffalo (high-rainfall tier) stressed by the drought. Non-vacuity:
+ * the dry run loses at least one high-rainfall animal or >= 0.1 hippo happiness. */
+async function scenarioDroughtWater(browser) {
+  const run = async (label, dry) => {
+    const { page, errors } = await loadGame(browser, { label });
+    const out = await page.evaluate(async (dry) => {
+      const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+      const world = window.__SIM__.world;
+      sim.markStart();
+      let wet = null;
+      for (const h of world.habitats.values()) if (/wetland|river/i.test(h.name || '')) wet = h;
+      if (dry) { for (const b of [...world.buildings.values()]) if (b.type === 'pump' || b.type === 'waterhole') world.buildings.delete(b.id); }
+      sim.injectEvent('drought', { duration: 30, strength: 1 });
+      const happyHippo = [], happyBuffalo = [];
+      for (let d = 0; d < 30; d++) {
+        sim.runDays(1);
+        const rep = sim.getReports(1)[0];
+        const h2 = (wet && rep.habitats[wet.id]?.species) || {};
+        happyHippo.push(h2.hippo?.happiness ?? null);
+        happyBuffalo.push(h2.buffalo?.happiness ?? null);
+        if (d % 10 === 9) await new Promise((r) => setTimeout(r));
+      }
+      const reps = sim.getReports(30);
+      const last = reps[reps.length - 1];
+      return {
+        deaths: reps.reduce((a, r) => a + r.died, 0), leavers: reps.reduce((a, r) => a + r.left, 0),
+        stressed: last.rainfall?.stressed || [], rain: last.rainfall?.rain,
+        hippoEnd: last.population.hippo ?? 0, buffaloEnd: last.population.buffalo ?? 0,
+        happyHippo, happyBuffalo,
+      };
+    }, dry);
+    await page.close();
+    return { ...out, consoleErrors: errors };
+  };
+  const control = await run('drought-water-ctl', false);
+  const dry = await run('drought-water-dry', true);
+  const hh = control.happyHippo.filter((v) => v != null);
+  const hippoStart = hh.length ? Math.max(...hh) : null;
+  const hippoEndDry = dry.happyHippo[dry.happyHippo.length - 1];
+  const out = {
+    control, dry,
+    dryLosesMore: (dry.deaths + dry.leavers) > (control.deaths + control.leavers),
+    highStressedFirst: dry.stressed.includes('hippo') || dry.stressed.includes('buffalo'),
+    hippoHappinessDry: { start: hippoStart != null ? +hippoStart.toFixed(3) : null, end: hippoEndDry != null ? +hippoEndDry.toFixed(3) : null },
+  };
+  out.pass = out.dryLosesMore && out.highStressedFirst && hippoStart != null
+    && ((dry.hippoEnd + dry.buffaloEnd) < (control.hippoEnd + control.buffaloEnd)
+      || (hippoStart - (hippoEndDry ?? hippoStart)) >= 0.1);
+  const result = { scenario: 'drought-water', result: out, consoleErrors: [...new Set([...control.consoleErrors, ...dry.consoleErrors])] };
+  writeJson('drought-water', result);
+  return result;
+}
+
+/** locusts (Wave P5): a bounded swarm on the demo grassland — unmanaged vs sprayed on day 2 vs a
+ * firebreak pair boxed around the swarm. Pass: grass/shrub cover lost unmanaged >= 3x the sprayed
+ * run (by cells eaten), and the swarm is dead within its days cap in every variant. */
+async function scenarioLocusts(browser) {
+  const { page, errors } = await loadGame(browser, { label: 'locusts' });
+  const out = await page.evaluate(async () => {
+    const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+    const world = window.__SIM__.world;
+    const V = world.vegetation, N = V.res * V.res;
+    const TREES = V.types.indexOf('umbrella_thorn'), KNOB = V.types.indexOf('knobthorn'), MAR = V.types.indexOf('marula'), BAO = V.types.indexOf('baobab');
+    const herbCover = () => { let s = 0; for (let t = 0; t < V.types.length; t++) { if (t === TREES || t === KNOB || t === MAR || t === BAO) continue; for (let i = 0; i < N; i++) s += V.cover[t * N + i]; } return s; };
+    const DAYS = 20, SITE = { x: 0, z: -300 };
+    const runVariant = async (variant) => {
+      sim.reset(); sim.replan();
+      const before = herbCover();
+      sim.injectEvent('locusts', { x: SITE.x, z: SITE.z, radius: 56, days: 14, budget: 900, density: 1 });
+      const alive = [];
+      for (let d = 1; d <= DAYS; d++) {
+        if (variant === 'sprayed' && d === 2) sim.sprayLocusts(SITE.x, SITE.z, 80);
+        if (variant === 'firebreak' && d === 1) { const w = world.half; sim.firebreak(-w, SITE.z - 70, w, SITE.z - 70, 40); sim.firebreak(-w, SITE.z + 70, w, SITE.z + 70, 40); }
+        sim.runDays(1);
+        alive.push(world.locusts.swarms.length);
+        if (d % 10 === 9) await new Promise((r) => setTimeout(r));
+      }
+      return { coverLost: +(before - herbCover()).toFixed(2), eaten: sim.locusts.eatenTotal, aliveAtEnd: world.locusts.swarms.length, alive };
+    };
+    const unmanaged = await runVariant('none');
+    const sprayed = await runVariant('sprayed');
+    const firebreak = await runVariant('firebreak');
+    return { unmanaged, sprayed, firebreak, days: DAYS, site: SITE };
+  });
+  out.pass = out.unmanaged.eaten >= 3 * Math.max(1, out.sprayed.eaten)
+    && out.unmanaged.aliveAtEnd === 0 && out.sprayed.aliveAtEnd === 0 && out.firebreak.aliveAtEnd === 0
+    && out.unmanaged.coverLost > 0;
+  const result = { scenario: 'locusts', result: out, consoleErrors: errors };
+  writeJson('locusts', result);
+  await page.close();
+  return result;
+}
+
+/** salt-lick (Wave P5): tours past the plains habitat, lick at the herd centroid vs no lick, 1800
+ * vehicle-seconds pumped through the real update loop (the sightings pattern). Pass: sightings
+ * strictly higher with the lick. Non-vacuity: > 0 sightings in the control. */
+async function scenarioSaltLick(browser) {
+  const run = async (label, withLick) => {
+    const { page, errors } = await loadGame(browser, { label });
+    const out = await page.evaluate(async (withLick) => {
+      const reg = window.__SIM__.app.registry.modules;
+      const sim = reg.get('simulation').def.api;
+      const animals = reg.get('animals').def, traffic = reg.get('traffic').def, roadsApi = reg.get('roads').def.api;
+      const world = window.__SIM__.world;
+      let plains = null;
+      for (const h of world.habitats.values()) if (/plains/i.test(h.name || '')) plains = h;
+      const g = world.grid; let sx = 0, sz = 0;
+      for (const idx of plains.cells) { const ix = idx % g.res, iz = (idx - ix) / g.res; const c = world.cellCenter(ix, iz); sx += c.x; sz += c.z; }
+      const cx = sx / plains.cells.length, cz = sz / plains.cells.length;
+      let gate = null;
+      for (const node of roadsApi.nodes().values()) if (!gate || node.z > gate.z) gate = node;
+      let plainsNode = null;
+      for (const node of roadsApi.nodes().values()) if (!plainsNode || Math.hypot(node.x - cx, node.z - cz) < Math.hypot(plainsNode.x - cx, plainsNode.z - cz)) plainsNode = node;
+      if (withLick) sim.placeSaltLick(cx, cz);
+      const pump = async (seconds) => {
+        let n = 0;
+        const onSight = () => { n++; };
+        window.__SIM__.events.on('visitor:sighting', onSight);
+        const dt = 0.05;
+        for (let i = 0; i < Math.round(seconds / dt); i++) { animals.update(dt, i * dt); traffic.update(dt, i * dt); if (i % 2000 === 0) await new Promise((r) => setTimeout(r)); }
+        window.__SIM__.events.off('visitor:sighting', onSight);
+        return n;
+      };
+      const sightings = await pump(1800);
+      const herdNearLick = withLick ? [...world.animals.values()].filter((a) => Math.hypot(a.x - cx, a.z - cz) < 60).length : 0;
+      return { sightings, lick: world.saltLicks.size > 0, herdNearLick, plainsName: plains?.name };
+    }, withLick);
+    await page.close();
+    return { ...out, consoleErrors: errors };
+  };
+  const control = await run('saltlick-control', false);
+  const withLick = await run('saltlick-lick', true);
+  const out = {
+    control: { sightings: control.sightings },
+    withLick: { sightings: withLick.sightings, lick: withLick.lick, herdNearLick: withLick.herdNearLick },
+  };
+  out.pass = control.sightings > 0 && withLick.sightings > control.sightings;
+  const result = { scenario: 'salt-lick', result: out, consoleErrors: [...new Set([...control.consoleErrors, ...withLick.consoleErrors])] };
+  writeJson('salt-lick', result);
+  return result;
+}
+
 function writeJson(name, data) {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const p = path.join(OUT_DIR, `fidelity-${name}.json`);
@@ -1038,6 +1182,23 @@ function writeJson(name, data) {
       results['fire-regrowth'] = await scenarioFireRegrowth(browser);
       const rr = results['fire-regrowth'].result;
       console.log(JSON.stringify({ pass: rr.pass, ...rr }, null, 2));
+    }
+    if (SCENARIOS.includes('drought-water')) {
+      console.log('[drought-water] 30-day drought, wetland with vs without water mitigation');
+      results['drought-water'] = await scenarioDroughtWater(browser);
+      const r = results['drought-water'].result;
+      console.log(JSON.stringify({ pass: r.pass, dryLosesMore: r.dryLosesMore, control: { deaths: r.control.deaths, leavers: r.control.leavers, hippo: r.control.hippoEnd, buffalo: r.control.buffaloEnd }, dry: { deaths: r.dry.deaths, leavers: r.dry.leavers, hippo: r.dry.hippoEnd, buffalo: r.dry.buffaloEnd, stressed: r.dry.stressed }, hippoHappinessDry: r.hippoHappinessDry }, null, 2));
+    }
+    if (SCENARIOS.includes('locusts')) {
+      console.log('[locusts] bounded swarm: unmanaged vs sprayed vs firebreak');
+      results.locusts = await scenarioLocusts(browser);
+      const r = results.locusts.result;
+      console.log(JSON.stringify({ pass: r.pass, unmanaged: r.unmanaged, sprayed: r.sprayed, firebreak: r.firebreak }, null, 2));
+    }
+    if (SCENARIOS.includes('salt-lick')) {
+      console.log('[salt-lick] plains tours, lick vs no lick, 1800 vehicle-seconds');
+      results['salt-lick'] = await scenarioSaltLick(browser);
+      console.log(JSON.stringify(results['salt-lick'].result, null, 2));
     }
     if (SCENARIOS.includes('lodging-elasticity')) {
       console.log('[lodging-elasticity] 3 tiers x 3 rates x 30 days: occupancy monotone + elasticity ordering');
