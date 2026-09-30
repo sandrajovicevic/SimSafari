@@ -152,6 +152,7 @@ export class Simulation {
     this.roomRates = {}; for (const t of TIER_ORDER) this.roomRates[t] = LODGING_TIERS[t].refRate;
     this.lodgingToday = null;   // per-tier occupancy captured at 17:00 (getLodging falls back to on-demand)
     this.trust = TRUST.start;   // village trust: a layoff is a memory, not an event
+    this._layoffDay = -1; this._layoffHitToday = 0; // per-day layoff cap bookkeeping (fire())
     this.todayPoachP = 0;       // yesterday's poach probability (report.poachRisk)
     this.adviceState = null;    // advisors' hysteresis/cooldown memo (advise() is pure)
     this.lastAdvice = [];
@@ -1084,7 +1085,10 @@ export class Simulation {
         if (b > 0) this._spawn(s, hid, b);
         if (d + l > 0) this._remove(s, hid, Math.min(n0, d + l));
         if (b > 0 && sp.rarity >= 0.8) this._notify('info', `A ${s} was born in ${info.name}`);
-        info.species[s] = { n: r.n, happiness: +r.happiness.toFixed(3), quality: +Q.toFixed(3), capacity: r.capacity, spaceCapacity: cap?.space ?? null, foodCapacity: cap?.foodCap ?? null, food: cap?.food != null ? +cap.food.toFixed(2) : null, born: b, died: d, left: l, unhappyDays: r.unhappyDays };
+        info.species[s] = { n: r.n, happiness: +r.happiness.toFixed(3), quality: +Q.toFixed(3), capacity: r.capacity, spaceCapacity: cap?.space ?? null, foodCapacity: cap?.foodCap ?? null, food: cap?.food != null ? +cap.food.toFixed(2) : null,
+          // Wave P4: daily food need (same n × per-animal need as habitatFood()) so the ecologist's overgrazing rule can read it
+          need: (DIET[s] ? DIET[s].needKg : FOOD[s]?.need) != null ? +(r.n * (DIET[s] ? DIET[s].needKg : FOOD[s].need)).toFixed(2) : null,
+          born: b, died: d, left: l, unhappyDays: r.unhappyDays };
       }
       habitats[hid] = info;
     }
@@ -1553,11 +1557,19 @@ export class Simulation {
   hire(role, n = 1) { if (!this.staff[role]) return 0; this.staff[role].n = Math.max(0, this.staff[role].n + Math.round(n)); return this.staff[role].n; }
   fire(role, n = 1) {
     if (!this.staff[role]) return 0;
-    n = Math.round(n);
-    // Wave P4: every layoff is remembered — trust drops immediately (capped per day), and only the
-    // slow drift can bring it back. Re-hiring does NOT undo the hit.
-    if (n > 0) this.trust = clamp01(this.trust - Math.min(TRUST.layoffDayCap, TRUST.layoffHit * n));
-    this.staff[role].n = Math.max(0, this.staff[role].n - n);
+    const before = this.staff[role].n;
+    this.staff[role].n = Math.max(0, before - Math.round(n));
+    // Wave P4: every layoff is remembered — trust drops immediately, and only the slow drift can bring
+    // it back (re-hiring does NOT undo the hit). The hit counts the people actually let go (firing from
+    // an empty role costs nothing) and the cap is per DAY across calls: the ui fires one person per
+    // click, so a per-call cap never bound (12 clicks cost 0.36, two 10-person calls 0.6).
+    const removed = before - this.staff[role].n;
+    if (removed > 0) {
+      const day = this.clock.day;
+      if (this._layoffDay !== day) { this._layoffDay = day; this._layoffHitToday = 0; }
+      const hit = Math.min(TRUST.layoffDayCap - this._layoffHitToday, TRUST.layoffHit * removed);
+      if (hit > 0) { this.trust = clamp01(this.trust - hit); this._layoffHitToday += hit; }
+    }
     return this.staff[role].n;
   }
   setWage(role, wage) { if (!this.staff[role]) return 0; this.staff[role].wage = clamp(+wage || 0, 0, 1000); return this.staff[role].wage; }
