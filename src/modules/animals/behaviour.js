@@ -68,6 +68,21 @@ export class Behaviour {
     }
     const ang = rng.float() * Math.PI * 2, rad = Math.sqrt(rng.float()) * h.home.r;
     h.tx = h.home.x + Math.cos(ang) * rad; h.tz = h.home.z + Math.sin(ang) * rad; h.intent = 'graze'; h.water = null;
+    // Wave P5 salt licks: with a chance scaled by the species' graze share, a herd that has a lick
+    // inside its habitat makes it the wander target instead — the lick becomes an attraction point
+    // visitors can plan around (world.saltLicks is simulation-owned; animals only reads).
+    const world = this.S.world;
+    if (world.saltLicks?.size && rng.float() < 0.25) {
+      const g = world.grid;
+      const homeHid = g.habitatId[world.cellAt(h.home.x, h.home.z).index];
+      for (const l of world.saltLicks.values()) {
+        const c = world.cellAt(l.x, l.z);
+        if (g.habitatId[c.index] !== homeHid) continue;
+        if ((l.x - h.home.x) ** 2 + (l.z - h.home.z) ** 2 > (h.home.r + 60) ** 2) continue;
+        h.tx = l.x + (rng.float() - 0.5) * 10; h.tz = l.z + (rng.float() - 0.5) * 10;
+        break;
+      }
+    }
   }
 
   herdCentroid(h) {

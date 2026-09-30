@@ -67,6 +67,35 @@ function computeSun() {
  * buoyant column (life 9 s, size 2.4) visible at 160 m by day. A single orange PointLight rides the
  * front centroid as the night glow. Emitters idle and the light drops to 0 when the front dies. */
 const FIRE_EMITTERS = 16;
+/** Wave P5 locust swarms: one particle emitter per swarm (≤ 4 live), rate following density. The
+ * emitter's position roams the swarm's disc every frame (a Lissajous sweep) so the cloud paints the
+ * whole area instead of a column. Reads world.locusts only — simulation owns the writes. */
+function updateLocustSwarms(t) {
+  const w = ctx.world;
+  if (!w.locusts || !particles) return;
+  if (S.locustEmitters === undefined) { S.locustEmitters = []; S.locustSeen = -1; }
+  const swarms = w.locusts.swarms;
+  if (swarms.length > S.locustEmitters.length) {
+    while (S.locustEmitters.length < Math.min(swarms.length, 4)) {
+      const e = particles.emitter('locust', { rate: 90, size: 0.28, life: 1.6, speed: 2.0, spread: 0.9 });
+      if (!e) break;
+      S.locustEmitters.push(e);
+    }
+  }
+  for (let i = 0; i < S.locustEmitters.length; i++) {
+    const e = S.locustEmitters[i];
+    const s = swarms[i];
+    if (!s) { e.set({ rate: 0 }); continue; }
+    // roam the disc (r*0.6 Lissajous, ~1.2-3.5 m above the ground)
+    const ang = t * 0.55 + i * 2.1, r2 = s.radius * 0.6;
+    const x = s.x + Math.cos(ang * 1.3) * r2 * 0.7;
+    const z = s.z + Math.sin(ang) * r2;
+    const y = (ctx.world.getHeight ? ctx.world.getHeight(x, z) : 0) + 2.2 + Math.sin(ang * 2.7) * 1.1;
+    e.setPosition(x, y, z);
+    e.set({ rate: Math.round(30 + 110 * Math.min(1, s.density)) });
+  }
+}
+
 function updateFireFront() {
   const veg = ctx.world.vegetation;
   if (!veg?.burn || !particles) return;
@@ -208,6 +237,7 @@ export default {
     if (!ctx) return;
     computeSun();
     updateFireFront();
+    updateLocustSwarms(t);
     const w = ctx.world.weather;
     haze.update({ temperature: w.temperature ?? 28, sunUp: S.sunUp });
     S.ambientAlpha = (S.ambientDust >= 0 ? S.ambientDust : autoAmbientDust()) * 0.55;
