@@ -99,7 +99,7 @@ export function createReport(root, s) {
       const h = clamp01(report.happiness?.[sp] ?? avgHappiness(world, sp));
       popWrap.appendChild(el('div.bar-row', null, el('span.lab', null, icon(animalIconName(sp)), speciesFacts(sp, animalsApi).name),
         el('span.bar', null, el('i', { style: `width:${Math.round(h * 100)}%;background:${scoreColor(h)}` })),
-        el('span.n', { text: fmtInt(n) }), el('span.val', { text: Math.round(h * 100) + '%' })));
+        el('span.n', { text: fmtInt(n) }), el('span.val', { text: Math.round(h * 100) + '%', style: `color:${scoreColor(h)}` })));
     }
 
     // events
@@ -118,11 +118,13 @@ export function createReport(root, s) {
     // biodiversity tile (Wave P3): index ring + richness + the Big-Five row. The report carries the
     // simulation's own reading; the mock report provides one for the showcase.
     const bio = report.biodiversity || null;
-    const bioTile = bio ? el('div.tile', null,
+    // one compact row (ring | counts | Big Five) so it can sit under Population & happiness and leave the
+    // Events column wide enough to read; as a third column it squeezed events to 4-5 wrapped lines
+    const bioTile = bio ? el('div.tile.bio-rep', null,
       el('h4', null, icon('species'), 'Biodiversity'),
-      el('div.bio-h', null,
+      el('div.bio-row', null,
         // the index is a 0-100 score, not a percentage: no "%" (round-6 critic)
-        ringSmall(clamp01(bio.index / 100), 'INDEX', { text: String(Math.round(bio.index)), tip: `${bio.index.toFixed(0)} / 100 — evenness ${bio.evenness.toFixed(2)}` })),
+        ringSmall(clamp01(bio.index / 100), 'INDEX', { text: String(Math.round(bio.index)), tip: `${bio.index.toFixed(0)} / 100 — evenness ${bio.evenness.toFixed(2)}` }),
       // richness / plants printed, not tooltip-only (the spec asks for "index + richness"); the third
       // ringSmall argument used to be a tooltip string the function never accepted, so they showed nowhere
       el('div.bio-facts', null, `${bio.richness} / 12 species`, el('br'), `${bio.plantRichness} / 10 plants`),
@@ -131,7 +133,7 @@ export function createReport(root, s) {
         ...BIG5.map(([sp, label]) => el('span.big5-item' + ((bio.bigFive?.[sp] ?? 0) > 0 ? '' : '.off'),
           { 'data-tip': `${label} — ${bio.bigFive?.[sp] > 0 ? bio.bigFive[sp] + ' in the park' : 'none'}`, 'data-tip-pos': 'below' },
           icon(animalIconName(sp)), el('span.nm', { text: label }), el('b', { text: (bio.bigFive?.[sp] ?? 0) > 0 ? String(bio.bigFive[sp]) : '—' }))),
-        el('span.big5-item.off.leopard', { 'data-tip': 'Leopard — not in this park', 'data-tip-pos': 'below' }, icon('paw'), el('span.nm', { text: 'Leopard' }), el('b', { text: '—' })))) : null;
+        el('span.big5-item.off.leopard', { 'data-tip': 'Leopard — not in this park', 'data-tip-pos': 'below' }, icon('paw'), el('span.nm', { text: 'Leopard' }), el('b', { text: '—' }))))) : null;
 
     const modal = el('div.modal.panel.pe', { role: 'dialog' },
       el('div.modal-h', null, el('span.ico', null, icon('report')),
@@ -147,9 +149,10 @@ export function createReport(root, s) {
             gauge(satisfaction, 'SATISF.', satisfaction >= 0.7 ? 'Visitors are delighted — variety and close sightings are paying off.' : satisfaction >= 0.45 ? 'Mixed reviews. More species and smoother roads would help.' : 'Visitors are unhappy. Check ticket price and sightings.'),
             el('div', { style: 'height:8px' }),
             gauge(reputation, 'REPUT.', 'Word of mouth drives tomorrow\'s arrivals. ' + (report.arrivalsTomorrow ? 'Expected: ' + fmtInt(report.arrivalsTomorrow) + '.' : '')))),
-        el('div.grid' + (bioTile ? '3' : '2'), { style: 'margin-top:10px' },
-          el('div.tile', null, el('h4', null, icon('paw'), 'Population & happiness'), popWrap),
-          bioTile,
+        el('div.grid-rep', { style: 'margin-top:10px' },
+          el('div.rep-col', null,
+            el('div.tile', null, el('h4', null, icon('paw'), 'Population & happiness'), popWrap),
+            bioTile),
           el('div.tile', null, el('h4', null, icon('info'), 'Events'), evWrap))),
       el('div.modal-f', null,
         el('label.checkbox', null, el('input', { type: 'checkbox', checked: s.settings.autoReport ? true : undefined, onchange: (e) => { s.settings.autoReport = e.target.checked; } }), 'Open automatically each day'),

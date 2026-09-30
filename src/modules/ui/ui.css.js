@@ -248,6 +248,7 @@ export const CSS = `
 .sf .toast .ic { color: var(--info); margin-top: 1px; width: 18px; height: 18px; }
 .sf .toast.warn .ic { color: var(--warn); } .sf .toast.error .ic { color: var(--bad); } .sf .toast.good .ic { color: var(--good); }
 .sf .toast .tx { flex: 1; font-size: 12.5px; line-height: 1.35; }
+.sf .toast .tx .n { color: var(--accent); font-weight: 700; }
 .sf .toast .tx small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
 .sf .toast .x { width: 20px; height: 20px; border: 0; background: transparent; color: var(--muted); cursor: pointer; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
 .sf .toast .x:hover { background: var(--bg-hover); color: var(--text); }
@@ -282,7 +283,9 @@ export const CSS = `
 .sf .tile h4 { margin: 0 0 6px; font-size: 12.5px; font-weight: 650; display: flex; align-items: center; gap: 6px; }
 .sf .tile h4 .ic { color: var(--accent); width: 15px; height: 15px; }
 .sf .pop { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; }
-.sf .pop .bar-row { grid-template-columns: 128px 1fr 30px 34px; }
+/* the happiness bar never had room at this width (0-4 px); the % carries the same value, coloured by score */
+.sf .pop .bar-row { grid-template-columns: minmax(0, 1fr) 30px 34px; }
+.sf .pop .bar-row .bar { display: none; }
 .sf .pop .bar-row .lab { font-size: 12px; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; }
 .sf .pop .bar-row .lab .ic { color: var(--muted); width: 18px; height: 18px; }
 .sf .pop .bar-row .n { font-size: 12px; font-weight: 600; text-align: right; }
@@ -364,6 +367,16 @@ export const CSS = `
 .sf .big5-item .nm { font-size: 11.5px; color: var(--muted); }
 .sf .big5-item:not(.off) .nm { color: var(--text); }
 .sf .big5 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sf .bio-h .b5col { flex: 1; min-width: 0; }
+.sf .b5-label { font-size: 10.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+.sf .bio-h .b5col .big5 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.sf .bio-h .b5col .big5-item { justify-content: flex-start; }
+.sf .bio-h .b5col .big5-item b { margin-left: auto; }
+.sf .grid-rep { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 10px; }
+.sf .rep-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sf .bio-rep .bio-row { display: flex; align-items: center; gap: 14px; }
+.sf .bio-rep .bio-facts { text-align: left; margin: 0; white-space: nowrap; }
+.sf .bio-rep .big5 { flex: 1; min-width: 0; gap: 6px; }
 .sf .big5-item { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; background: rgba(255,255,255,0.06); font-size: 12px; }
 .sf .big5-item .ic { width: 17px; height: 17px; color: var(--text); }
 .sf .big5-item.off { opacity: 0.55; }

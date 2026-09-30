@@ -56,8 +56,10 @@ export function createObjectives(root, s) {
         el('div.rows', null,
           el('div.kv', null, el('span.muted', { text: 'Species' }), el('b', { text: `${b.richness} / 12` })),
           el('div.kv', null, el('span.muted', { text: 'Plants' }), el('b', { text: `${b.plantRichness} / 10` })),
-          el('div.kv', null, el('span.muted', { text: 'Evenness' }), el('b', { text: b.evenness.toFixed(2) })))),
-      el('div.sub', null, 'The Big Five — ', row));
+          el('div.kv', null, el('span.muted', { text: 'Evenness' }), el('b', { text: b.evenness.toFixed(2) }))),
+        // the Big Five beside the counts, not in a row below: the rows only need ~240 px and left the
+        // tile's right half empty while the chips sat far from their label
+        el('div.b5col', null, el('div.b5-label', { text: 'The Big Five' }), row)));
   }
 
   /** Live detail rows for the active/finished mission. */

@@ -47,7 +47,7 @@ isEnabled() → bool
 
 | event | direction | payload |
 |---|---|---|
-| `ui:notify` | consumes (and emits for its own toasts) | `{level, text, title?, sub?, x?, z?, ttl?}` |
+| `ui:notify` | consumes (and emits for its own toasts) | `{level, text, title?, sub?, x?, z?, ttl?}`; an identical live toast is bumped to "×N" (timer restarted) instead of stacking a copy |
 | `tool:selected`, `tool:applied` | consumes | toolbar highlight, toast text |
 | `economy:updated` | consumes | top-bar cash/income |
 | `weather:changed` | consumes | top-bar weather readout |
