@@ -947,6 +947,24 @@ console.log('\nWave P4 — tiers, trust, advisors');
     const d = lo.sim.getReport().poachRisk - hi.sim.getReport().poachRisk;
     assert(d > 0.025 && d <= 0.03 + 1e-9, `trust: poachRisk gains ~0.06 × max(0, 0.5 − trust) (Δ ${d.toFixed(4)} at trust 0 vs 0.6)`);
   }
+  // the cap is per DAY across calls (the ui fires one person per click), and only people actually let go count
+  {
+    const c = makeTierPark(58);
+    c.sim.hire('keeper', 20);
+    const t0 = c.sim.getVillageTrust();
+    for (let i = 0; i < 12; i++) c.sim.fire('keeper', 1); // 12 × 0.03 = 0.36 uncapped
+    assert(Math.abs((t0 - c.sim.getVillageTrust()) - 0.3) < 1e-9,
+      `trust: 12 one-person layoffs in one day cost exactly the 0.3 daily cap (${t0.toFixed(3)} → ${c.sim.getVillageTrust().toFixed(3)})`);
+    c.sim.runDays(1);
+    const t1 = c.sim.getVillageTrust();
+    c.sim.fire('keeper', 1);
+    assert(Math.abs((t1 - c.sim.getVillageTrust()) - 0.03) < 1e-9, 'trust: the cap resets the next day (one more layoff costs 0.03)');
+    const e = makeTierPark(58);
+    e.sim.fire('guide', e.sim.staff.guide.n);
+    const t2 = e.sim.getVillageTrust();
+    e.sim.fire('guide', 5);
+    assert(e.sim.getVillageTrust() === t2, 'trust: "firing" from an empty role costs nothing');
+  }
 
   // ---- advisors: pure advise() — thresholds, hysteresis band, cooldown, null-clear
   {
@@ -966,6 +984,26 @@ console.log('\nWave P4 — tiers, trust, advisors');
     state = out.state;
     out = advise(rep(7, { morale: 0.3 }), state); // 4 days after clearing: fires again
     assert(out.messages.some((m) => m.key === 'morale-low'), 'advise: after the cooldown the message returns');
+    // raw metrics keep a message up inside its band (a metric that returned null below `start` cleared the next day)
+    let st = advise(rep(1, { poachRisk: 0.03 })).state;
+    out = advise(rep(2, { poachRisk: 0.012 }), st);
+    assert(out.messages.some((m) => m.key === 'poach-risk'), 'advise: poach-risk stays up between its clear (0.008) and start (0.02) lines');
+    out = advise(rep(3, { poachRisk: 0.005 }), out.state);
+    assert(!out.messages.some((m) => m.key === 'poach-risk'), 'advise: poach-risk clears once below 0.008');
+    // smoothed money: one loss day in a profitable week is not advice; a losing week is
+    st = null;
+    for (let d = 1; d <= 6; d++) st = advise(rep(d, { net: 3000 }), st).state;
+    out = advise(rep(7, { net: -8000 }), st);
+    assert(!out.messages.some((m) => m.key === 'losing-money'), 'advise: one loss day after six profitable ones does not fire losing-money (7-day mean)');
+    st = null;
+    for (let d = 1; d <= 7; d++) { out = advise(rep(d, { net: -2000 }), st); st = out.state; }
+    assert(out.messages.some((m) => m.key === 'losing-money' && /2,000 a day/.test(m.text)), 'advise: a losing week fires losing-money with the weekly mean');
+    // overgrazing reads report.habitats[*].species[*].need vs food (the field it used to read never existed there)
+    out = advise(rep(1, { habitats: { 1: { species: { zebra: { n: 40, food: 30, need: 44 } } } } }));
+    assert(out.messages.some((m) => m.key === 'overgrazed'), 'advise: overgrazed fires when a habitat\'s need exceeds its food');
+    const sim = makeTierPark(59); sim.sim.runDays(2);
+    const hs = Object.values(sim.sim.getReport().habitats || {});
+    assert(hs.length && hs.every((h) => Object.values(h.species).every((x) => 'need' in x)), 'report: every habitat species row carries need (the overgrazing input)');
     // critical ranks above warn; advisor attribution
     out = advise(rep(8, { morale: 0.3, net: -5000, died: 5 }));
     assert(out.messages[0].level === 'critical', 'advise: critical sorts first');

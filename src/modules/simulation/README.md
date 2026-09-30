@@ -354,8 +354,8 @@ $4,594 → $5,793 @ $15 (tiers monetize better than the old flat $90-120 rate); 
 −$2,883 @ $25 (the cottage's $520/day upkeep, partly offset) and the $15 break-even +$433.13 →
 +$941.23.** Determinism unchanged (byte-identical same-seed runs with rates in play — tested).
 
-**Village trust** (`TRUST`): starts 0.6; `fire(role, n)` costs `0.03 × n` immediately (capped 0.3/day,
-re-hiring restores nothing); drifts 2%/day toward `0.5·prosperity + 0.5·employment` — so a layoff is
+**Village trust** (`TRUST`): starts 0.6; `fire(role, n)` costs `0.03` per person actually let go
+(capped 0.3 per day across all calls; firing from an empty role costs nothing; re-hiring restores nothing); drifts 2%/day toward `0.5·prosperity + 0.5·employment` — so a layoff is
 remembered for weeks. `poachP` gains `0.06 × max(0, 0.5 − trust)` inside the existing clamp and the
 SAME single rng roll (no new draws). Harness `layoff-chain`: trust 0.488 vs 0.607 at day 5, still
 0.624 vs 0.696 at day 45 after everyone was re-hired on day 25; expected poach rate Σ 0.235 vs 0.194;
@@ -371,11 +371,26 @@ endpoints: idle $1,192,829 / ranger-trim $1,239,579 / trim+rates $1,524,060.
 
 **Advisors** (`advisors.js`): pure `advise(report, state) → {messages, state}` — 13 rules across the
 ecologist / treasurer / community-liaison personas, each with a hysteresis band (fires at `start`,
-clears only past `clear`, a null metric clears immediately), a 3-day cooldown after clearing, and
-critical-first ordering. Runs at day end after the report; `getAdvice()` returns the messages.
+clears only past `clear`; metrics return their raw value inside the band and null only when the
+report has no such data, which clears immediately), a 3-day cooldown after clearing, and
+critical-first ordering. `losing-money`, `rooms-idle` and `rooms-turning-away` judge a 7-day mean
+(`smooth: 7`, kept in the advise state): net income and occupancy swing day to day. Runs at day end after the report; `getAdvice()` returns the messages.
 Signature note in docs/requests/p4.md #1. Tests: 205/205 (27 new — demand monotone per tier,
 measured ε ordering, zero-beds tier, ledger round-trip, trust drop/cap/no-restore/10-day memory/
 poach term, advise hysteresis+cooldown+ranking+determinism, byte-identical tiered runs).
+
+**Verifier fixes (2026-09-30, on this branch):** (1) the layoff cap was per *call*, not per day,
+and counted the requested n — 12 one-person layoffs (the ui fires one per click) cost 0.36, two
+10-person calls 0.6, "firing" 5 from an empty role 0.15; now per day across calls and on people
+actually removed. (2) 7 of the 13 advisor metrics returned null inside their hysteresis band, so
+the band was dead code: on the idle demo over 120 days `losing-money` fired 12 separate times in
+16 days shown, `understaffed` 12 times in 77, `rooms-idle` 9 in 11, `rooms-turning-away` 12 in 32.
+With raw metrics + the 7-day mean on the three money/occupancy rules: 2 / 1 / 1 / 1 separate
+firings. (3) `overgrazed` read `perAnimal`, a field `report.habitats` never had, so it could never
+fire; the report's habitat species rows now carry `need` (n × per-animal need, as `habitatFood()`)
+and the rule reads it. 9 tests added (7 fail on the old code). `herd-unhappy` still oscillates
+under stress (9 firings in 75 days shown when every ranger and keeper is fired) — genuine
+happiness swings around its 0.45 line, left as is.
 
 ## Known gaps (honest)
 
