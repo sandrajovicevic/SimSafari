@@ -102,7 +102,7 @@ export const CSS = `
   background: linear-gradient(145deg, #f2b23e, #c8781e); color: #2a1a05; box-shadow: 0 1px 0 rgba(255,255,255,0.25) inset;
 }
 .sf .park .sub { font-size: 10.5px; font-weight: 500; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; display: block; line-height: 1.1; }
-.sf .park .name { display: block; line-height: 1.15; }
+.sf .park .name { display: block; line-height: 1.15; white-space: nowrap; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 .sf .cash { display: flex; align-items: center; gap: 8px; }
 .sf .cash .ic { color: var(--accent); }
 .sf .cash .val { font-size: 16px; font-weight: 650; letter-spacing: 0.01em; min-width: 92px; }
@@ -121,8 +121,8 @@ export const CSS = `
 .sf .stars .ic.half { color: var(--accent); opacity: 0.55; }
 .sf .clock { display: flex; align-items: center; gap: 12px; }
 .sf .clock .time { font-size: 17px; font-weight: 650; letter-spacing: 0.02em; }
-.sf .clock .day { font-weight: 600; }
-.sf .clock .season { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; display: block; line-height: 1.1; }
+.sf .clock .day { font-weight: 600; white-space: nowrap; }
+.sf .clock .season { white-space: nowrap; font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; display: block; line-height: 1.1; }
 .sf .clock .col { display: flex; flex-direction: column; line-height: 1.15; }
 .sf .clock .ic { color: var(--muted); }
 .sf .speed { display: inline-flex; padding: 3px; gap: 2px; background: rgba(0,0,0,0.3); border: 1px solid var(--line); border-radius: 7px; }
@@ -140,7 +140,7 @@ export const CSS = `
 .sf .weather .ic.rain { color: #8cc4f2; }
 .sf .weather .ic.cloud { color: #c5ced9; }
 .sf .weather .t { font-weight: 600; }
-.sf .weather .w { font-size: 11px; color: var(--muted); display: block; line-height: 1.1; }
+.sf .weather .w { font-size: 11px; color: var(--muted); display: block; line-height: 1.1; white-space: nowrap; }
 .sf .tb-btns { display: flex; gap: 4px; }
 .sf .tb-btns .btn { height: 30px; }
 .sf .satbar { width: 54px; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.12); overflow: hidden; margin-top: 3px; }
@@ -359,7 +359,10 @@ export const CSS = `
 .sf .kv.bad b { color: var(--bad); }
 .sf .tile.bio .bio-h { display: flex; gap: 16px; align-items: center; margin: 4px 0 8px; }
 .sf .bio-index { font-size: 34px; font-weight: 750; line-height: 1; min-width: 58px; text-align: center; }
-.sf .bio-h .rows { flex: 1; }
+.sf .bio-h .rows { flex: 0 1 240px; }
+.sf .bio-facts { text-align: center; font-size: 11.5px; color: var(--muted); line-height: 1.5; margin: 2px 0 8px; }
+.sf .big5-item .nm { font-size: 11.5px; color: var(--muted); }
+.sf .big5-item:not(.off) .nm { color: var(--text); }
 .sf .big5 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .sf .big5-item { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; background: rgba(255,255,255,0.06); font-size: 12px; }
 .sf .big5-item .ic { width: 17px; height: 17px; color: var(--text); }

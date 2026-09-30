@@ -18,7 +18,8 @@ function goalText(m) {
 
 export function createObjectives(root, s) {
   let node = null;
-  let confirmAbandon = 0;
+  let confirmAbandon = 0;   // Date.now() of the first Abandon click; survives refresh() so a daily tick can't cancel it
+  let startError = '';      // last refused startMission() reason, shown in the picker
 
   const sim = () => { try { return s.ctx.modules.get('simulation'); } catch { return null; } };
 
@@ -42,15 +43,17 @@ export function createObjectives(root, s) {
     const row = el('div.big5');
     for (const sp of BIG_FIVE) {
       const n = b.bigFive?.[sp] ?? 0;
+      // species name beside the count: the four glyphs are near-identical at this size (round-6 critic)
       row.appendChild(el('span.big5-item' + (n > 0 ? '' : '.off'), { 'data-tip': titleCase(sp) + (n > 0 ? ` — ${n} in the park` : ' — none'), 'data-tip-pos': 'below' },
-        icon(animalIconName(sp)), el('b', { text: n > 0 ? String(n) : '—' })));
+        icon(animalIconName(sp)), el('span.nm', { text: titleCase(sp) }), el('b', { text: n > 0 ? String(n) : '—' })));
     }
-    row.appendChild(el('span.big5-item.off.leopard', { 'data-tip': 'Leopard — not in this park', 'data-tip-pos': 'below' }, icon('paw'), el('b', { text: '—' })));
+    row.appendChild(el('span.big5-item.off.leopard', { 'data-tip': 'Leopard — not in this park', 'data-tip-pos': 'below' }, icon('paw'), el('span.nm', { text: 'Leopard' }), el('b', { text: '—' })));
     return el('div.tile.bio', null,
       el('h4', null, icon('species'), 'Biodiversity'),
       el('div.bio-h', null,
         el('span.bio-index', { style: `color:${scoreColor(clamp01(b.index / 100))}` }, String(Math.round(b.index))),
-        el('span', null,
+        // a div.rows (the CSS already sizes `.bio-h .rows`); a shrink-to-fit span glued "Species" to "12 / 12"
+        el('div.rows', null,
           el('div.kv', null, el('span.muted', { text: 'Species' }), el('b', { text: `${b.richness} / 12` })),
           el('div.kv', null, el('span.muted', { text: 'Plants' }), el('b', { text: `${b.plantRichness} / 10` })),
           el('div.kv', null, el('span.muted', { text: 'Evenness' }), el('b', { text: b.evenness.toFixed(2) })))),
@@ -84,6 +87,7 @@ export function createObjectives(root, s) {
   function pickerBody(simApi) {
     const list = simApi?.listMissions?.() || [];
     const wrap = el('div.obj-cards');
+    if (startError) wrap.appendChild(el('div.ev', null, icon('info'), el('span', { text: `Could not start the mission: ${startError}` })));
     if (!simApi || !list.length) {
       wrap.appendChild(el('div.ev', null, icon('info'), el('span', { text: 'No missions available — the simulation module is not running.' })));
       return wrap;
@@ -95,7 +99,11 @@ export function createObjectives(root, s) {
         el('p.brief', { text: m.brief }),
         el('div.kv', null, el('span.muted', { text: 'Goal' }), el('b', { text: gt.line })),
         el('div.kv', null, el('span.muted', { text: 'Stars' }), el('span.muted.small', { text: gt.stars })),
-        el('div.actions', null, el('button.btn.primary', { onclick: () => { simApi.startMission(m.id); refresh(); } }, icon('play'), 'Start'))));
+        el('div.actions', null, el('button.btn.primary', { onclick: () => {
+          const r = simApi.startMission(m.id);
+          startError = r && r.ok === false ? (r.error || 'the simulation refused it') : '';   // was ignored: a refused start looked like a dead button
+          refresh();
+        } }, icon('play'), 'Start'))));
     }
     return wrap;
   }
@@ -107,10 +115,13 @@ export function createObjectives(root, s) {
     const pct = Math.round(clamp01(st.progress) * 100);
     const gt = goalText(m);
     const done = st.status !== 'active';
+    const armed = () => confirmAbandon > 0 && Date.now() - confirmAbandon <= 2500;
+    // built in the armed state when a daily refresh lands inside the window: the confirmation used to be
+    // wiped by every mission:progress (refresh -> show -> hide zeroed it), so at speed it could not complete
     const abandon = el('button.btn.ghost', { onclick: () => {
-      if (Date.now() - confirmAbandon > 2500) { confirmAbandon = Date.now(); setText(abandon, 'Abandon — sure?'); return; }
-      simApi.abandonMission(); refresh();
-    } }, 'Abandon mission');
+      if (!armed()) { confirmAbandon = Date.now(); setText(abandon, 'Abandon — sure?'); return; }
+      confirmAbandon = 0; simApi.abandonMission(); refresh();
+    } }, armed() ? 'Abandon — sure?' : 'Abandon mission');
     return el('div.obj-active', null,
       el('div.obj-h', null,
         el('span.t', null, el('b', { text: m.name }), el('span.chip' + (st.status === 'won' ? '.good' : st.status === 'failed' ? '.bad' : '.info'),
@@ -141,10 +152,12 @@ export function createObjectives(root, s) {
     return backdrop;
   }
 
-  function show() { hide(); node = build(); root.appendChild(node); }
-  function hide() { if (node) { node.remove(); node = null; } confirmAbandon = 0; }
+  // mount() rebuilds in place and keeps the Abandon confirmation; show() (a fresh open) and hide() reset it
+  function mount() { if (node) node.remove(); node = build(); root.appendChild(node); }
+  function show() { confirmAbandon = 0; startError = ''; mount(); }
+  function hide() { if (node) { node.remove(); node = null; } confirmAbandon = 0; startError = ''; }
   function isOpen() { return !!node; }
-  function refresh() { if (isOpen()) show(); }
+  function refresh() { if (isOpen()) mount(); }
 
   return { show, hide, isOpen, refresh, dispose: hide };
 }

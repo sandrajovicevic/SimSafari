@@ -74,7 +74,9 @@ export async function stage(ctx, presetName, ui) {
         } catch (err) { ctx.log.warn('objectives stage: ' + err.message); }
       }
       api.openPanel('objectives');
-      if (won) api.notify('good', 'The Pride Grows complete — ★★★', { title: 'Objective', ttl: -1 });
+      // the real mission:completed handler already raised a (short-lived) toast during runDays; clear it so the
+      // persistent copy the showcase needs for the screenshot is the only one (the preset showed two, round-6 critic)
+      if (won) { H.parts.notifications.clear(); api.notify('good', 'The Pride Grows complete — ★★★', { title: 'Objective', ttl: -1 }); }
       break;
     }
     case 'night':
