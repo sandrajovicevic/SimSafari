@@ -121,12 +121,17 @@ export function createReport(root, s) {
     const bioTile = bio ? el('div.tile', null,
       el('h4', null, icon('species'), 'Biodiversity'),
       el('div.bio-h', null,
-        ringSmall(clamp01(bio.index / 100), 'INDEX', `${bio.index.toFixed(0)} / 100 — richness ${bio.richness}/12 species, ${bio.plantRichness}/10 plants, evenness ${bio.evenness.toFixed(2)}`)),
+        // the index is a 0-100 score, not a percentage: no "%" (round-6 critic)
+        ringSmall(clamp01(bio.index / 100), 'INDEX', { text: String(Math.round(bio.index)), tip: `${bio.index.toFixed(0)} / 100 — evenness ${bio.evenness.toFixed(2)}` })),
+      // richness / plants printed, not tooltip-only (the spec asks for "index + richness"); the third
+      // ringSmall argument used to be a tooltip string the function never accepted, so they showed nowhere
+      el('div.bio-facts', null, `${bio.richness} / 12 species`, el('br'), `${bio.plantRichness} / 10 plants`),
       el('div.big5', null,
+        // species names next to the counts: the four glyphs are near-identical at this size
         ...BIG5.map(([sp, label]) => el('span.big5-item' + ((bio.bigFive?.[sp] ?? 0) > 0 ? '' : '.off'),
           { 'data-tip': `${label} — ${bio.bigFive?.[sp] > 0 ? bio.bigFive[sp] + ' in the park' : 'none'}`, 'data-tip-pos': 'below' },
-          icon(animalIconName(sp)), el('b', { text: (bio.bigFive?.[sp] ?? 0) > 0 ? String(bio.bigFive[sp]) : '—' }))),
-        el('span.big5-item.off.leopard', { 'data-tip': 'Leopard — not in this park', 'data-tip-pos': 'below' }, icon('paw'), el('b', { text: '—' })))) : null;
+          icon(animalIconName(sp)), el('span.nm', { text: label }), el('b', { text: (bio.bigFive?.[sp] ?? 0) > 0 ? String(bio.bigFive[sp]) : '—' }))),
+        el('span.big5-item.off.leopard', { 'data-tip': 'Leopard — not in this park', 'data-tip-pos': 'below' }, icon('paw'), el('span.nm', { text: 'Leopard' }), el('b', { text: '—' })))) : null;
 
     const modal = el('div.modal.panel.pe', { role: 'dialog' },
       el('div.modal-h', null, el('span.ico', null, icon('report')),
@@ -155,11 +160,13 @@ export function createReport(root, s) {
     return { backdrop, tiles };
   }
 
-  function ringSmall(value, label) {
+  /** opts.text replaces the default "NN %" (for scores that are not percentages); opts.tip sets a hover tip. */
+  function ringSmall(value, label, opts = {}) {
     const v = clamp01(value), r = 30, c = 2 * Math.PI * r;
     const wrap = el('div.ring');
     wrap.innerHTML = `<svg viewBox="0 0 72 72"><circle cx="36" cy="36" r="${r}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="7"/><circle cx="36" cy="36" r="${r}" fill="none" stroke="${scoreColor(v)}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${(c * v).toFixed(1)} ${c.toFixed(1)}"/></svg>`;
-    wrap.appendChild(el('div.v', null, Math.round(v * 100) + '%', el('small', { text: label })));
+    wrap.appendChild(el('div.v', null, opts.text ?? Math.round(v * 100) + '%', el('small', { text: label })));
+    if (opts.tip) wrap.setAttribute('data-tip', opts.tip);
     return wrap;
   }
 
