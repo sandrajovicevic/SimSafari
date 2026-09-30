@@ -13,6 +13,17 @@ export function createNotifications(root, s) {
   function push(level, text, opts = {}) {
     level = ICONS[level] ? level : 'info';
     const hasPos = typeof opts.x === 'number' && typeof opts.z === 'number';
+    // an identical live toast (same level, title, text and place) is bumped to "×N" and its timer restarted
+    // instead of stacking a copy: two same-day starvations used to fill the stack with twins
+    const key = level + '|' + (opts.title || '') + '|' + String(text ?? '') + '|' + (hasPos ? opts.x + ',' + opts.z : '') + '|' + (opts.sub || '');
+    const dup = items.find((it) => !it.dying && it.key === key);
+    if (dup) {
+      dup.count++;
+      if (!dup.badge) { const tx = dup.el.querySelector('.tx'); dup.badge = el('b.n'); tx.insertBefore(dup.badge, tx.querySelector('small')); }
+      dup.badge.textContent = ' ×' + dup.count;
+      if (dup.ttl >= 0) dup.ttl = opts.ttl ?? dup.ttl0;
+      return dup;
+    }
     const tx = el('div.tx', null, opts.title ? el('b', { text: opts.title + ' ' }) : null, String(text ?? ''));
     if (opts.sub || hasPos) tx.appendChild(el('small', { text: opts.sub || 'Click to view' }));
     const x = el('button.x', { 'aria-label': 'Dismiss', onclick: (e) => { e.stopPropagation(); remove(item); } }, icon('close'));
@@ -22,7 +33,8 @@ export function createNotifications(root, s) {
         remove(item);
       },
     }, icon(ICONS[level]), tx, x);
-    const item = { el: toast, ttl: opts.ttl ?? (level === 'error' ? 14 : level === 'warn' ? 10 : 7), dying: false };
+    const ttl = opts.ttl ?? (level === 'error' ? 14 : level === 'warn' ? 10 : 7);
+    const item = { el: toast, ttl, ttl0: ttl, dying: false, key, count: 1, badge: null };
     items.push(item);
     node.appendChild(toast);
     while (items.length > MAX) remove(items[0], true);
