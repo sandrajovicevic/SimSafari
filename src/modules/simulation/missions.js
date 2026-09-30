@@ -52,9 +52,13 @@ export const MISSIONS = Object.freeze([
     id: 'in-the-black',
     name: 'In the Black',
     brief: 'Conservation is expensive. Build the park into a business the bank believes in — a season of profit, clear of any loans.',
-    goal: Object.freeze({ type: 'cash', amount: 800000 }),
+    // 800k → 1.3M recalibrated by Wave P4: tiered lodging lifted the demo's idle 365-day net from
+    // $791,777 to $1,192,829 (the old target became idle-winnable, crossing on day 234). Winning
+    // levers now: trim the redundant ranger (+$130/day) and push the room rates the market still
+    // pays (lodge $240, tent $80 → $1,524,060). See the simulation README "Wave P4".
+    goal: Object.freeze({ type: 'cash', amount: 1300000 }),
     deadlineDays: 365,
-    stars: Object.freeze([800000, 0.25, 0.5]),
+    stars: Object.freeze([1300000, 0.25, 0.5]),
   },
   {
     id: 'fire-season',

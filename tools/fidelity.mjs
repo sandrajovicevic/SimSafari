@@ -751,7 +751,10 @@ async function scenarioMissionReplay(browser) {
     // for it): a buy's optional third element is the ANCHOR species whose habitat receives the buy,
     // because habitatOf('cheetah') finds nothing before the first cheetah exists
     'balanced-range': [{ day: 1, buy: ['cheetah', 1, 'lion'] }, { day: 1, plant: ['sour_plum', 0, -300, 135, 0.45] }, { day: 1, plant: ['knobthorn', 250, 300, 200, 0.3] }, { day: 1, plant: ['marula', -300, 250, 205, 0.25] }],
-    'in-the-black': [{ day: 1, price: 15 }, { day: 1, fire: ['ranger', 1] }],
+    // recalibrated for the P4 economy (idle nets $1.19M/yr now): trim the redundant ranger AND
+    // push the room rates the market still pays — lodge 92%-occupied at $180 takes $240, the
+    // always-full tents take $80. Measured: idle $1,192,829 < $1.3M < trim+rates $1,524,060
+    'in-the-black': [{ day: 1, price: 15 }, { day: 1, fire: ['ranger', 1] }, { day: 1, rate: ['lodge', 240] }, { day: 1, rate: ['tent', 80] }],
     'fire-season': [], // policy: weekly water drops on every building through the season
   };
 
@@ -778,7 +781,8 @@ async function scenarioMissionReplay(browser) {
             else if (a.price != null) r = { ok: true, price: sim.setTicketPrice(a.price) };
             else if (a.fire) r = { ok: true, n: sim.fire(a.fire[0], a.fire[1]) };
             else if (a.hire) r = { ok: true, n: sim.hire(a.hire[0], a.hire[1]) };
-            applied.push({ day: d, act: a.buy ? 'buy' + a.buy.join(':') : a.plant ? 'plant:' + a.plant[0] : a.price != null ? 'price:' + a.price : a.fire ? 'fire:' + a.fire.join(':') : 'hire:' + (a.hire || []).join(':'), ok: r?.ok !== false, cost: r?.cost ?? null });
+            else if (a.rate) r = { ok: true, rate: sim.setRoomRate(a.rate[0], a.rate[1]) };
+            applied.push({ day: d, act: a.buy ? 'buy' + a.buy.join(':') : a.plant ? 'plant:' + a.plant[0] : a.price != null ? 'price:' + a.price : a.fire ? 'fire:' + a.fire.join(':') : a.rate ? 'rate:' + a.rate.join(':') : 'hire:' + (a.hire || []).join(':'), ok: r?.ok !== false, cost: r?.cost ?? null });
           }
           if (policy === 'weekly-drops' && (d - 1) % 6 === 0) {
             for (const b of world.buildings.values()) sim.waterDrop(b.x, b.z, 40);

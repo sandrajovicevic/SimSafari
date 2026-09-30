@@ -362,6 +362,13 @@ SAME single rng roll (no new draws). Harness `layoff-chain`: trust 0.488 vs 0.60
 event counts 0 vs 0 (the demo's ~0.26%/day exposure makes strict count separation unmeasurable —
 docs/requests/p4.md #3). The report carries `villageTrust`, `poachRisk` (the day's rate) and `lodging`.
 
+**Cross-wave recalibration (P3's `in-the-black` mission):** tiered lodging lifted the demo's idle
+365-day net from $791,777 to **$1,192,829**, which made P3's $800k target idle-winnable (crossing on
+day 234 — caught by the P4 full-harness run). Recalibrated to **$1,300,000**: idle falls $107k short;
+the replay now uses the treasurer's levers (trim the redundant ranger + lodge rate $240, tent $80 →
+**$1,524,060**, crossing day 306, ★1). Mission table + harness script updated together; measured
+endpoints: idle $1,192,829 / ranger-trim $1,239,579 / trim+rates $1,524,060.
+
 **Advisors** (`advisors.js`): pure `advise(report, state) → {messages, state}` — 13 rules across the
 ecologist / treasurer / community-liaison personas, each with a hysteresis band (fires at `start`,
 clears only past `clear`, a null metric clears immediately), a 3-day cooldown after clearing, and

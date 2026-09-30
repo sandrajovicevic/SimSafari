@@ -33,7 +33,11 @@ here (full tables: the module READMEs' "Wave P4" sections; deviations with reaso
   pitches one of each tier and sets the reference rates; ui "Camp & Advisors" panel (`C`): tier
   rate sliders + occupancy cards, the three personas with expandable messages, village-trust
   readout (`ui-camp-auto-dom`). All captures read, 0 console errors.
-* **Tests** — 205/205 (178 pre-P4 + 27 P4: tier demand monotone per tier, measured ε ordering,
+* **Cross-wave effect:** P4's tiers made P3's `in-the-black` mission idle-winnable (idle 365-day net
+  $791,777 → $1,192,829; the $800k target crossed on day 234). Recalibrated to **$1.3M** — idle
+  $107k short, the replay wins on day 306 using the new rate levers (ranger trim + lodge $240 +
+  tent $80 → $1,524,060). Mission-replay re-verified green on the recalibrated table.
+* **Tests** — 205/205 (+6 from main's #17 follow-up = 211/211 post-merge) (178 pre-P4 + 27 P4: tier demand monotone per tier, measured ε ordering,
   zero-beds tier, ledger round-trip, trust drop/cap/no-restore-on-rehire/10-day memory/poach term,
   advise hysteresis + cooldown + ranking + determinism, byte-identical tiered runs). The shared
   worldgen fixture is unchanged — a building-list change rippled into the fire/economy tests, so

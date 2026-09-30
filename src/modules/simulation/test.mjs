@@ -754,7 +754,8 @@ console.log('\nWave P3 — biodiversity + missions');
       c.sim.startMission('in-the-black');
       const eco = c.world.economy, cs = c.sim.getMissionState();
       const net = Math.round(eco.cash) - Math.round(eco.loans || 0);
-      assert(cs.detail.net === net && Math.abs(cs.progress - Math.min(1, Math.max(0, net) / 800000)) < 1e-3,
+      const target = c.sim.listMissions().find((m) => m.id === 'in-the-black').goal.amount; // recalibrated by P4 (800k -> 1.3M)
+      assert(cs.detail.net === net && Math.abs(cs.progress - Math.min(1, Math.max(0, net) / target)) < 1e-3,
         `missions: a fresh cash mission shows the live net of loans (${cs.detail.net}, progress ${cs.progress})`);
       const p = makeSim(39);
       const hab = [...p.world.habitats.keys()].find((h) => (p.sim.pop.get(h)?.get('lion')?.n ?? 0) > 0);
