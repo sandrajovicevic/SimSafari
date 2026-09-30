@@ -854,7 +854,20 @@ console.log('\nWave P3 — biodiversity + missions');
     const t0 = performance.now();
     t.sim.runDays(30);
     const perDay = (performance.now() - t0) / 30;
-    assert(perDay < 5, `missions+biodiversity: whole-day step incl. evaluator ${perDay.toFixed(2)} ms/day mean (budget: the P3 slice alone < 0.5 ms)`);
+    assert(perDay < 5, `missions+biodiversity: whole-day step incl. evaluator ${perDay.toFixed(2)} ms/day mean (sanity bound: the whole day < 5 ms)`);
+    // the P3 slice itself (spec budget < 0.5 ms/day): time getBiodiversity() with its cache defeated (worst case,
+    // recomputed every day) plus one evaluator step against a mission that never ends. The whole-day bound above
+    // does not measure this (critic simulation-round8: the label claimed it did).
+    const u = makeSim(43);
+    u.sim.runDays(5);
+    const report = u.sim.getReports(1)[0] || {};
+    report.biodiversity = u.sim.getBiodiversity();
+    u.sim.startMission({ id: 'budget-probe', name: 'x', brief: '', goal: { type: 'hold', metric: 'biodiversity.index', min: 1e9, days: 60 }, deadlineDays: 1e9, stars: [60, 2, 4] });
+    for (let i = 0; i < 20; i++) { u.sim._bioCache = null; u.sim.getBiodiversity(); u.sim.mission.step(u.sim.clock.day, report); }   // warm-up
+    const N = 200, s0 = performance.now();
+    for (let i = 0; i < N; i++) { u.sim._bioCache = null; u.sim.getBiodiversity(); u.sim.mission.step(u.sim.clock.day, report); }
+    const slice = (performance.now() - s0) / N;
+    assert(slice < 0.5, `missions+biodiversity: the P3 slice alone (biodiversity recompute + evaluator step) ${slice.toFixed(3)} ms/day mean (budget < 0.5 ms)`);
   }
 }
 
