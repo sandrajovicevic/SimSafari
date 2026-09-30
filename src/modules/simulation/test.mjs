@@ -725,6 +725,13 @@ console.log('\nWave P3 — biodiversity + missions');
       assert(s.sim.startMission('nope').ok === false, 'missions: unknown id rejected');
       const st = s.sim.startMission('pride');
       assert(st.ok && s.sim.getMissionState().id === 'pride' && s.sim.getMissionState().status === 'active' && s.sim.getMissionState().deadline === 1 + 180, 'missions: startMission sets active state with start-day deadline');
+      // the state is right on frame one, before any day end (critic simulation-round8 issue 1):
+      // the demo has lions already, so a fresh pride mission must not read "0 / 6, 0 %"
+      const lions0 = s.sim.population().lion ?? 0;
+      const st0 = s.sim.getMissionState();
+      assert(lions0 > 0 && st0.detail.count === lions0 && st0.detail.target === 6 && Math.abs(st0.progress - Math.min(1, lions0 / 6)) < 1e-3,
+        `missions: a fresh mission shows the live count before the first day end (${st0.detail.count} / ${st0.detail.target}, progress ${st0.progress}, ${lions0} lions in the park)`);
+      assert(evs.length === 0 && st0.status === 'active', 'missions: seeding at start emits nothing and does not resolve the mission');
       s.sim.runDays(2);
       assert(evs.filter((e) => e[0] === 'progress').length === 2, 'missions: mission:progress emitted daily while active');
       // buying to the target wins and emits completed once
@@ -740,6 +747,29 @@ console.log('\nWave P3 — biodiversity + missions');
       s.sim.startMission('pride');
       s.sim.abandonMission();
       assert(s.sim.getMissionState().status === 'none', 'missions: abandonMission() returns to no-mission');
+    }
+    // start-of-mission seeding: cash goal, and a goal that is already satisfied when the mission starts
+    {
+      const c = makeSim(39);
+      c.sim.startMission('in-the-black');
+      const eco = c.world.economy, cs = c.sim.getMissionState();
+      const net = Math.round(eco.cash) - Math.round(eco.loans || 0);
+      assert(cs.detail.net === net && Math.abs(cs.progress - Math.min(1, Math.max(0, net) / 800000)) < 1e-3,
+        `missions: a fresh cash mission shows the live net of loans (${cs.detail.net}, progress ${cs.progress})`);
+      const p = makeSim(39);
+      const hab = [...p.world.habitats.keys()].find((h) => (p.sim.pop.get(h)?.get('lion')?.n ?? 0) > 0);
+      p.sim.buyAnimals('lion', hab, 3);
+      p.sim.startMission('pride');
+      const ps = p.sim.getMissionState();
+      assert(ps.progress === 1 && ps.status === 'active', 'missions: an already-met goal reads 100 % at start but stays active until the day-end evaluator decides');
+      p.sim.runDays(1);
+      assert(p.sim.getMissionState().status === 'won', 'missions: the day-end evaluator then wins it');
+      // seeding must not perturb the simulation: start-then-abandon stays byte-identical (also asserted above), and
+      // a seeded start does not change the reports of a mission run vs the same mission run after a no-op seed
+      const q1 = makeSim(39), q2 = makeSim(39);
+      q1.sim.startMission('in-the-black'); q2.sim.startMission('in-the-black'); q2.sim.getMissionState();
+      q1.sim.runDays(20); q2.sim.runDays(20);
+      assert(JSON.stringify(q1.sim.getReports(20)) === JSON.stringify(q2.sim.getReports(20)), 'missions: reading the mission state is side-effect free');
     }
   }
 

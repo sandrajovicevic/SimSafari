@@ -44,12 +44,12 @@
     "terrain": {
       "wave": 1,
       "domain": "nature",
-      "round": 5,
-      "score": 8,
+      "round": 6,
+      "score": 8.2,
       "status": "fail",
       "errors": 0,
       "drawCalls": 44,
-      "reviewedBy": "critic-sweep",
+      "reviewedBy": "critic-sweep-swiftshader",
       "presetsSeen": [
         "overview 15",
         "plains 16.5",
@@ -58,32 +58,37 @@
         "escarpment 7",
         "close 16",
         "night 21.5",
-        "close 6.5 (extra)",
-        "overview 12 (extra)"
+        "overview 12 (extra + 3x contrast)",
+        "bank close-up 35 m at 8/15/17.5 (extra)",
+        "game overview 14 and 17 + 3x contrast border crops (extra)"
       ],
       "issues": [
         {
-          "sev": "resolved",
-          "text": "FIXED post-round (3fba5b4/9d0d964) and orchestrator-verified: apron.js border ridges decayed to a plains baseline (measured 86-90 m hard extensions at both seam origins); both lines clean at two sun angles (seb-after2-terrain-overview-15/12.png), draws/tris identical | was: Two straight hairline seams cross the apron from where the escarpment meets the west/east world borders (unprojected to ~(-504,-355)->(-945,-625) and (511,-342)->(761,-487)); present on SwiftShader and D3D11, unchanged with shadows off — apron height/control seam, visible at the flagship overview framing."
+          "sev": "major",
+          "text": "Straight world-border tone/shadow step still visible at game overview 17 h (native contrast, tree shadows end on a ruler line; clean at 14 h). Likely cause: apron receiveShadow=false (index.js:73). Builder verified 14 h only."
         },
         {
           "sev": "minor",
-          "text": "Wetland/mud crack motif reads as metre-scale angular voronoi webbing at close range (close 16/6.5h) — cell scale ~100x too large vs real cracked clay."
+          "text": "Radial ridge fans / dark grey glossy terraces on steep river banks (bank-35 shots at 8/15/17.5 h, same shape at all sun angles = geometry; brightness = wet-band specular on crests). Unacceptable at 30-40 m on SwiftShader; real-GPU verdict not issued."
         },
         {
           "sev": "minor",
-          "text": "Water still has no flow structure or silhouette at river/overview distance; ripples are close-range normal detail only (disclosed)."
+          "text": "River west end still a straight vertical cut inside a rectangular green patch at x=-512."
         },
         {
           "sev": "minor",
-          "text": "River's west end cuts off in a straight vertical water edge + pale sand rectangle at the x=-512 border."
+          "text": "Water has no flow structure at river/overview distance (disclosed, unchanged)."
         },
         {
           "sev": "minor",
-          "text": "Night ground near-black in the darkest fields (readback 12,8,5) — shared environment-owned ambient issue, improved by NIGHT_LIFT but still darker than moonlit reference."
+          "text": "Night ground near-black (frame mean luma 18.6); environment-shared, unchanged. ~1-2 m cracked plates on steep banks still read as paving."
         }
       ],
-      "good": "Round-4 blockers verified fixed with own captures + pixel readback: night water dark (water ~ground brightness at 21.5/3h), escarpment jagged and variably fluted at all distances/sun angles. Poly Haven 1k photo layers on disk and visible with palette intact. Convincing dry-season savannah at every distance; 0 errors in 15 shots; well inside all budgets.",
+      "good": "Round-5 apron hairline-seam major verified RESOLVED (3x contrast over whole frame at 12 h and 15 h, game overview 14 h clean). Round-5 mud crack webbing verified resolved on the wet band (fine grain at close 16 h and bank shots). Kopjes/escarpment/photo layers hold at every sun angle; 15 captures 0 errors, lint ok, within every budget.",
+      "previous": {
+        "round": 5,
+        "score": 8
+      },
       "deferral": {
         "date": "2026-09-25",
         "decision": "open visual/polish items explicitly deferred so the ideas phase can start (docs/ideas-roadmap.md entry gate 1); they are fixed when a P-wave next opens this module, as part of that wave's exit, unless listed under prerequisites",
@@ -198,12 +203,12 @@
     "roads": {
       "wave": 1,
       "domain": "built",
-      "round": 4,
-      "score": 7,
+      "round": 5,
+      "score": 7.5,
       "status": "fail",
       "errors": 0,
-      "drawCalls": 67,
-      "reviewedBy": "independent-critic-agent",
+      "drawCalls": 63,
+      "reviewedBy": "critic-sweep-swiftshader",
       "presetsSeen": [
         "overview 15",
         "close 16.5",
@@ -211,41 +216,49 @@
         "junction 17",
         "bridge 9",
         "night 21.5",
+        "junction-top n16/n7/n21 12 (extra)",
         "paved-close 6.5 (extra)",
-        "junction-top 12 (extra)",
-        "night 3 + water-span/stats eval (extra)"
+        "water-crossing measurement (extra)"
       ],
       "issues": [
         {
           "sev": "major",
-          "text": "3-way junction patch is geometrically broken from above: flat untextured grey slab, folded triangle flap at the node, wedge past the road edge, edge-line stubs, dashes stop, hard seam to the dirt branch (roads-critic4-junction-top-12.png)."
+          "text": "Terrain triangles poke through junction patches (grass/rock shards 1-4 m across on asphalt/gravel): n7 and n21 from 28 m top-down, and one shard mid-asphalt in the junction preset itself (roads-junction-17.png). Patch not reliably above terrain."
         },
         {
           "sev": "major",
-          "text": "Showcase network lays gravel/dirt edges lengthwise along the river on 45-80 m \"bridges\" (measured wet runs 80/73/45 m vs ~30-40 m channel) - overview and the bridge hero shot showcase a lengthwise causeway, not a crossing."
+          "text": "Junction patch (highest-rank kind) does not blend into lesser-kind legs: every dirt/gravel leg mouth is a dead-straight hard cut with no bell-mouth, ruts stop at the patch, gravel slab textured unlike its dirt legs (n16, n7, n21, and a dirt track ending in tar in roads-paved-10.png)."
         },
         {
           "sev": "minor",
-          "text": "Asphalt swirl fixed, but tar is now featureless at 10 h (no repair patches despite preset description) and the crack normal web reads as dense wormy relief under grazing dawn sun."
+          "text": "Concentric ring/swirl + regular dark-dot grid in the dirt texture at junction leg ends (roads-r5-jtop-n16-12.png)."
         },
         {
           "sev": "minor",
-          "text": "Dirt surface micro-pattern reads as wind-rippled/combed sand rather than dry dirt with pebbles (close preset)."
+          "text": "Overview reads as a spine with spurs, not the loop the README/preset promise (gravel loop dropped on this seed); paved spine dead-ends in open plain."
         },
         {
           "sev": "minor",
-          "text": "README says a rebuild takes a few ms; stats().build.ms measured 1601.7 ms (incl. terrain conform) - a hitch per road edit or a wrong claim."
+          "text": "Concrete deck cream-white by day and glowing slab at night; timber deck fixed to grey-brown."
         },
         {
           "sev": "minor",
-          "text": "Bridge decks (timber and concrete) read pale/near-white and flat at distance."
+          "text": "Night edge lines glow at uniform full brightness; repair patch is a single hard dark rectangle with no sealed edge/cracks."
         },
         {
           "sev": "minor",
-          "text": "Carried: sampleEdge out-object footgun and two-lane-only getLanes() (disclosed)."
+          "text": "Synchronous rebuild hitch: 175 ms stats().build.ms (README 138-166 ms claim reproduces); updatePeakMs 182-351 ms in game captures."
+        },
+        {
+          "sev": "minor",
+          "text": "Carried: sampleEdge out-object footgun; two-lane-only getLanes()."
         }
       ],
-      "good": "Round-3 asphalt swirl verified fixed (10 h preset and 12 m grazing 6.5 h extra). Dirt ruts + shoulder dust blending convincing, no visible ribbon edge. Timber bridge asset well built. Night still the best in the project (21.5 h and 3 h). 0 errors on 9 captures, lint ok, no per-frame allocs, dispose complete, road-owned 9 draws / 44,753 tris.",
+      "good": "Round-4 lengthwise river causeways verified RESOLVED by measurement: both showcase crossings square (3 deg skew) with wet length == channel width (32/32 m, 25/25.5 m), all other edges dry. Junction outline is now correct (fillets, curved edge lines, no folded/torn triangles). Dirt reads as compacted laterite at close range (no wind-ripple), timber deck grey-brown, asphalt crack-web gone at 6.5 h grazing sun, README rebuild claim reproduces. 13 captures 0 errors, lint ok, 9 road drawables / 18k tris.",
+      "previous": {
+        "round": 4,
+        "score": 7
+      },
       "deferral": {
         "date": "2026-09-25",
         "decision": "open visual/polish items explicitly deferred so the ideas phase can start (docs/ideas-roadmap.md entry gate 1); they are fixed when a P-wave next opens this module, as part of that wave's exit, unless listed under prerequisites",
@@ -261,52 +274,65 @@
     "ui": {
       "wave": 1,
       "domain": "built",
-      "round": 5,
-      "score": 7,
+      "round": 6,
+      "score": 6,
       "status": "fail",
-      "errors": 0,
-      "drawCalls": 0,
-      "reviewedBy": "independent-critic-agent",
+      "errors": 4,
+      "drawCalls": 68,
+      "reviewedBy": "critic-sweep-swiftshader",
       "presetsSeen": [
+        "objectives 15 + objectives-won 15 (1280x720 --dom)",
+        "objectives / objectives-won 1080",
+        "report 15 + scrolled",
         "overview 15",
-        "report 15",
         "panel 16.5",
         "toolbar 15",
         "close 16.5",
         "night 21.5",
-        "toolbar 8 @1920x1080 + DOM eval (extra)"
+        "settings 15",
+        "abandon-confirm live eval",
+        "main baseline toolbar + night (error attribution)",
+        "game overview 14 h / 21.5 h with ?mission=pride"
       ],
       "issues": [
         {
-          "sev": "major",
-          "text": "Animal panel Facts grid broken (panel preset, any resolution): key and value run together (\"AGE29 years\", \"SEXMale\"); \"HERDHerd #80 · 7 animals\" spills into the next cell and \"HABITATKopje Springs\" spills past the panel edge. Cause: .sf .fact .col has no display rule, so .k/.v are inline spans and the nowrap/ellipsis on inline .v does nothing. Fix: .col {display:flex; flex-direction:column}, .v {display:block}."
+          "sev": "blocker",
+          "text": "Console errors on ui presets toolbar (3x '[tools] building.update threw TypeError: Cannot read properties of undefined (reading 0)') and night (1x THREE computeBoundingSphere NaN). Identical on origin/main 418fcb3 (not caused by P3); round 5 logged 0 on both. Caps the score at 6 per the brief; owning module undetermined."
         },
         {
           "sev": "major",
-          "text": "HUD surfaces overlap at 1280x720, the README's stated minimum width: in toolbar/close the minimap covers the item panel's left column and second row; in close the item panel runs under the side panel (Hippopotamus card cut off); in panel the side panel overlaps the toolbar View button. .tb-items is max-width 1180px, centred, and ignores the minimap and side panel. There is no overlap at 1920x1080."
-        },
-        {
-          "sev": "major",
-          "text": "Daily report contradicts itself: Treasury \"+$30,599 today\" vs header \"Profit $4,430\" (18,640 - 14,210). Cause: mock.js overwrites the last cash-history point with e.cash without adjusting the series; the report takes the delta from the last two points (also visible as a kink at the end of the sparkline)."
+          "text": "Big-Five row (objectives panel and report) is unreadable without hover: elephant/rhino/buffalo/lion are near-identical ~14 px quadruped glyphs with only a count."
         },
         {
           "sev": "minor",
-          "text": "Active-tool pill shows the raw id \"Building.Place\" instead of \"Safari Lodge · $320,000\"; findItem does not resolve building.place with options.type, and no card is highlighted as active."
+          "text": "Label/value collision 'Species12 / 12' in the objectives biodiversity tile at 1280 and 1920 (same defect class as round-5 Facts grid)."
         },
         {
           "sev": "minor",
-          "text": "Hover tooltip covers the item panel header hint (toolbar preset, both resolutions). All 16 building cards use the same generic house glyph."
+          "text": "Two-step Abandon confirmation is cancelled by any daily mission:progress (refresh rebuilds the modal and zeroes confirmAbandon); verified live: 'Abandon - sure?' reverts to 'Abandon mission'."
         },
         {
           "sev": "minor",
-          "text": "Selected subjects not in the 3D view (panel: orphan selection ring, no elephant; night: lodge out of frame) because mock entities are never spawned. Top-bar temperature fixed at 28° at 08:00, 15:00 and 21:30."
+          "text": "No persistent mission tracker in the HUD; progress lives only in a modal that covers the park."
         },
         {
           "sev": "minor",
-          "text": "Disclosed gaps still open: empty notification container can appear; graph panel is a stub. ui updateMs 2.1-2.8 ms (software GL), above the 1.5 ms guide: watch item."
+          "text": "Report biodiversity tile: index drawn as '94 %', richness only in a tooltip, tile below the fold at 1280x720."
+        },
+        {
+          "sev": "minor",
+          "text": "Showcase: objectives-won shows a duplicate completion toast (showcase.js:77 adds a copy of the real one); mock top bar 'Day 34' vs panel 'day 4 of 181'; modal covers the toasts at 1280."
+        },
+        {
+          "sev": "minor",
+          "text": "Picker Start ignores startMission().ok; top bar 'Day 34 DRY SEASON' wraps to three lines at night at 1280; carried: tooltip covers neighbouring cards, ~10 building cards share one glyph, selected subjects absent in 3D."
         }
       ],
-      "good": "Both round-4 majors verified fixed at the root cause: the toolbar pill DOM readback has no stray \"null\" node, and the panel shows 68% Content consistent with its need bars. Visual language is close to CS2; the report modal is rich; night legibility is excellent. 0 console errors on 7 captures, lint clean, API matches the README, dispose() is thorough.",
+      "good": "Round-5 majors verified fixed: Facts grid, 1280x720 HUD overlaps, self-contradicting report (+$4,430 = profit), raw-id pill, temperature. Objectives panel is clean and reads the simulation API only (drives a real mission in the showcase). ui updateMs 0.17-0.79 ms (was 2.1-2.8). 13 ui captures (11 presets/sizes + 2 eval runs) of which 2 have errors (both identical on main), plus 2 full-game captures with 0 errors; lint ok.",
+      "previous": {
+        "round": 5,
+        "score": 7
+      },
       "deferral": {
         "date": "2026-09-25",
         "decision": "open visual/polish items explicitly deferred so the ideas phase can start (docs/ideas-roadmap.md entry gate 1); they are fixed when a P-wave next opens this module, as part of that wave's exit, unless listed under prerequisites",
@@ -321,42 +347,53 @@
     "simulation": {
       "wave": 1,
       "domain": "sim",
-      "round": 7,
-      "score": 8.5,
-      "status": "pass",
+      "round": 8,
+      "score": 8,
+      "status": "fail",
       "errors": 0,
-      "drawCalls": 100,
-      "reviewedBy": "critic-sweep",
+      "drawCalls": 365,
+      "reviewedBy": "critic-sweep-swiftshader",
       "presetsSeen": [
-        "overview (15)",
-        "boom (11)",
-        "bust (17)",
-        "close (16.5)",
-        "night (21.5)",
-        "overview (6.5) extra",
-        "bust (3) extra",
-        "test.mjs 89/89 run directly",
-        "fidelity poaching re-run (byte-identical)"
+        "Wave P3 on PR #15 head 11f54e7: node test.mjs 178/178 (+ main 130/130 baseline diff)",
+        "fidelity biodiversity + mission-replay (11 fresh loads)",
+        "P3 slice timing (node)",
+        "game overview 14 h and 21.5 h with ?mission=pride (1920x1080)"
       ],
       "issues": [
         {
-          "sev": "minor",
-          "text": "Poaching targets animals-module 'appeal' (overwriting rarity), so zebra/ostrich are high-value targets; keep a separate poaching-value field"
+          "sev": "resolved",
+          "text": "FIXED post-round by PR #17 (7eece62) and verified by the critic: MissionRunner._seedProgress() fills progress/detail from the live park at start() for population and cash goals (read-only: no win/fail, no emit, no rng); 184/184 tests, the 3 new assertions fail on the old code; live game ?mission=pride at day 1 now reads Lions 3/6, 50% (was 0/6, 0%) | was: A freshly started mission reports wrong progress until the first day end: start() sets detail without count, so the panel shows Lions 0/6, 0% while the park has 3 lions (getBiodiversity().bigFive.lion = 3); seen in game ?mission=pride at 14 h and 21.5 h."
+        },
+        {
+          "sev": "major",
+          "text": "pride stars reward overbuying: the mission ends the first day the count reaches 6, so 2/3 stars (8/10 lions at that moment) need an overshoot in one purchase; the staged win buys 6 lions ($54k), reaches 10, awards 3 stars while the (staged) top bar reads -$6,596/day."
+        },
+        {
+          "sev": "major",
+          "text": "in-the-black is barely non-vacuous: target cut from $1.5M to $800k, idle ~$791,777 (99%), only lever is firing a ranger, replay wins on day 348 by $1,776 (netEnd $801,776); brittle to any economy retune."
         },
         {
           "sev": "minor",
-          "text": "No lasting consequences: reputation recovers through the satisfaction EMA after poaching massacres; a bankrupt park keeps frozen pre-collapse sentiment and 85% staff morale with $0 income"
+          "text": "test.mjs asserts whole-day <5 ms but labels it as the P3 slice <0.5 ms; measured slice is 0.055 ms biodiversity + 0.0008 ms evaluator (budget met)."
         },
         {
           "sev": "minor",
-          "text": "The $20 overview park is net-negative day-to-day (median -$284/d; gain is event windfalls); fidelity harness says $15 is break-even (+$433/day, reproduced exactly)"
+          "text": "PR description says zebra removal takes the index 88.45 -> 87.6x; the scenario measures 84.22 (README not affected)."
         },
         {
           "sev": "minor",
-          "text": "Disclosed fidelity simplifications: aggregate visitors, scalar village, event-based poaching, speed(n)/ui multiplier doubling"
+          "text": "survive-fire progress is elapsed calendar time, not survival, so the bar reads 100% at the deadline regardless of losses."
+        },
+        {
+          "sev": "minor",
+          "text": "Disclosed: reset() is a ledger reset; fire-season ha counts natural fires; balanced-range floor 92 (demo+10 unreachable). Carried: poaching targets appeal, no lasting bankruptcy/poaching consequences."
         }
       ],
-      "good": "Every README preset number reproduces exactly (42/6/134, +$16,577, -284 median, 310/d +39%, +$58,809, 140 cap, bust 6/21/178 -$418,852 bankrupt, close 108/15, night 109/+$28,745); staged runs bit-identical across capture tods; 89/89 tests re-run; fidelity price-sweep re-run reproduces +$433/day at $15 with 11 births and 0 migrations; world.animals.size == sim.count() at every preset; honest panel narratives; 0 console errors; ~2 own draws, ~0.01 ms update."
+      "good": "Every PR claim reproduced except one PR-text figure: 178/178 tests, biodiversity and mission-replay scenarios pass with 0 console errors, idle fails and replay wins all four missions, replay-twice identical. Free play verified bit-identical to main (same test on both heads, identical baseline block; 130 -> 178 passes). P3 slice 0.056 ms/day vs 0.5 ms budget. Calibration changes honestly documented; leopard stays null.",
+      "previous": {
+        "round": 7,
+        "score": 8.5
+      }
     },
     "audio": {
       "wave": 1,
@@ -563,12 +600,12 @@
     "props": {
       "wave": 2,
       "domain": "nature",
-      "round": 4,
-      "score": 7,
+      "round": 5,
+      "score": 7.5,
       "status": "fail",
       "errors": 0,
-      "drawCalls": 154,
-      "reviewedBy": "critic-sweep",
+      "drawCalls": 533,
+      "reviewedBy": "critic-sweep-swiftshader",
       "presetsSeen": [
         "overview 16.5",
         "grass 17",
@@ -576,35 +613,54 @@
         "kopje 17.5",
         "riverine 8",
         "close 16",
-        "night 21.5"
+        "night 21.5",
+        "plants 13",
+        "unburnt 14",
+        "burnt 14",
+        "game close 7/14/21.5 (extra)",
+        "game low 14/21.5 + grass-off control (extra)",
+        "330 m mid views at 14 h (extra)",
+        "game overview 14/17 (extra)"
       ],
       "issues": [
         {
           "sev": "resolved",
-          "text": "FIXED post-round (3fba5b4/9d0d964) and orchestrator-verified: tuft mats re-tinted to terrain photo-layer means + full-cell jitter breaks the rows (fix-props-grass-v1.png / fix-props-close-v1.png); tri-over-budget disclosed as-is | was: Hard-edged dark-olive tuft ground-mat polygons are scattered across the sward (worst at grass/close range; visible in animals', park's and savannah's close frames too) — the tuft 'mat' quads' baked colour no longer matches terrain's new photo ground layers. Re-solve the mat albedo against the current layer means or alpha-fade mats in LOD0."
+          "text": "FIXED post-round by PR #14 (3dc851e) and verified by the critic: grass.js _genChunk replaces the zero xorshift seed (if (h === 0) h = 0x9e3779b9), so chunk (0,0) gets jitter and density culling; every other chunk keeps its stream; game low 14 h crop of the same camera shows scattered tufts instead of the lattice, 0 console errors, lint ok | was: Grass chunk (0,0) is a perfect regular lattice of tufts (16 m square at the world origin, visible in game low preset, gone with grass disabled): grass.js _genChunk seeds xorshift with (ix*73856093)^(iz*19349663) = 0 for chunk (0,0), and xorshift(0) returns 0 forever, so jitter is constant and no candidate is culled. Round-4 grid issue therefore not resolved at the park centre. Fix: OR a non-zero constant into the seed."
         },
         {
-          "sev": "resolved",
-          "text": "FIXED post-round (3fba5b4/9d0d964) and orchestrator-verified: tuft mats re-tinted to terrain photo-layer means + full-cell jitter breaks the rows (fix-props-grass-v1.png / fix-props-close-v1.png); tri-over-budget disclosed as-is | was: Tuft placement reads as regular rows/diagonal grid lines at close-to-mid range in every open-sward shot (grass, animals species/predators, park habitat). Jitter samples with the seeded RNG or rotate the grid per chunk."
-        },
-        {
-          "sev": "minor",
-          "text": "Overview triangles 3.88 M remain over the spec's 3 M (disclosed); LOD1/LOD2 tuft segment-count levers unpulled."
+          "sev": "major",
+          "text": "Far-tree impostor shadows visible at 14 h (crisp ovals) but NOT visible at 17 h at native or 2.5x contrast; crowns float. Builder claimed 17 h verified. Cause unknown (edge-on card / cascade range / SwiftShader) - needs real-GPU check."
         },
         {
           "sev": "minor",
-          "text": "Dead-plant albedo reads burnt: shrubs render near-black while canopies were de-darkened; raise shrub leaf albedo to dry-savannah olive."
+          "text": "At ~900 m far trees are trunkless olive balls hovering over their shadows (14 h) or shadowless (17 h); convincing umbrellas at 330 m."
         },
         {
           "sev": "minor",
-          "text": "props.updateMs reads 3.4-8.5 ms steady-state inside animals/park showcase frames vs 0.0 in its own presets — residual per-frame work when grass streams under other modules' staging (still 20-60x better than round 3's 132-263 ms)."
+          "text": "Foreground grass at 5-8 m: flat pale triangles on the ground and single-tone blades; large flat streak triangles across plains in plants/unburnt shots."
         },
         {
           "sev": "minor",
-          "text": "Carried: log bark reads as noise up close; 'thorn scrub rooted in the cracks' reads only at boulder bases; kopje frame still cedes half its composition to the escarpment."
+          "text": "Shrub albedo still near-black brown (unchanged from round 4)."
+        },
+        {
+          "sev": "minor",
+          "text": "props update() in game: harness mean 11-12 ms (peak 29-111 ms); direct timing shows 10-19 ms per frame for >=12 consecutive frames after settle (budget 1.5 ms). Showcase presets are 0.0 ms."
+        },
+        {
+          "sev": "minor",
+          "text": "Overview triangles 3.89 M vs spec 3 M (carried, disclosed); README first Known-gaps bullet still says imposters have no cast shadow (stale)."
+        },
+        {
+          "sev": "minor",
+          "text": "Cross-module/carried: night cloud deck = large white hexagon blobs, bright pan; game close 21.5 lower half black canopy; log bark noise; kopje frame half escarpment."
         }
       ],
-      "good": "Round-3 blocker verified fixed: settled update() 0.0 ms on all nine captures (was 132-263 ms on every preset), amortised chunk queue implemented as described. Photo-scanned granite boulders with the angle-of-repose cap genuinely upgrade kopjes (real talus, no popcorn). Two-view imposters kill the dash-from-above tell — crowns read as umbrellas from altitude. Canopies no longer near-black. overview and riverine remain the project's best images. 121-154 draw calls for ~5.5k props + ~180k grass instances; zero console errors; lint ok; API/dispose match the README.",
+      "good": "Round-4 dark tuft ground-mat polygons verified RESOLVED (none in any grass/close/low/close-game shot). Close-range grass shading is the best so far (two-tone blades, no dark-wedge mottle). Far acacias read as real umbrellas with crisp shadows at 330 m / 14 h; game overview 363 draws (1500 budget). overview and riverine remain the best images in the project. 20 captures 0 errors, lint ok.",
+      "previous": {
+        "round": 4,
+        "score": 7
+      },
       "deferral": {
         "date": "2026-09-25",
         "decision": "open visual/polish items explicitly deferred so the ideas phase can start (docs/ideas-roadmap.md entry gate 1); they are fixed when a P-wave next opens this module, as part of that wave's exit, unless listed under prerequisites",
@@ -1535,6 +1591,41 @@
       "score": 7.5,
       "by": "critic-sweep",
       "date": "2026-09-25"
+    },
+    {
+      "module": "roads",
+      "round": 5,
+      "score": 7.5,
+      "by": "critic-sweep",
+      "date": "2026-09-29"
+    },
+    {
+      "module": "terrain",
+      "round": 6,
+      "score": 8.2,
+      "by": "critic-sweep",
+      "date": "2026-09-29"
+    },
+    {
+      "module": "props",
+      "round": 5,
+      "score": 7.5,
+      "by": "critic-sweep",
+      "date": "2026-09-29"
+    },
+    {
+      "module": "simulation",
+      "round": 8,
+      "score": 8,
+      "by": "critic-sweep",
+      "date": "2026-09-29"
+    },
+    {
+      "module": "ui",
+      "round": 6,
+      "score": 6,
+      "by": "critic-sweep",
+      "date": "2026-09-29"
     }
   ]
 }
