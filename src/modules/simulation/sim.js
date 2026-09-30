@@ -3,11 +3,12 @@
 // seeded random events; daily report. Pure JS: runs in Node (test.mjs) and in the browser (index.js wrapper).
 // No three, no DOM, no Math.random — every random draw goes through the injected Rng.
 import { Rng } from '../../core/Rng.js';
-import { SPECIES, SPECIES_ORDER, HABITAT_WEIGHTS, BUILDINGS, ROADS, STAFF, STAFF_ORDER, CONST, FOOD, DIET, PREY_YIELD, VEG } from './tables.js';
+import { SPECIES, SPECIES_ORDER, HABITAT_WEIGHTS, BUILDINGS, ROADS, STAFF, STAFF_ORDER, CONST, FOOD, DIET, PREY_YIELD, VEG, LODGING_TIERS, TIER_ORDER, TRUST } from './tables.js';
 import { PLANTS, PLANT_INDEX } from '../../core/Plants.js';
 import { Vegetation, PLANT_COUNT } from './vegetation.js';
 import { MissionRunner } from './missions.js';
 import { computeBiodiversity } from './biodiversity.js';
+import { advise } from './advisors.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -147,6 +148,14 @@ export class Simulation {
     this._lastNaturalFire = -999;
     this._bioCache = null;
     this.mission.reset();
+    // Wave P4: tiered lodging + village trust + advisors
+    this.roomRates = {}; for (const t of TIER_ORDER) this.roomRates[t] = LODGING_TIERS[t].refRate;
+    this.lodgingToday = null;   // per-tier occupancy captured at 17:00 (getLodging falls back to on-demand)
+    this.trust = TRUST.start;   // village trust: a layoff is a memory, not an event
+    this._layoffDay = -1; this._layoffHitToday = 0; // per-day layoff cap bookkeeping (fire())
+    this.todayPoachP = 0;       // yesterday's poach probability (report.poachRisk)
+    this.adviceState = null;    // advisors' hysteresis/cooldown memo (advise() is pure)
+    this.lastAdvice = [];
     if (w.visitors) {
       w.visitors.count = 0; w.visitors.inPark = 0;
       if (!(w.visitors.seenSpecies instanceof Map)) w.visitors.seenSpecies = new Map();
@@ -225,7 +234,7 @@ export class Simulation {
     b = { ...buildingKind(type), type };
     let ext = null;
     try { ext = this.hooks.buildingInfo?.(type) || null; } catch { ext = null; }
-    if (ext) for (const k of ['upkeep', 'beds', 'quality', 'rate', 'closeness', 'water', 'shop', 'vet', 'morale', 'efficiency', 'patrol', 'lodgeQuality']) if (Number.isFinite(ext[k])) b[k] = ext[k];
+    if (ext) for (const k of ['upkeep', 'beds', 'quality', 'rate', 'closeness', 'water', 'shop', 'vet', 'morale', 'efficiency', 'patrol', 'lodgeQuality', 'tier']) if (Number.isFinite(ext[k]) || typeof ext[k] === 'string') b[k] = ext[k];
     this._buildingCache.set(type, b);
     return b;
   }
@@ -705,10 +714,12 @@ export class Simulation {
     const leaving = this.departures[h];
     if (leaving > 0) { this.inPark = Math.max(0, this.inPark - leaving); this.departures[h] = 0; }
     if (h === 17) {
-      // lodge check-in
-      const lodge = this._lodge();
-      const want = Math.round(this.todayArrivals * CONST.lodgeShare * lodge.quality * (0.5 + 0.5 * this.satisfaction));
-      this.lodgeNights = lodge.beds > 0 ? Math.min(lodge.beds, want) : 0;
+      // lodge check-in (Wave P4: per tier — demand splits over the tiers that have beds, each with
+      // its own rate response (refRate/rate)^eps; occupied caps at that tier's beds)
+      this.lodgingToday = this._lodgingNow();
+      let nights = 0;
+      for (const t of TIER_ORDER) nights += this.lodgingToday[t]?.occupied ?? 0;
+      this.lodgeNights = nights;
       this.inPark += this.lodgeNights;
     }
     if (h === 9 && this._overnight > 0) { this.inPark = Math.max(0, this.inPark - this._overnight); this._overnight = 0; }
@@ -800,11 +811,19 @@ export class Simulation {
       season: this.dayPlan.season, weather: this.dayPlan.weather, loans: Math.round(w.economy?.loans || 0), bankrupt: this.bankrupt,
       vegetation: { ...this.vegToday },
       biodiversity: this.getBiodiversity(),
+      lodging: this.lodgingToday || this._lodgingNow(),
+      villageTrust: +this.trust.toFixed(3),
+      poachRisk: +this.todayPoachP.toFixed(4),
       events: this.eventsToday.slice(), activeEvents: this.activeEvents.map((e) => ({ type: e.type, daysLeft: e.until - day, species: e.species })),
     };
     this.lastReport = report;
     this.reports.push(report);
     if (this.reports.length > 120) this.reports.shift();
+    // 7a. Wave P4 advisors — pure pass over the fresh report; state (hysteresis + cooldown) is
+    // carried between days, never drawn from the sim's rng stream
+    const advice = advise(report, this.adviceState);
+    this.adviceState = advice.state;
+    this.lastAdvice = advice.messages;
     // 7. Wave P3 mission evaluator — once per day end, after the report is built (docs/specs/
     // p3-biodiversity-missions.md §3). Reads the fresh report; free play (no mission) is a no-op.
     this.mission.step(day, report);
@@ -830,6 +849,48 @@ export class Simulation {
     }
     quality = count ? clamp01(quality / count + extra) : 0;
     return { beds, quality, rate: this.building('lodge').rate || 120 };
+  }
+
+  /**
+   * Per-tier lodging right now (Wave P4, docs/specs/p4-camp-advisors.md §1). Beds are summed from
+   * the tier of every guest building; travellers' base shares (LODGING_TIERS.share) renormalise
+   * over the tiers that have beds; want_t applies the rate response (refRate/rate)^eps and occupied
+   * caps at that tier's beds. Unmet demand in a cheaper tier spills HALF of its overflow up one
+   * tier (a sold-out camp sends guests to the cottage; the lodge's overflow is lost) — an
+   * extension of the spec's formula recorded in docs/requests/p4.md: without it a park whose
+   * budget beds are full strands the demand instead of upselling it. Called at the 17:00 check-in
+   * (lodgingToday) and on demand by getLodging()/the report.
+   */
+  _lodgingNow() {
+    const w = this.world;
+    const bedsBy = { tent: 0, cottage: 0, lodge: 0 };
+    if (w.buildings) {
+      for (const b of w.buildings.values()) {
+        if (!b || b.state === 'construction' || b.state === 'building' || b.state === 'burnt') continue;
+        const k = this.building(b.type);
+        if (k.tier && bedsBy[k.tier] !== undefined) bedsBy[k.tier] += k.beds || 0;
+      }
+    }
+    let shareSum = 0;
+    for (const t of TIER_ORDER) if (bedsBy[t] > 0) shareSum += LODGING_TIERS[t].share;
+    const out = {};
+    const base = this.todayArrivals * CONST.lodgeShare * (0.5 + 0.5 * this.satisfaction);
+    let spill = 0;
+    for (const t of TIER_ORDER) { // tent → cottage → lodge (ascending price)
+      const T = LODGING_TIERS[t];
+      const beds = bedsBy[t];
+      if (!(beds > 0)) {
+        out[t] = { beds: 0, occupied: 0, want: 0, rate: this.roomRates[t], occupancy: 0, revenue: 0 };
+        spill *= 0.5; // no beds to sell here: only half the overflow carries past the gap
+        continue;
+      }
+      const rate = this.roomRates[t] || T.refRate;
+      const want = base * (T.share / shareSum) * T.quality * Math.pow(T.refRate / rate, T.eps) + spill;
+      const occupied = Math.min(beds, Math.round(want));
+      spill = Math.max(0, want - occupied) * 0.5;
+      out[t] = { beds, occupied, want: +want.toFixed(2), rate, occupancy: +(occupied / beds).toFixed(3), revenue: +(occupied * rate * (0.8 + 0.4 * T.quality)).toFixed(2) };
+    }
+    return out;
   }
 
   _buildingCounts() {
@@ -1024,7 +1085,10 @@ export class Simulation {
         if (b > 0) this._spawn(s, hid, b);
         if (d + l > 0) this._remove(s, hid, Math.min(n0, d + l));
         if (b > 0 && sp.rarity >= 0.8) this._notify('info', `A ${s} was born in ${info.name}`);
-        info.species[s] = { n: r.n, happiness: +r.happiness.toFixed(3), quality: +Q.toFixed(3), capacity: r.capacity, spaceCapacity: cap?.space ?? null, foodCapacity: cap?.foodCap ?? null, food: cap?.food != null ? +cap.food.toFixed(2) : null, born: b, died: d, left: l, unhappyDays: r.unhappyDays };
+        info.species[s] = { n: r.n, happiness: +r.happiness.toFixed(3), quality: +Q.toFixed(3), capacity: r.capacity, spaceCapacity: cap?.space ?? null, foodCapacity: cap?.foodCap ?? null, food: cap?.food != null ? +cap.food.toFixed(2) : null,
+          // Wave P4: daily food need (same n × per-animal need as habitatFood()) so the ecologist's overgrazing rule can read it
+          need: (DIET[s] ? DIET[s].needKg : FOOD[s]?.need) != null ? +(r.n * (DIET[s] ? DIET[s].needKg : FOOD[s].need)).toFixed(2) : null,
+          born: b, died: d, left: l, unhappyDays: r.unhappyDays };
       }
       habitats[hid] = info;
     }
@@ -1088,6 +1152,10 @@ export class Simulation {
     const totalNeed = STAFF_ORDER.reduce((a, r) => a + needs[r], 0);
     const pTarget = clamp01(0.5 * clamp01(vis.arrivals / 200) + 0.3 * this.morale + 0.2 * clamp01(totalStaff / Math.max(1, totalNeed)));
     this.prosperity = clamp01(lerp(this.prosperity, pTarget, CONST.prosperityRate));
+    // Wave P4: village trust drifts slowly (2%/day) toward prosperity + employment — a layoff's
+    // immediate hit is therefore remembered for ~5 weeks after everyone is re-hired
+    const employment = clamp01(totalStaff / Math.max(1, totalNeed));
+    this.trust = clamp01(this.trust + TRUST.drift * (clamp01(0.5 * this.prosperity + 0.5 * employment) - this.trust));
   }
 
   // ---- events
@@ -1130,8 +1198,12 @@ export class Simulation {
       this._addEvent(day, { type: 'drought', level: 'warn', duration: d, strength: rng.range(0.6, 1), text: `Drought: water holes are shrinking across the park (about ${d} days)` });
       for (const h of this.habitatStats.values()) h.key = '';
     }
-    // poachers: more likely with low morale, poor ranger coverage, low village prosperity
-    const poachP = clamp(0.004 + 0.03 * (1 - this.morale) + 0.02 * (1 - rangerCov) - 0.008 * this.prosperity - 0.004 * Math.min(2, bld.rangerStations), 0.001, 0.08);
+    // poachers: more likely with low morale, poor ranger coverage, low village prosperity — and
+    // (Wave P4) when the village does not trust the park after layoffs. Same single rng roll: the
+    // trust term only reshapes the probability, it draws nothing extra.
+    const poachP = clamp(0.004 + 0.03 * (1 - this.morale) + 0.02 * (1 - rangerCov) - 0.008 * this.prosperity - 0.004 * Math.min(2, bld.rangerStations)
+      + TRUST.poachK * Math.max(0, 0.5 - this.trust), 0.001, 0.08);
+    this.todayPoachP = poachP; // the report carries the day's expected rate (harness asserts on its sum)
     if (speciesPresent.length && rng.bool(poachP)) {
       const targets = speciesPresent.filter((s) => this.species(s).rarity >= 0.7);
       const s = targets.length ? rng.pick(targets) : rng.pick(speciesPresent);
@@ -1192,9 +1264,14 @@ export class Simulation {
     const eco = w.economy || (w.economy = { cash: 0, income: 0, expenses: 0, ticketPrice: CONST.refPrice, loans: 0, history: [] });
     const lodge = vis.lodge, bld = vis.buildings, roads = vis.roads;
     const S = vis.satisfaction;
+    // Wave P4: per-tier room revenue (occupied_t × rate_t × quality multiplier) replaces the old
+    // single-rate `lodgeNights × lodge.rate` — see _lodgingNow(); lodgeNights is still Σ occupied.
+    const lodging = this.lodgingToday || this._lodgingNow();
+    let lodgeRevenue = 0;
+    for (const t of TIER_ORDER) lodgeRevenue += lodging[t]?.revenue ?? 0;
     const income = {
       tickets: vis.arrivals * this.dayPlan.price,
-      lodge: vis.lodgeNights * lodge.rate * (0.8 + 0.4 * lodge.quality),
+      lodge: lodgeRevenue,
       shop: vis.arrivals * CONST.shopSpend * Math.min(1.5, 0.25 + bld.shops) * (0.5 + S),
     };
     const upkeepMult = 1 + (1 - this.efficiency) * 0.6;
@@ -1433,6 +1510,26 @@ export class Simulation {
   /** { id, status: 'none'|'active'|'won'|'failed', day, deadline, progress, stars, detail }. */
   getMissionState() { return this.mission.state(); }
 
+  // ------------------------------------------------------------------ Wave P4: lodging tiers + trust + advisors
+
+  /** Room rate for a lodging tier ('tent' | 'cottage' | 'lodge'), clamped 10..500. */
+  setRoomRate(tier, rate) {
+    if (!LODGING_TIERS[tier]) return null;
+    this.roomRates[tier] = clamp(Math.round(+rate || 0), 10, 500);
+    return this.roomRates[tier];
+  }
+
+  /** Per-tier lodging state (last 17:00 check-in, or on-demand if none yet):
+   * { [tier]: { beds, occupied, want, rate, occupancy, revenue } } — `want` is uncapped demand
+   * (the elasticity harness reads it; occupancy caps at the tier's beds). */
+  getLodging() { return this.lodgingToday ? JSON.parse(JSON.stringify(this.lodgingToday)) : this._lodgingNow(); }
+
+  /** Village trust 0..1 (also report.villageTrust). */
+  getVillageTrust() { return this.trust; }
+
+  /** Today's advisor messages [{advisor, level, key, text, since}] — pure data from advise(). */
+  getAdvice() { return this.lastAdvice; }
+
   /**
    * Food report for a habitat: per species present (and every herbivore the habitat's plants attract)
    * { n, food, need, capacity, foodCapacity, spaceCapacity } — food/need in plant food units per day for
@@ -1458,7 +1555,23 @@ export class Simulation {
   }
 
   hire(role, n = 1) { if (!this.staff[role]) return 0; this.staff[role].n = Math.max(0, this.staff[role].n + Math.round(n)); return this.staff[role].n; }
-  fire(role, n = 1) { if (!this.staff[role]) return 0; this.staff[role].n = Math.max(0, this.staff[role].n - Math.round(n)); return this.staff[role].n; }
+  fire(role, n = 1) {
+    if (!this.staff[role]) return 0;
+    const before = this.staff[role].n;
+    this.staff[role].n = Math.max(0, before - Math.round(n));
+    // Wave P4: every layoff is remembered — trust drops immediately, and only the slow drift can bring
+    // it back (re-hiring does NOT undo the hit). The hit counts the people actually let go (firing from
+    // an empty role costs nothing) and the cap is per DAY across calls: the ui fires one person per
+    // click, so a per-call cap never bound (12 clicks cost 0.36, two 10-person calls 0.6).
+    const removed = before - this.staff[role].n;
+    if (removed > 0) {
+      const day = this.clock.day;
+      if (this._layoffDay !== day) { this._layoffDay = day; this._layoffHitToday = 0; }
+      const hit = Math.min(TRUST.layoffDayCap - this._layoffHitToday, TRUST.layoffHit * removed);
+      if (hit > 0) { this.trust = clamp01(this.trust - hit); this._layoffHitToday += hit; }
+    }
+    return this.staff[role].n;
+  }
   setWage(role, wage) { if (!this.staff[role]) return 0; this.staff[role].wage = clamp(+wage || 0, 0, 1000); return this.staff[role].wage; }
   speed(n) { this.speedValue = n; try { this.hooks.setSpeed?.(n); } catch {} return n; }
   getReport() { return this.lastReport; }

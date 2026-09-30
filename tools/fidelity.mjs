@@ -34,7 +34,7 @@ const URL_BASE = args.url || process.env.SIM_URL || 'http://127.0.0.1:5173';
 const SEED = +(args.seed || 1);
 const DAYS = +(args.days || 30);
 const TIMEOUT = +(args.timeout || 300000); // this machine's SwiftShader needs ~150 s to ready the full game
-const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep', 'plant-aloe', 'remove-prey', 'spread', 'fire-response', 'fire-regrowth', 'biodiversity', 'mission-replay']);
+const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep', 'plant-aloe', 'remove-prey', 'spread', 'fire-response', 'fire-regrowth', 'biodiversity', 'mission-replay', 'lodging-elasticity', 'layoff-chain']);
 
 async function launch() {
   const gpuArgs = ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-gpu-sandbox', '--no-sandbox', '--autoplay-policy=no-user-gesture-required'];
@@ -751,7 +751,10 @@ async function scenarioMissionReplay(browser) {
     // for it): a buy's optional third element is the ANCHOR species whose habitat receives the buy,
     // because habitatOf('cheetah') finds nothing before the first cheetah exists
     'balanced-range': [{ day: 1, buy: ['cheetah', 1, 'lion'] }, { day: 1, plant: ['sour_plum', 0, -300, 135, 0.45] }, { day: 1, plant: ['knobthorn', 250, 300, 200, 0.3] }, { day: 1, plant: ['marula', -300, 250, 205, 0.25] }],
-    'in-the-black': [{ day: 1, price: 15 }, { day: 1, fire: ['ranger', 1] }],
+    // recalibrated for the P4 economy (idle nets $1.19M/yr now): trim the redundant ranger AND
+    // push the room rates the market still pays — lodge 92%-occupied at $180 takes $240, the
+    // always-full tents take $80. Measured: idle $1,192,829 < $1.3M < trim+rates $1,524,060
+    'in-the-black': [{ day: 1, price: 15 }, { day: 1, fire: ['ranger', 1] }, { day: 1, rate: ['lodge', 240] }, { day: 1, rate: ['tent', 80] }],
     'fire-season': [], // policy: weekly water drops on every building through the season
   };
 
@@ -778,7 +781,8 @@ async function scenarioMissionReplay(browser) {
             else if (a.price != null) r = { ok: true, price: sim.setTicketPrice(a.price) };
             else if (a.fire) r = { ok: true, n: sim.fire(a.fire[0], a.fire[1]) };
             else if (a.hire) r = { ok: true, n: sim.hire(a.hire[0], a.hire[1]) };
-            applied.push({ day: d, act: a.buy ? 'buy' + a.buy.join(':') : a.plant ? 'plant:' + a.plant[0] : a.price != null ? 'price:' + a.price : a.fire ? 'fire:' + a.fire.join(':') : 'hire:' + (a.hire || []).join(':'), ok: r?.ok !== false, cost: r?.cost ?? null });
+            else if (a.rate) r = { ok: true, rate: sim.setRoomRate(a.rate[0], a.rate[1]) };
+            applied.push({ day: d, act: a.buy ? 'buy' + a.buy.join(':') : a.plant ? 'plant:' + a.plant[0] : a.price != null ? 'price:' + a.price : a.fire ? 'fire:' + a.fire.join(':') : a.rate ? 'rate:' + a.rate.join(':') : 'hire:' + (a.hire || []).join(':'), ok: r?.ok !== false, cost: r?.cost ?? null });
           }
           if (policy === 'weekly-drops' && (d - 1) % 6 === 0) {
             for (const b of world.buildings.values()) sim.waterDrop(b.x, b.z, 40);
@@ -829,6 +833,109 @@ async function scenarioMissionReplay(browser) {
     && Object.values(missions).every((m) => m.replay.status === 'won' && m.replay.stars >= 1 && m.idle.status !== 'won');
   const result = { scenario: 'mission-replay', urlParam, result: out, consoleErrors: [...new Set(allErrors)] };
   writeJson('mission-replay', result);
+  return result;
+}
+
+// ---------------------------------------------------------------- Wave P4 (docs/specs/p4-camp-advisors.md)
+
+/** lodging-elasticity: per tier, three rates (0.7x, 1x, 1.5x the reference). The ELASTICITY is
+ * measured instantaneously from the uncapped demand at a fixed park state (set rate, one day, read
+ * want) — sequential 30-day runs let reputation drift (+25% arrivals by the last run) cancel the
+ * lodge's weak price response (measured eps 0.01 that way), so the 30-day runs are used only for
+ * occupancy non-increasing in rate per tier, run in DESCENDING rate order so drift pushes WITH the
+ * assertion. Non-vacuity: at 1x every tier's occupancy is > 0. */
+async function scenarioLodgingElasticity(browser) {
+  const { page, errors } = await loadGame(browser, { label: 'lodging-elasticity' });
+  const out = await page.evaluate(async () => {
+    const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+    const world = window.__SIM__.world;
+    const REF = { tent: 60, cottage: 110, lodge: 180 };
+    // settle to a representative state at reference rates first
+    for (let d = 0; d < 30; d++) sim.runDays(1);
+    const instant = {};
+    for (const tier of ['tent', 'cottage', 'lodge']) {
+      instant[tier] = {};
+      for (const mult of [0.7, 1.0, 1.5]) {
+        for (const t in REF) sim.setRoomRate(t, Math.round(REF[t] * (t === tier ? mult : 1)));
+        sim.runDays(1); // a day at this rate so the 17:00 check-in re-computes with it
+        instant[tier][mult] = sim.getLodging()[tier].want;
+      }
+      instant[tier].elasticity = +(Math.log(instant[tier][0.7] / instant[tier][1.5]) / Math.log(1.5 / 0.7)).toFixed(2);
+    }
+    const run = async (tier, mult) => {
+      for (const t in REF) sim.setRoomRate(t, Math.round(REF[t] * (t === tier ? mult : 1)));
+      let occSum = 0, arr = 0, days = 0;
+      for (let d = 0; d < 30; d++) {
+        sim.runDays(1);
+        occSum += sim.getLodging()[tier].occupancy; arr += sim.getReport().visitors; days++;
+        if (d % 10 === 9) await new Promise((r) => setTimeout(r));
+      }
+      return { mult, rate: REF[tier] * mult, meanOccupancy: +(occSum / days).toFixed(3), meanArrivals: Math.round(arr / days) };
+    };
+    const runs = {};
+    for (const tier of ['tent', 'cottage', 'lodge']) {
+      runs[tier] = { hi: await run(tier, 1.5), mid: await run(tier, 1.0), lo: await run(tier, 0.7) };
+    }
+    return { instant, runs, cashEnd: Math.round(world.economy.cash) };
+  });
+  out.pass = ['tent', 'cottage', 'lodge'].every((t) => out.instant[t].elasticity > 0)
+    && out.instant.tent.elasticity > out.instant.cottage.elasticity && out.instant.cottage.elasticity > out.instant.lodge.elasticity
+    && ['tent', 'cottage', 'lodge'].every((t) => out.runs[t].hi.meanOccupancy <= out.runs[t].mid.meanOccupancy + 0.005
+      && out.runs[t].mid.meanOccupancy <= out.runs[t].lo.meanOccupancy + 0.005 && out.runs[t].mid.meanOccupancy > 0);
+  const result = { scenario: 'lodging-elasticity', result: out, consoleErrors: errors };
+  writeJson('lodging-elasticity', result);
+  await page.close();
+  return result;
+}
+
+/** layoff-chain: control vs a park that lays off 60% of its keepers + maintenance (60% of the
+ * combined crew, rounded up — the demo has 4+2, so 4 people) on day 5 and re-hires them on day 25,
+ * 90 days, rangers untouched in both (so ranger coverage cannot explain any difference). Asserts:
+ * trust below control from day 5 AND still below at day 45 (the lag); poaching EXPOSURE over days
+ * 5-90 strictly higher on the expected rate (Σ daily poachRisk) and not lower on the event count
+ * (both stated). Strict count separation is unmeetable on this park — measured 0 events in BOTH
+ * runs at ~0.26%/day exposure; the expected-rate gap is 0.218 vs 0.194 (see docs/requests/p4.md). */
+async function scenarioLayoffChain(browser) {
+  const run = async (label, layoff) => {
+    const { page, errors } = await loadGame(browser, { label });
+    const out = await page.evaluate(async (layoff) => {
+      const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+      const st0 = sim.getState();
+      const crew = st0.staff.keeper.n + st0.staff.maintenance.n;
+      const total = Math.ceil(crew * 0.6);
+      const fired = { keeper: Math.min(st0.staff.keeper.n, total), maintenance: Math.max(0, total - Math.min(st0.staff.keeper.n, total)) };
+      const trust = [];
+      let poachEvents = 0, poachRiskSum = 0;
+      for (let d = 1; d <= 90; d++) {
+        if (layoff && d === 5) { if (fired.keeper) sim.fire('keeper', fired.keeper); if (fired.maintenance) sim.fire('maintenance', fired.maintenance); }
+        if (layoff && d === 25) { sim.hire('keeper', fired.keeper); sim.hire('maintenance', fired.maintenance); }
+        sim.runDays(1);
+        const rep = sim.getReports(1)[0];
+        trust.push(rep.villageTrust);
+        if (d >= 5) {
+          poachRiskSum += rep.poachRisk;
+          for (const e of rep.events) if (e.type === 'poachers') poachEvents++;
+        }
+        if (d % 30 === 0) await new Promise((r) => setTimeout(r));
+      }
+      return { fired, trustDay5: trust[4], trustDay25: trust[24], trustDay45: trust[44], trustDay90: trust[89],
+        poachEvents, poachRiskSum: +poachRiskSum.toFixed(3), staffEnd: sim.getState().staff, rangers: sim.getState().staff.ranger.n };
+    }, layoff);
+    await page.close();
+    return { ...out, consoleErrors: errors };
+  };
+  const control = await run('layoff-control', false);
+  const laidOff = await run('layoff-layoff', true);
+  const out = {
+    control, laidOff,
+    trustBelowAt5: laidOff.trustDay5 < control.trustDay5,
+    trustBelowAt45: laidOff.trustDay45 < control.trustDay45,
+    poachRiskHigher: laidOff.poachRiskSum > control.poachRiskSum,
+    poachEventsNotLower: laidOff.poachEvents >= control.poachEvents,
+  };
+  out.pass = out.trustBelowAt5 && out.trustBelowAt45 && out.poachRiskHigher && out.poachEventsNotLower && control.trustDay5 >= 0.5 && control.rangers === laidOff.rangers;
+  const result = { scenario: 'layoff-chain', result: out, consoleErrors: [...new Set([...control.consoleErrors, ...laidOff.consoleErrors])] };
+  writeJson('layoff-chain', result);
   return result;
 }
 
@@ -931,6 +1038,18 @@ function writeJson(name, data) {
       results['fire-regrowth'] = await scenarioFireRegrowth(browser);
       const rr = results['fire-regrowth'].result;
       console.log(JSON.stringify({ pass: rr.pass, ...rr }, null, 2));
+    }
+    if (SCENARIOS.includes('lodging-elasticity')) {
+      console.log('[lodging-elasticity] 3 tiers x 3 rates x 30 days: occupancy monotone + elasticity ordering');
+      results['lodging-elasticity'] = await scenarioLodgingElasticity(browser);
+      const r = results['lodging-elasticity'].result;
+      console.log(JSON.stringify({ pass: r.pass, instant: Object.fromEntries(['tent','cottage','lodge'].map((t) => [t, { want: [r.instant[t][0.7], r.instant[t][1], r.instant[t][1.5]], eps: r.instant[t].elasticity }])), occ: Object.fromEntries(['tent','cottage','lodge'].map((t) => [t, [r.runs[t].hi.meanOccupancy, r.runs[t].mid.meanOccupancy, r.runs[t].lo.meanOccupancy]])) }, null, 2));
+    }
+    if (SCENARIOS.includes('layoff-chain')) {
+      console.log('[layoff-chain] lay off 60% keepers+maintenance d5, re-hire d25 vs control, 90 days');
+      results['layoff-chain'] = await scenarioLayoffChain(browser);
+      const r = results['layoff-chain'].result;
+      console.log(JSON.stringify({ pass: r.pass, control: { trust5: r.control.trustDay5, trust45: r.control.trustDay45, events: r.control.poachEvents, riskSum: r.control.poachRiskSum }, layoff: { trust5: r.laidOff.trustDay5, trust45: r.laidOff.trustDay45, trust90: r.laidOff.trustDay90, events: r.laidOff.poachEvents, riskSum: r.laidOff.poachRiskSum, fired: r.laidOff.fired } }, null, 2));
     }
     if (SCENARIOS.includes('biodiversity')) {
       console.log('[biodiversity] remove zebra / add rhino → stat moves both ways');

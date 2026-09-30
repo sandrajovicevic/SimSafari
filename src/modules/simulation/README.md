@@ -95,6 +95,17 @@ getBiodiversity() → { richness, shannon, evenness, bigFive, plantRichness, ind
                                                   //   (leopard: null — not in this park); cached per
                                                   //   day + vegetation version; also on every daily
                                                   //   report as report.biodiversity
+setRoomRate(tier, rate) → rate                     // Wave P4: tier 'tent'|'cottage'|'lodge',
+                                                  //   clamped 10..500; demand answers from the
+                                                  //   next 17:00 check-in
+getLodging() → { [tier]: {beds, occupied, want, rate, occupancy, revenue} }
+                                                  // Wave P4: last check-in (on-demand if none
+                                                  //   yet); want is uncapped demand — 50% of a
+                                                  //   tier's unmet demand spills up one tier
+getVillageTrust() → 0..1                          // Wave P4: village trust (report.villageTrust)
+getAdvice() → [{advisor, level, key, text, since}]
+                                                  // Wave P4: today's advisor messages (pure data
+                                                  //   from advise(); see advisors.js)
 listMissions() → row[]                             // Wave P3: { id, name, brief, goal, deadlineDays,
                                                   //   stars } (frozen table rows, missions.js)
 startMission(id) → { ok, error? }                  // start on the current day (resets mission state,
@@ -117,7 +128,7 @@ getSim() → Simulation                             // raw instance (debugging /
 visitors, inParkPeak, lodgeNights, satisfaction, satisfactionBreakdown, reputation, attraction,
 population, happiness, habitats, born, died, left, predation, staff, staffCoverage, morale,
 prosperity, efficiency, spend, season, weather, loans, bankrupt, vegetation, biodiversity, events,
-activeEvents}` (`biodiversity` = Wave P3, see getBiodiversity).
+activeEvents}` (`biodiversity` = Wave P3; `lodging`/`villageTrust`/`poachRisk` = Wave P4 — per-tier occupancy, village trust, and the day's poaching probability).
 `report.habitats[id].species[s]` now also carries `spaceCapacity`, `foodCapacity`, `food`;
 `report.vegetation = {rain, changed}`; the daily step's timing is in `getState().vegetation.stepMs`
 (kept out of the report so same-seed reports stay byte-identical).
@@ -142,6 +153,7 @@ measured 0 births in the demo's first month — births per animal per day at ful
 | `habitat:changed`, `zone:changed`, `road:added/removed/changed`, `building:placed/removed`, `terrain:modified` | consumes | habitat-quality cache invalidation |
 | `mission:progress` | emits | Wave P3: `{id, progress, day}` once per day end while a mission is active |
 | `mission:completed` | emits | Wave P3: `{id, won, stars, day}` exactly once when a mission is won or fails (abandon emits nothing) |
+| `fire:building` | consumes/emits | unchanged (Wave P2); Wave P4 counts each emission against a survive-fire mission |
 
 ## Modules consumed (all optional)
 
@@ -320,6 +332,65 @@ Harness: `biodiversity` (remove-zebra / add-rhino, both directions, pass) and `m
 48 new (Shannon/evenness edges, each goal type met/missed/deadline-edge against synthetic reports,
 star brackets, reset clears the mission, second scripted fire's own stamina, idle-fails/defended-wins
 fire season, run → reset → re-run byte-identical with a mission running). 178/178 total.
+
+### Wave P4 — tiered lodging + village trust + advisors (2026-09-29, branch `claude/p4-camp`)
+
+**Tiers** (`tables.js LODGING_TIERS`, `sim.js _lodgingNow()`): every guest building declares a tier
+(buildings catalogue; fallback rows in tables.js — tent/cottage sit ABOVE lodge there because
+'Tented Camp Unit' contains 'camp'). Demand per tier at the 17:00 check-in:
+`want_t = arrivals × lodgeShare × share_t × quality_t × (0.5 + 0.5·sat) × (refRate_t/rate_t)^ε_t`,
+occupied capped at the tier's beds, **half of a tier's unmet demand spills up one tier** (a sold-out
+camp upsells instead of stranding demand — measured, the no-spillover version failed the economy
+tests; docs/requests/p4.md #2). Shares renormalise over the tiers that have beds. Room revenue
+replaces the old single-rate `lodgeNights × rate`: `Σ occupied_t × rate_t × (0.8 + 0.4·quality_t)`;
+`lodgeNights` is still Σ occupied and the satisfaction lodge term still uses the aggregate quality,
+so there is **no second arrivals model** (spec §2).
+
+Calibrated numbers (demo park, seed 1): refRate/ε as proposed (60/1.4, 110/1.0, 180/0.6; measured
+instantaneous ε from the harness: **tent 1.44 > cottage 1.22 > lodge 0.41**, wants 40/24/13 at
+0.7×/1×/1.5×). Occupancy monotone in rate per tier over 30-day runs (tent 0.547/0.965/1.0 at
+1.5×/1×/0.7×). **Old vs new demo-park 30-day means: lodge income $2,970 → $3,219 @ $25 and
+$4,594 → $5,793 @ $15 (tiers monetize better than the old flat $90-120 rate); net/day −$2,496.83 →
+−$2,883 @ $25 (the cottage's $520/day upkeep, partly offset) and the $15 break-even +$433.13 →
++$941.23.** Determinism unchanged (byte-identical same-seed runs with rates in play — tested).
+
+**Village trust** (`TRUST`): starts 0.6; `fire(role, n)` costs `0.03` per person actually let go
+(capped 0.3 per day across all calls; firing from an empty role costs nothing; re-hiring restores nothing); drifts 2%/day toward `0.5·prosperity + 0.5·employment` — so a layoff is
+remembered for weeks. `poachP` gains `0.06 × max(0, 0.5 − trust)` inside the existing clamp and the
+SAME single rng roll (no new draws). Harness `layoff-chain`: trust 0.488 vs 0.607 at day 5, still
+0.624 vs 0.696 at day 45 after everyone was re-hired on day 25; expected poach rate Σ 0.235 vs 0.194;
+event counts 0 vs 0 (the demo's ~0.26%/day exposure makes strict count separation unmeasurable —
+docs/requests/p4.md #3). The report carries `villageTrust`, `poachRisk` (the day's rate) and `lodging`.
+
+**Cross-wave recalibration (P3's `in-the-black` mission):** tiered lodging lifted the demo's idle
+365-day net from $791,777 to **$1,192,829**, which made P3's $800k target idle-winnable (crossing on
+day 234 — caught by the P4 full-harness run). Recalibrated to **$1,300,000**: idle falls $107k short;
+the replay now uses the treasurer's levers (trim the redundant ranger + lodge rate $240, tent $80 →
+**$1,524,060**, crossing day 306, ★1). Mission table + harness script updated together; measured
+endpoints: idle $1,192,829 / ranger-trim $1,239,579 / trim+rates $1,524,060.
+
+**Advisors** (`advisors.js`): pure `advise(report, state) → {messages, state}` — 13 rules across the
+ecologist / treasurer / community-liaison personas, each with a hysteresis band (fires at `start`,
+clears only past `clear`; metrics return their raw value inside the band and null only when the
+report has no such data, which clears immediately), a 3-day cooldown after clearing, and
+critical-first ordering. `losing-money`, `rooms-idle` and `rooms-turning-away` judge a 7-day mean
+(`smooth: 7`, kept in the advise state): net income and occupancy swing day to day. Runs at day end after the report; `getAdvice()` returns the messages.
+Signature note in docs/requests/p4.md #1. Tests: 205/205 (27 new — demand monotone per tier,
+measured ε ordering, zero-beds tier, ledger round-trip, trust drop/cap/no-restore/10-day memory/
+poach term, advise hysteresis+cooldown+ranking+determinism, byte-identical tiered runs).
+
+**Verifier fixes (2026-09-30, on this branch):** (1) the layoff cap was per *call*, not per day,
+and counted the requested n — 12 one-person layoffs (the ui fires one per click) cost 0.36, two
+10-person calls 0.6, "firing" 5 from an empty role 0.15; now per day across calls and on people
+actually removed. (2) 7 of the 13 advisor metrics returned null inside their hysteresis band, so
+the band was dead code: on the idle demo over 120 days `losing-money` fired 12 separate times in
+16 days shown, `understaffed` 12 times in 77, `rooms-idle` 9 in 11, `rooms-turning-away` 12 in 32.
+With raw metrics + the 7-day mean on the three money/occupancy rules: 2 / 1 / 1 / 1 separate
+firings. (3) `overgrazed` read `perAnimal`, a field `report.habitats` never had, so it could never
+fire; the report's habitat species rows now carry `need` (n × per-animal need, as `habitatFood()`)
+and the rule reads it. 9 tests added (7 fail on the old code). `herd-unhappy` still oscillates
+under stress (9 firings in 75 days shown when every ranger and keeper is fired) — genuine
+happiness swings around its 0.45 line, left as is.
 
 ## Known gaps (honest)
 

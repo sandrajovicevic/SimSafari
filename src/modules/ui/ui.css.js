@@ -381,6 +381,14 @@ export const CSS = `
 .sf .big5-item .ic { width: 17px; height: 17px; color: var(--text); }
 .sf .big5-item.off { opacity: 0.55; }
 .sf .big5-item.off .ic, .sf .big5-item.off b { color: var(--muted); }
+.sf .adv { display: flex; flex-direction: column; gap: 6px; padding: 2px 0; }
+.sf .adv-person { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: var(--r-s); background: rgba(255,255,255,0.04); border: 1px solid var(--line); font: inherit; color: var(--text); cursor: pointer; text-align: left; }
+.sf .adv-person:hover { background: rgba(255,255,255,0.07); }
+.sf .adv-ic { width: 34px; height: 34px; border-radius: 50%; background: rgba(240,177,60,0.14); color: var(--accent); display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.sf .adv-ic .ic { width: 19px; height: 19px; }
+.sf .adv-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; }
+.sf .adv-t .chip { align-self: flex-start; max-width: 100%; white-space: normal; text-align: left; line-height: 1.3; }
+.sf .adv-list { display: flex; flex-direction: column; gap: 4px; padding: 4px 8px 6px 46px; }
 .sf .sub { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
 

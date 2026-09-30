@@ -8,6 +8,7 @@ import { createPlainWorld, buildPark, applyPark } from './worldgen.js';
 import { PLANTS, PLANT_INDEX } from '../../core/Plants.js';
 import { VEG } from './tables.js';
 import { computeBiodiversity } from './biodiversity.js';
+import { advise } from './advisors.js';
 
 const failures = [];
 const passes = [];
@@ -753,7 +754,8 @@ console.log('\nWave P3 — biodiversity + missions');
       c.sim.startMission('in-the-black');
       const eco = c.world.economy, cs = c.sim.getMissionState();
       const net = Math.round(eco.cash) - Math.round(eco.loans || 0);
-      assert(cs.detail.net === net && Math.abs(cs.progress - Math.min(1, Math.max(0, net) / 800000)) < 1e-3,
+      const target = c.sim.listMissions().find((m) => m.id === 'in-the-black').goal.amount; // recalibrated by P4 (800k -> 1.3M)
+      assert(cs.detail.net === net && Math.abs(cs.progress - Math.min(1, Math.max(0, net) / target)) < 1e-3,
         `missions: a fresh cash mission shows the live net of loans (${cs.detail.net}, progress ${cs.progress})`);
       const p = makeSim(39);
       const hab = [...p.world.habitats.keys()].find((h) => (p.sim.pop.get(h)?.get('lion')?.n ?? 0) > 0);
@@ -866,6 +868,160 @@ console.log('\nWave P3 — biodiversity + missions');
     for (let i = 0; i < N; i++) { u.sim._bioCache = null; u.sim.getBiodiversity(); u.sim.mission.step(u.sim.clock.day, report); }
     const slice = (performance.now() - s0) / N;
     assert(slice < 0.5, `missions+biodiversity: the P3 slice alone (biodiversity recompute + evaluator step) ${slice.toFixed(3)} ms/day mean (budget < 0.5 ms)`);
+  }
+}
+
+// ---------------------------------------------------------------- Wave P4: lodging tiers + trust + advisors
+console.log('\nWave P4 — tiers, trust, advisors');
+{
+  const TIERS = ['tent', 'cottage', 'lodge'];
+  /** A park with a tiered camp (2 tents + 1 cottage + the layout's lodge) built directly on the world. */
+  const makeTierPark = (seed) => {
+    const s = makeSim(seed);
+    for (const [type, x, z] of [['tent', 80, 468], ['tent', 100, 460], ['cottage', -80, 465]]) {
+      const id = s.world.nextId('b');
+      s.world.buildings.set(id, { id, type, x, z, rot: 0, w: 8, d: 8, state: 'ok', staff: 0, visitors: 0 });
+      s.world.grid.occupancy[s.world.cellAt(x, z).index] = 1;
+    }
+    s.sim.invalidateCaches();
+    return s;
+  };
+
+  // ---- tier demand: monotone in rate; elasticity ordering; zero beds → zero occupancy
+  {
+    const s = makeTierPark(51);
+    s.sim.todayArrivals = 200; // a known demand base (getLodging falls back to on-demand math)
+    s.sim.satisfaction = 0.8;
+    const wantAt = (tier, rate) => { s.sim.setRoomRate(tier, rate); return s.sim.getLodging()[tier]; };
+    const REF = { tent: 60, cottage: 110, lodge: 180 };
+    const eps = {};
+    for (const t of TIERS) {
+      const lo = wantAt(t, REF[t] * 0.7), mid = wantAt(t, REF[t]), hi = wantAt(t, REF[t] * 1.5);
+      assert(lo.want > mid.want && mid.want > hi.want, `tiers: ${t} demand falls as the rate rises (${lo.want} → ${mid.want} → ${hi.want})`);
+      assert(lo.occupied >= mid.occupied && mid.occupied >= hi.occupied, `tiers: ${t} occupancy non-increasing in rate (${lo.occupied}/${mid.occupied}/${hi.occupied})`);
+      eps[t] = Math.log(lo.want / hi.want) / Math.log(1.5 / 0.7);
+    }
+    assert(eps.tent > eps.cottage && eps.cottage > eps.lodge,
+      `tiers: measured elasticity orders tent ${eps.tent.toFixed(2)} > cottage ${eps.cottage.toFixed(2)} > lodge ${eps.lodge.toFixed(2)}`);
+    const noTents = makeSim(52); // the plain park has only the lodge
+    noTents.sim.todayArrivals = 200;
+    const L = noTents.sim.getLodging();
+    assert(L.tent.beds === 0 && L.tent.occupied === 0 && L.tent.occupancy === 0, 'tiers: a tier with no beds has zero occupancy');
+    assert(L.lodge.beds > 0 && L.lodge.want > 0, `tiers: the lone lodge absorbs the whole share (want ${L.lodge.want})`);
+  }
+
+  // ---- tiers run end-to-end: report.lodging, revenue lands in the ledger, getLodging matches
+  {
+    const s = makeTierPark(53);
+    s.sim.runDays(5);
+    const rep = s.sim.getReport();
+    assert(rep.lodging && rep.lodging.cottage.beds === 6 && rep.lodging.tent.beds === 4 && rep.lodging.lodge.beds > 0,
+      `tiers: report.lodging carries each tier's beds (${rep.lodging.tent.beds}+${rep.lodging.cottage.beds}+${rep.lodging.lodge.beds})`);
+    let sum = 0; for (const t of TIERS) sum += rep.lodging[t].occupied * rep.lodging[t].rate * (0.8 + 0.4 * ({ tent: 0.55, cottage: 0.7, lodge: 0.85 })[t]);
+    assert(Math.abs(rep.incomeBreakdown.lodge - sum) < 1, `tiers: lodge income is the per-tier revenue sum ($${Math.round(rep.incomeBreakdown.lodge)})`);
+    assert(rep.lodgeNights === TIERS.reduce((a, t) => a + rep.lodging[t].occupied, 0), 'tiers: lodgeNights is Σ occupied across tiers');
+    assert(typeof rep.villageTrust === 'number' && typeof rep.poachRisk === 'number', 'tiers: report carries villageTrust and poachRisk');
+  }
+
+  // ---- trust: layoff hit (capped), re-hire does not restore, slow drift, poach term
+  {
+    const a = makeTierPark(54), b = makeTierPark(54);
+    a.sim.fire('keeper', 4); // 0.03 × 4 = 0.12
+    assert(Math.abs((b.sim.getVillageTrust() - a.sim.getVillageTrust()) - 0.12) < 1e-9,
+      `trust: firing 4 costs 0.12 immediately (${b.sim.getVillageTrust().toFixed(3)} → ${a.sim.getVillageTrust().toFixed(3)})`);
+    a.sim.fire('keeper', 20); // would be 0.6 — capped at 0.3/day
+    const afterCap = a.sim.getVillageTrust();
+    assert(afterCap >= b.sim.getVillageTrust() - 0.12 - 0.3 - 1e-9, `trust: the daily layoff hit is capped at 0.3 (${afterCap.toFixed(3)})`);
+    const beforeHire = a.sim.getVillageTrust();
+    a.sim.hire('keeper', 24);
+    assert(a.sim.getVillageTrust() === beforeHire, 'trust: re-hiring does not restore trust');
+    // the layoff is still remembered 10 days later vs a same-seed park that never fired anyone
+    a.sim.runDays(10); b.sim.runDays(10);
+    assert(a.sim.getVillageTrust() < b.sim.getVillageTrust() - 0.05,
+      `trust: 10 days after re-hiring, trust is still below the control (${a.sim.getVillageTrust().toFixed(3)} vs ${b.sim.getVillageTrust().toFixed(3)}) — a memory, not an event`);
+    // the poach term: same park, same seed, only trust forced apart → poachRisk differs by
+    // ~poachK × Δmax(0, 0.5 − trust) (a hair under 0.03: the day's drift runs before the term)
+    const lo = makeTierPark(55), hi = makeTierPark(55);
+    lo.sim.trust = 0; hi.sim.trust = 0.6;
+    lo.sim.runDays(1); hi.sim.runDays(1);
+    const d = lo.sim.getReport().poachRisk - hi.sim.getReport().poachRisk;
+    assert(d > 0.025 && d <= 0.03 + 1e-9, `trust: poachRisk gains ~0.06 × max(0, 0.5 − trust) (Δ ${d.toFixed(4)} at trust 0 vs 0.6)`);
+  }
+  // the cap is per DAY across calls (the ui fires one person per click), and only people actually let go count
+  {
+    const c = makeTierPark(58);
+    c.sim.hire('keeper', 20);
+    const t0 = c.sim.getVillageTrust();
+    for (let i = 0; i < 12; i++) c.sim.fire('keeper', 1); // 12 × 0.03 = 0.36 uncapped
+    assert(Math.abs((t0 - c.sim.getVillageTrust()) - 0.3) < 1e-9,
+      `trust: 12 one-person layoffs in one day cost exactly the 0.3 daily cap (${t0.toFixed(3)} → ${c.sim.getVillageTrust().toFixed(3)})`);
+    c.sim.runDays(1);
+    const t1 = c.sim.getVillageTrust();
+    c.sim.fire('keeper', 1);
+    assert(Math.abs((t1 - c.sim.getVillageTrust()) - 0.03) < 1e-9, 'trust: the cap resets the next day (one more layoff costs 0.03)');
+    const e = makeTierPark(58);
+    e.sim.fire('guide', e.sim.staff.guide.n);
+    const t2 = e.sim.getVillageTrust();
+    e.sim.fire('guide', 5);
+    assert(e.sim.getVillageTrust() === t2, 'trust: "firing" from an empty role costs nothing');
+  }
+
+  // ---- advisors: pure advise() — thresholds, hysteresis band, cooldown, null-clear
+  {
+    const rep = (day, o = {}) => ({ day, happiness: {}, habitats: {}, events: [], net: 0, cash: 50000,
+      staffCoverage: {}, lodging: {}, villageTrust: 0.6, poachRisk: 0.004, morale: 0.6, died: 0, ...o });
+    let out = advise(rep(1, { morale: 0.3 }));
+    assert(out.messages.some((m) => m.key === 'morale-low'), 'advise: low morale fires the liaison warning');
+    let state = out.state;
+    out = advise(rep(2, { morale: 0.45 }), state); // above start (0.4), below clear (0.5): hysteresis holds
+    assert(out.messages.some((m) => m.key === 'morale-low'), 'advise: hysteresis — the message stays inside the band');
+    state = out.state;
+    out = advise(rep(3, { morale: 0.55 }), state); // past clear: message clears
+    assert(!out.messages.some((m) => m.key === 'morale-low'), 'advise: recovered past the clear line → cleared');
+    state = out.state;
+    out = advise(rep(4, { morale: 0.3 }), state); // bad again one day later: cooldown blocks
+    assert(!out.messages.some((m) => m.key === 'morale-low'), 'advise: a cleared message cannot re-fire within 3 days');
+    state = out.state;
+    out = advise(rep(7, { morale: 0.3 }), state); // 4 days after clearing: fires again
+    assert(out.messages.some((m) => m.key === 'morale-low'), 'advise: after the cooldown the message returns');
+    // raw metrics keep a message up inside its band (a metric that returned null below `start` cleared the next day)
+    let st = advise(rep(1, { poachRisk: 0.03 })).state;
+    out = advise(rep(2, { poachRisk: 0.012 }), st);
+    assert(out.messages.some((m) => m.key === 'poach-risk'), 'advise: poach-risk stays up between its clear (0.008) and start (0.02) lines');
+    out = advise(rep(3, { poachRisk: 0.005 }), out.state);
+    assert(!out.messages.some((m) => m.key === 'poach-risk'), 'advise: poach-risk clears once below 0.008');
+    // smoothed money: one loss day in a profitable week is not advice; a losing week is
+    st = null;
+    for (let d = 1; d <= 6; d++) st = advise(rep(d, { net: 3000 }), st).state;
+    out = advise(rep(7, { net: -8000 }), st);
+    assert(!out.messages.some((m) => m.key === 'losing-money'), 'advise: one loss day after six profitable ones does not fire losing-money (7-day mean)');
+    st = null;
+    for (let d = 1; d <= 7; d++) { out = advise(rep(d, { net: -2000 }), st); st = out.state; }
+    assert(out.messages.some((m) => m.key === 'losing-money' && /2,000 a day/.test(m.text)), 'advise: a losing week fires losing-money with the weekly mean');
+    // overgrazing reads report.habitats[*].species[*].need vs food (the field it used to read never existed there)
+    out = advise(rep(1, { habitats: { 1: { species: { zebra: { n: 40, food: 30, need: 44 } } } } }));
+    assert(out.messages.some((m) => m.key === 'overgrazed'), 'advise: overgrazed fires when a habitat\'s need exceeds its food');
+    const sim = makeTierPark(59); sim.sim.runDays(2);
+    const hs = Object.values(sim.sim.getReport().habitats || {});
+    assert(hs.length && hs.every((h) => Object.values(h.species).every((x) => 'need' in x)), 'report: every habitat species row carries need (the overgrazing input)');
+    // critical ranks above warn; advisor attribution
+    out = advise(rep(8, { morale: 0.3, net: -5000, died: 5 }));
+    assert(out.messages[0].level === 'critical', 'advise: critical sorts first');
+    const advisors = new Set(out.messages.map((m) => m.advisor));
+    assert(advisors.has('liaison') && advisors.has('treasurer') && advisors.has('ecologist'), 'advise: the three personas all speak');
+    // determinism of the sim's daily pass: same seed, tiered park → identical advice series
+    const x = makeTierPark(56), y = makeTierPark(56);
+    x.sim.runDays(20); y.sim.runDays(20);
+    assert(JSON.stringify(x.sim.getAdvice()) === JSON.stringify(y.sim.getAdvice()), 'advise: same-seed runs produce identical advice');
+  }
+
+  // ---- determinism with tiers present (rates in play)
+  {
+    const a = makeTierPark(57), b = makeTierPark(57);
+    a.sim.setRoomRate('tent', 45); b.sim.setRoomRate('tent', 45);
+    a.sim.setRoomRate('lodge', 250); b.sim.setRoomRate('lodge', 250);
+    a.sim.runDays(60); b.sim.runDays(60);
+    assert(JSON.stringify(a.sim.getReports(60)) === JSON.stringify(b.sim.getReports(60)), 'tiers: same seed + same rates → byte-identical 60-day reports');
   }
 }
 

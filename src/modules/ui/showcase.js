@@ -10,6 +10,7 @@ export const presets = {
   close:    { camera: { target: [-130, 80], distance: 60, pitch: 20, yaw: 60 }, tod: 16.5, description: 'Close camera; habitat selected (quality, resources, fit per species); animals category open' },
   objectives: { camera: { target: [0, 40], distance: 420, pitch: 40, yaw: 35 }, tod: 15, description: 'Objectives panel mid-mission (Wave P3): progress bar, days left, star brackets, biodiversity strip' },
   'objectives-won': { camera: { target: [0, 40], distance: 420, pitch: 40, yaw: 35 }, tod: 15, description: 'Objectives panel on a completed mission (Wave P3): stars awarded, result rows, completion toast' },
+  camp: { camera: { target: [0, 40], distance: 420, pitch: 40, yaw: 35 }, tod: 15, description: 'Camp & advisors panel (Wave P4): per-tier rate sliders + occupancy, the three advisor personas with their briefing' },
   night:    { camera: { target: [60, 300], distance: 140, pitch: 25, yaw: 120 }, tod: 21.5, description: 'HUD at night: moon glyph, lodge selected, poacher warning toast' },
 };
 
@@ -52,6 +53,17 @@ export async function stage(ctx, presetName, ui) {
       if (mock.habitat) sel('habitat', mock.habitat);
       api.openPanel('animals');
       break;
+    case 'camp': {
+      // Wave P4: run the (mock) park forward so the advisors have a real morning briefing and the
+      // tiers have occupancy, then open the panel; a layoff makes the liaison speak.
+      s.settings.autoReport = false;
+      const sim = ctx.modules.get('simulation');
+      if (sim?.runDays) {
+        try { sim.fire('keeper', 2); sim.runDays(12); } catch (err) { ctx.log.warn('camp stage: ' + err.message); }
+      }
+      api.openPanel('camp');
+      break;
+    }
     case 'objectives':
     case 'objectives-won': {
       // Wave P3: drive a real mission through the simulation API (present in this showcase's

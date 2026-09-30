@@ -21,7 +21,7 @@ a UI exception can never stop rendering. The only module allowed to read the DOM
   per-frame cost (built once per settings-open); rendered through `dom.js`'s `el()`/null-filtering
   append — never native `Element.append` (which stringifies null arguments into visible text, the
   09-22 toolbar bug).
-* Keyboard: `Space` pause · `,`/`.` speed (steps 1/3/10) · `J` report · `G` objectives (Wave P3) · `O` settings · `M` minimap ·
+* Keyboard: `Space` pause · `,`/`.` speed (steps 1/3/10) · `J` report · `G` objectives (Wave P3) · `C` camp & advisors (Wave P4) · `O` settings · `M` minimap ·
   `H` hide UI · `1`–`9` toolbar categories.
 
 ## Public API — `ctx.modules.get('ui')`
@@ -67,6 +67,15 @@ isEnabled() → bool
   amber ≥ 1, red below), re-read once per sim day from `simulation.getFoodReport`; when a species is over its food
   capacity it names the best plants for it with a "Plant …" button that opens the Plant tool.
 
+### Camp & advisors panel (Wave P4, 2026-09-29)
+* `camp.js` — top-bar lodge button or `C`. **Rooms**: one card per tier with beds (occupancy chip +
+  bar, guests/demand, revenue/day, a 10–400 rate slider wired straight to `simulation.setRoomRate`).
+  **Advisors**: the three personas (ecologist / treasurer / community liaison) each showing their
+  highest-level message, click to expand the full list with since-days; village trust readout in the
+  section header. DOM only; rebuilt on open, refreshed on `sim:day` while open — never per frame.
+  The `camp` showcase preset runs the mock park 12 days and lays off two keepers so the liaison has
+  something real to say.
+
 ### Objectives + biodiversity (Wave P3, 2026-09-28)
 * **Objectives panel** (`objectives.js`; top-bar target button or `G`) — mission picker (one card per
   `simulation.listMissions()` row with goal + star brackets + Start), active view (progress bar, days
@@ -100,6 +109,7 @@ table), `environment` (weather readout), `terrain` (minimap sampling).
 | `panel` | 14 | settings/selection side panel |
 | `toolbar` | 14 | every category toolbar expanded |
 | `close` | 16 | HUD over a near camera |
+| `camp` | 15 | camp & advisors panel: tier sliders + occupancy, the three personas (Wave P4) |
 | `objectives` | 15 | objectives panel mid-mission: progress, days left, biodiversity strip (Wave P3) |
 | `objectives-won` | 15 | objectives panel on a won mission: stars, result rows, toast (Wave P3) |
 | `night` | 22 | HUD legibility on the night grade |

@@ -341,6 +341,9 @@ export async function buildPark(ctx, opts = {}) {
       const t = placeBuilding(ctx, buildings, 'tent', lodgeAnchor.x + dx, lodgeAnchor.z + dz, rng, { spread: 26 });
       if (t) placed.tents.push(t);
     }
+    // Wave P4: one guest cottage — the mid tier of the camp (6 beds between tent and lodge), sited
+    // with the tent rows on the lodge grounds
+    placed.cottage = placeBuilding(ctx, buildings, 'cottage', lodgeAnchor.x - 20, lodgeAnchor.z + 46, rng, { spread: 22 });
 
     // Water pumps in the three habitats the terrain doesn't water (the wetland has the river): the
     // catalogue's `water: 1` is exactly what the sim's habitatStat adds to a habitat's water stat,
@@ -451,6 +454,10 @@ export async function buildPark(ctx, opts = {}) {
   let staffed = 0;
   if (simulation) {
     simulation.setTicketPrice(15);
+    // Wave P4: the demo's opening room rates (tier defaults — the reference rates of each tier)
+    simulation.setRoomRate('tent', 60);
+    simulation.setRoomRate('cottage', 110);
+    simulation.setRoomRate('lodge', 180);
     const nAnim = Object.values(report.animals).reduce((s, n) => s + n, 0);
     const hire = (role, n) => { if (n > 0) { try { simulation.hire(role, n); staffed += n; } catch {} } };
     hire('keeper', Math.max(2, Math.ceil(nAnim / 20)));   // one keeper per 20 animals (≈80 → 4)
