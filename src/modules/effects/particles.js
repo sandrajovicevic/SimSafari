@@ -12,7 +12,7 @@ const KIND_DEFAULTS = {
   splash: { rate: 40, speed: 3.2, spread: 0.5, size: 0.12, sizeJitter: 0.5, life: 0.9, lifeJitter: 0.4 },
   fire: { rate: 22, speed: 1.6, spread: 0.45, size: 1.0, sizeJitter: 0.55, life: 0.5, lifeJitter: 0.4 },
   firesmoke: { rate: 10, speed: 0.4, spread: 0.2, size: 3.0, sizeJitter: 0.4, life: 12.0, lifeJitter: 0.3 },
-  locust: { rate: 90, speed: 2.0, spread: 0.9, size: 0.28, sizeJitter: 0.4, life: 1.6, lifeJitter: 0.5 },
+  locust: { rate: 90, speed: 1.5, spread: 1.15, size: 0.42, sizeJitter: 0.4, life: 2.4, lifeJitter: 0.5 },
 };
 const MAX_EMITTERS = 64;
 const MAX_SPAWN_PER_FRAME = 400;
@@ -175,7 +175,7 @@ class Emitter {
     this.active = false; this.kind = KIND.dust;
     this.position = new THREE.Vector3(); this.dir = new THREE.Vector3(0, 1, 0);
     this.rate = 0; this.speed = 1; this.spread = 0.5; this.size = 0.5; this.sizeJitter = 0.5;
-    this.life = 2; this.lifeJitter = 0.4; this.acc = 0;
+    this.life = 2; this.lifeJitter = 0.4; this.acc = 0; this.jitter = undefined;
   }
   /** opts: {x,y,z, dir:[x,y,z]|Vector3, rate, speed, spread, size, sizeJitter, life, lifeJitter} */
   set(opts = {}) {
@@ -183,7 +183,7 @@ class Emitter {
     if (opts.y !== undefined) this.position.y = opts.y;
     if (opts.z !== undefined) this.position.z = opts.z;
     if (opts.dir) { const d = opts.dir; if (d.isVector3) this.dir.copy(d); else this.dir.set(d[0], d[1], d[2]); this.dir.normalize(); }
-    for (const k of ['rate', 'speed', 'spread', 'size', 'sizeJitter', 'life', 'lifeJitter']) if (opts[k] !== undefined) this[k] = opts[k];
+    for (const k of ['rate', 'speed', 'spread', 'size', 'sizeJitter', 'life', 'lifeJitter', 'jitter']) if (opts[k] !== undefined) this[k] = opts[k];
     return this;
   }
   setPosition(x, y, z) { this.position.set(x, y, z); return this; }
@@ -316,7 +316,7 @@ vec4 shade(vec2 uv){
   /** Generic emitter. kind: 'dust'|'smoke'|'splash'. Returns an Emitter handle or null if the pool is exhausted. */
   emitter(kind = 'dust', opts = {}) {
     const e = this.emitters.find((m) => !m.active);
-    if (!e) return null;
+    if (!e) { console.warn('[effects] particle emitter pool exhausted (64); kind', kind); return null; }
     const k = typeof kind === 'number' ? kind : (KIND[kind] ?? KIND.dust);
     const d = KIND_DEFAULTS[typeof kind === 'string' ? kind : 'dust'] || KIND_DEFAULTS.dust;
     e.active = true; e.kind = k; e.acc = 0;
@@ -336,8 +336,10 @@ vec4 shade(vec2 uv){
       const size = e.size * (1 + (r.float() - 0.5) * 2 * e.sizeJitter);
       // fire: one emitter stands for a burning 16 m cell, so flames spawn along the cell (a flame line),
       // not stacked on one point (that read as a single glowing orb)
-      const j = e.kind === KIND.fire ? 9.0 : e.kind === KIND.firesmoke ? 4.0 : e.kind === KIND.locust ? 10.0 : e.kind === KIND.smoke ? 0.25 : 0.15;
-      this.spawn(e.kind, e.position.x + (r.float() - 0.5) * j, e.position.y + (r.float() - 0.5) * j, e.position.z + (r.float() - 0.5) * j,
+      const j = e.kind === KIND.fire ? 9.0 : e.kind === KIND.firesmoke ? 4.0 : e.kind === KIND.locust ? (e.jitter ?? 10.0) : e.kind === KIND.smoke ? 0.25 : 0.15;
+      // locusts: spread horizontally over the swarm disc but hold a low flight band (±1.5 m), never underground
+      const jy = e.kind === KIND.locust ? 3.0 : j;
+      this.spawn(e.kind, e.position.x + (r.float() - 0.5) * j, e.position.y + (r.float() - 0.5) * jy, e.position.z + (r.float() - 0.5) * j,
         t.x * sp, t.y * sp, t.z * sp, Math.max(0.1, life), Math.max(0.02, size), r.float());
     }
   }
@@ -388,7 +390,12 @@ vec4 shade(vec2 uv){
     for (let k = 0; k < this._attrs.length; k++) {
       const attr = this._attrs[k][0], n = this._attrs[k][1];
       attr.clearUpdateRanges();
-      attr.addUpdateRange(lo * n, (hi - lo + 1) * n);
+      // the 1-float instanced kind attribute: a narrow update range never reached the GPU
+      // (measured: a swarm's kind-6 slots stayed stale on the GPU while pos/vel/info uploaded
+      // fine, so the specks rendered in the ambient branch wrapped around the camera — invisible;
+      // re-uploading the whole kind buffer made them appear at the right positions). 32 KB/frame.
+      if (n === 1) attr.addUpdateRange(0, this.capacity);
+      else attr.addUpdateRange(lo * n, (hi - lo + 1) * n);
       attr.needsUpdate = true;
     }
     this._dirtyLo = Infinity; this._dirtyHi = -1; this._wrapped = false;

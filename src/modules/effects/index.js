@@ -73,12 +73,13 @@ const FIRE_EMITTERS = 16;
 function updateLocustSwarms(t) {
   const w = ctx.world;
   if (!w.locusts || !particles) return;
-  if (S.locustEmitters === undefined) { S.locustEmitters = []; S.locustSeen = -1; }
+  if (S.locustEmitters === undefined) S.locustEmitters = [];
   const swarms = w.locusts.swarms;
   if (swarms.length > S.locustEmitters.length) {
     while (S.locustEmitters.length < Math.min(swarms.length, 4)) {
-      const e = particles.emitter('locust', { rate: 90, size: 0.28, life: 1.6, speed: 2.0, spread: 0.9 });
+      const e = particles.emitter('locust');
       if (!e) break;
+      e._seed = true; // burst on first positioning so the cloud exists without warm-up frames
       S.locustEmitters.push(e);
     }
   }
@@ -86,13 +87,17 @@ function updateLocustSwarms(t) {
     const e = S.locustEmitters[i];
     const s = swarms[i];
     if (!s) { e.set({ rate: 0 }); continue; }
-    // roam the disc (r*0.6 Lissajous, ~1.2-3.5 m above the ground)
+    // roam the disc (r*0.6 Lissajous, ~2-4 m above the ground)
     const ang = t * 0.55 + i * 2.1, r2 = s.radius * 0.6;
     const x = s.x + Math.cos(ang * 1.3) * r2 * 0.7;
     const z = s.z + Math.sin(ang) * r2;
-    const y = (ctx.world.getHeight ? ctx.world.getHeight(x, z) : 0) + 2.2 + Math.sin(ang * 2.7) * 1.1;
+    const y = (ctx.world.getHeight ? ctx.world.getHeight(x, z) : 0) + 3.0 + Math.sin(ang * 2.7) * 0.8;
     e.setPosition(x, y, z);
-    e.set({ rate: Math.round(30 + 110 * Math.min(1, s.density)) });
+    // visible specks scale with swarm area × density: ~1300 for a dense 56 m swarm (reads at 150 m),
+    // small or thin swarms stay cheap. Pool after ambient is 5692; 4 max swarms × 1300 fits.
+    const target = Math.min(1300, Math.max(280, Math.round(s.radius * s.radius * 0.42 * (0.35 + 0.65 * Math.min(1, s.density)))));
+    e.set({ jitter: s.radius * 1.7, rate: Math.round(target / e.life) });
+    if (e._seed) { e.burst(Math.min(600, target)); e._seed = false; }
   }
 }
 
