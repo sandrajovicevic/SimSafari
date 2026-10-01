@@ -1064,7 +1064,7 @@ function writeJson(name, data) {
       console.log(JSON.stringify({ pass: r.pass, day1: r.day1, afterZebraRemoved: { richness: r.afterZebraRemoved.richness, index: r.afterZebraRemoved.index }, afterRhinoBought: { rhino: r.afterRhinoBought.bigFive.rhino, index: r.afterRhinoBought.index }, plantMeans: r.plantMeans }, null, 2));
     }
     if (SCENARIOS.includes('mission-replay')) {
-      console.log('[mission-replay] four starter missions × (idle, scripted replay) + the pride's buy-only shortcut + determinism');
+      console.log('[mission-replay] four starter missions × (idle, scripted replay) + the pride buy-only shortcut + determinism');
       results['mission-replay'] = await scenarioMissionReplay(browser);
       const r = results['mission-replay'];
       const per = Object.fromEntries(Object.entries(r.result.missions).map(([id, m]) => [id, {
