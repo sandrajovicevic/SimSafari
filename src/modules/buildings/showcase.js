@@ -120,7 +120,7 @@ export async function stage(ctx, presetName) {
 
   const [CX, CZ] = findSite(ctx, terrain);
   B.clear();
-  B.setParkName('MARA RIDGE');
+  B.setParkName('Serengeti Ridge');
 
   // 2. roads in from the south, through the gate, past the lodge
   const GATE_Z = CZ + 96;

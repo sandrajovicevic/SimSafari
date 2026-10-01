@@ -23,7 +23,7 @@ const START_CAPACITY = 4;
 const S = {
   ctx: null, group: null, arrays: null, mats: null, protos: new Map(), sets: new Map(),
   records: new Map(), byType: new Map(), ghost: null, lights: [], lightsIn: false,
-  night: 0, spin: 0, ready: false, nextId: 1, parkName: 'MARA RIDGE',
+  night: 0, spin: 0, ready: false, nextId: 1, parkName: 'Serengeti Ridge',
 };
 
 const _m = new THREE.Matrix4();
@@ -486,7 +486,7 @@ const api = {
 
   /** Park name shown on the entrance sign. Changing it rebuilds the sign texture. */
   setParkName(name) {
-    S.parkName = String(name || 'MARA RIDGE');
+    S.parkName = String(name || 'Serengeti Ridge');
     if (S.mats?.sign) { S.mats.sign.map = signTexture(S.ctx, S.parkName); S.mats.sign.needsUpdate = true; }
   },
   getParkName() { return S.parkName; },
@@ -523,7 +523,7 @@ export default {
     ctx.scene.add(S.group);
     S.records.clear(); S.byType.clear(); S.protos.clear(); S.sets.clear();
     S.nextId = 1;
-    S.parkName = ctx.params?.park || 'MARA RIDGE';
+    S.parkName = ctx.params?.park || 'Serengeti Ridge';
 
     try {
       const soft = isSoftwareGL(ctx.renderer);

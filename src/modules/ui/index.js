@@ -53,7 +53,12 @@ const api = {
   showReport(report) { if (parts) parts.report.show(report || currentReport()); },
   setVisible(visible) { if (root) root.classList.toggle('hidden', !visible); },
   isVisible() { return !!root && !root.classList.contains('hidden'); },
-  setParkName(name) { if (s) { s.parkName = String(name || 'Safari park'); parts?.topbar.refresh(); } },
+  // one park name: the top bar and the buildings' gate sign must agree (the gate said MARA RIDGE while the
+  // top bar said Serengeti Ridge), so a rename forwards to buildings
+  setParkName(name) {
+    if (s) { s.parkName = String(name || 'Safari park'); parts?.topbar.refresh(); }
+    try { s?.ctx.modules.get('buildings')?.setParkName?.(name); } catch {}
+  },
   showFps(on) { if (parts) { s.settings.fps = !!on; parts.fps.hidden = !on; } },
   setSpeed(mult) { if (s) s.setSpeed(mult); },
   /** Re-read world.* into every widget (call after bulk changes). */
@@ -131,7 +136,8 @@ export default {
 
     try {
       s = {
-        ctx, world: ctx.world, api, parkName: 'Serengeti Ridge', speedMult: 1, reputation: 0.5, activeTool: null,
+        ctx, world: ctx.world, api, parkName: ctx.params?.park || 'Serengeti Ridge', speedMult: 1,  // same default + ?park= as buildings' gate sign
+        reputation: 0.5, activeTool: null,
         popHistory: [], lastReport: null, settings: { fps: false, autoReport: true, volume: 0.8 }, setSpeed, requestTool,
       };
       styleEl = document.createElement('style'); styleEl.id = 'sf-ui-style'; styleEl.textContent = CSS;
