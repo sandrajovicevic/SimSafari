@@ -124,6 +124,8 @@ const api = {
   getLodging: () => sim?.getLodging() ?? null,
   /** Village trust 0..1 (Wave P4) — a lagged memory of layoffs (also report.villageTrust). */
   getVillageTrust: () => sim?.getVillageTrust() ?? 0.6,
+  /** Wave P5: the locust manager (stats + eatenTotal counters; read-only use). */
+  get locusts() { return sim?.locusts ?? null; },
   /** Today's advisor messages (Wave P4): [{advisor, level, key, text, since}] — pure data. */
   getAdvice: () => sim?.getAdvice() ?? [],
 

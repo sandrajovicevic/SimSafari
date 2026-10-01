@@ -23,6 +23,8 @@ export class LocustSwarms {
     this.wetDays = 0;         // days into the current wet season
     this.eatenTotal = 0;      // lifetime cells eaten (report)
     this.eatenToday = 0;
+    this.eatenCoverTotal = 0;  // lifetime grass/shrub COVER units removed (the volume metric)
+    this.eatenCoverToday = 0;
   }
 
   /** Reset for sim.reset(): no swarms, fresh outbreak memory (the rng stream restarts too — the
@@ -35,6 +37,8 @@ export class LocustSwarms {
     this.wetDays = 0;
     this.eatenTotal = 0;
     this.eatenToday = 0;
+    this.eatenCoverTotal = 0;
+    this.eatenCoverToday = 0;
   }
 
   /** Seeded outbreak roll — called once per day end from the sim. Gate: the first 20 days of a wet
@@ -79,7 +83,7 @@ export class LocustSwarms {
    * clearing losses on burnt/firebreak cells, death checks. Returns cells eaten today. */
   step(wind, season) {
     const w = this.sim.world, veg = this.sim.veg;
-    if (!w.locusts || !w.locusts.swarms.length) { this.eatenToday = 0; return 0; }
+    if (!w.locusts || !w.locusts.swarms.length) { this.eatenToday = 0; this.eatenCoverToday = 0; return 0; }
     const N = veg.nCells, cover = veg.cover, res = veg.res, cell = veg.cell;
     const half = w.half ?? w.size / 2;
     const isHerb = PLANTS.map((p) => p.form !== 'tree');
@@ -94,7 +98,7 @@ export class LocustSwarms {
       // eat grass/shrub cover in the disc, bounded by the swarm's cell budget
       const ix0 = Math.max(0, Math.floor((s.x - s.radius + half) / cell)), ix1 = Math.min(res - 1, Math.floor((s.x + s.radius + half) / cell));
       const iz0 = Math.max(0, Math.floor((s.z - s.radius + half) / cell)), iz1 = Math.min(res - 1, Math.floor((s.z + s.radius + half) / cell));
-      let cells = 0, clearedCells = 0, ate = 0;
+      let cells = 0, clearedCells = 0, ate = 0, ateCover = 0;
       for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
         const cx = (ix + 0.5) * cell - half, cz = (iz + 0.5) * cell - half;
         const dx = cx - s.x, dz = cz - s.z;
@@ -108,7 +112,9 @@ export class LocustSwarms {
           if (!isHerb[t]) continue;
           const k = t * N + idx;
           if (cover[k] <= 0) continue;
+          const before = cover[k];
           cover[k] = Math.max(0, cover[k] * (1 - L.eatRate * s.density));
+          ateCover += before - cover[k];
           bit = true;
         }
         if (bit) { s.eaten++; ate++; }
@@ -119,6 +125,8 @@ export class LocustSwarms {
       s.density = clamp01(s.density);
       this.eatenToday += ate;
       this.eatenTotal += ate;
+      this.eatenCoverToday += ateCover;
+      this.eatenCoverTotal += ateCover;
       if (s.density < L.dieAt || s.age >= s.days || s.eaten >= s.budget && s.density < L.dieAt + 0.02) {
         w.locusts.swarms.splice(i, 1);
       }
@@ -152,6 +160,8 @@ export class LocustSwarms {
       swarms: sw.map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), radius: s.radius, density: +s.density.toFixed(2), age: s.age, eaten: s.eaten, budget: s.budget })),
       cellsEatenToday: this.eatenToday,
       cellsEatenTotal: this.eatenTotal,
+      coverEatenToday: +this.eatenCoverToday.toFixed(2),
+      coverEatenTotal: +this.eatenCoverTotal.toFixed(2),
     };
   }
 }

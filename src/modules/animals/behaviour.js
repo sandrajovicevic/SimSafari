@@ -72,14 +72,14 @@ export class Behaviour {
     // inside its habitat makes it the wander target instead — the lick becomes an attraction point
     // visitors can plan around (world.saltLicks is simulation-owned; animals only reads).
     const world = this.S.world;
-    if (world.saltLicks?.size && rng.float() < 0.25) {
+    if (world.saltLicks?.size && rng.float() < 0.6) {
       const g = world.grid;
       const homeHid = g.habitatId[world.cellAt(h.home.x, h.home.z).index];
       for (const l of world.saltLicks.values()) {
         const c = world.cellAt(l.x, l.z);
         if (g.habitatId[c.index] !== homeHid) continue;
         if ((l.x - h.home.x) ** 2 + (l.z - h.home.z) ** 2 > (h.home.r + 60) ** 2) continue;
-        h.tx = l.x + (rng.float() - 0.5) * 10; h.tz = l.z + (rng.float() - 0.5) * 10;
+        h.tx = l.x + (rng.float() - 0.5) * 4; h.tz = l.z + (rng.float() - 0.5) * 4;
         break;
       }
     }
