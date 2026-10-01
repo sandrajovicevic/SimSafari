@@ -11,7 +11,10 @@ measured results of shipping are recorded here (full calibration table: `src/mod
 * **Missions** — table + evaluator + API + the two events per §2–§5. Free play is bit-identical to
   main (all 130 pre-P3 sim tests unchanged; a started-then-abandoned mission leaves a 60-day run
   byte-identical). Calibration (spec placeholders → shipped, reasons measured on seed 1):
-  * `pride` — unchanged (6 lions/180 d): idle drifts 3→2 lions; buy-3 replay wins day 2 (★1).
+  * `pride` — shipped as 6 lions/180 d; **changed 2026-10-01 to a 60-day hold of 6+ lions** within 180 d,
+    because buying 3 lions won the population version on day 2. Measured reasons: simulation README
+    "Wave P3" table. The replay now buys 3 lions + 15 zebra + 15 impala; a buy-lions-only shortcut
+    control must not win.
   * `balanced-range` — floor **demo+10 → 92**: +10 (98.45) is unreachable (richness/evenness near
     ceiling; max play adds +3.33 for the 12th species + ~1 per planted plant). Idle peaks 89.58;
     the replay (cheetah into the kopje + three plantings, $59k) holds 93.4–94.6 and wins day 61 (★2).

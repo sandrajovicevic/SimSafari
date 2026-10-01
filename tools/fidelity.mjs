@@ -746,7 +746,9 @@ async function scenarioMissionReplay(browser) {
   /** The fixed action script for one mission, evaluated inside the page: {day, run}[] plus an
    * optional per-day policy. Everything goes through public simulation APIs. */
   const SCRIPTS = {
-    pride: [{ day: 1, buy: ['lion', 3] }],
+    // a pride the range can feed: 3 lions plus prey released into the lions' own habitat (measured: 6
+    // lions held 164 days; the lions alone starve back to 3 within weeks — see SHORTCUTS)
+    pride: [{ day: 1, buy: ['lion', 3] }, { day: 1, buy: ['zebra', 15, 'lion'] }, { day: 1, buy: ['impala', 15, 'lion'] }],
     // the cheetah is released into the lions' kopje (prey-rich, 3.6 ha — the only habitat with room
     // for it): a buy's optional third element is the ANCHOR species whose habitat receives the buy,
     // because habitatOf('cheetah') finds nothing before the first cheetah exists
@@ -758,8 +760,11 @@ async function scenarioMissionReplay(browser) {
     'fire-season': [], // policy: weekly water drops on every building through the season
   };
 
-  const runVariant = async (id, scripted) => {
-    const { page, errors } = await loadGame(browser, { label: `mission-${id}-${scripted ? 'replay' : 'idle'}` });
+  // shortcut controls: a cheap script that must NOT win (the pride used to be won by buying 3 lions)
+  const SHORTCUTS = { pride: [{ day: 1, buy: ['lion', 3] }] };
+
+  const runVariant = async (id, scripted, script = null, tag = null) => {
+    const { page, errors } = await loadGame(browser, { label: `mission-${id}-${tag || (scripted ? 'replay' : 'idle')}` });
     const out = await page.evaluate(async ({ id, scripted, actions, policy }) => {
       const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
       const world = window.__SIM__.world;
@@ -799,7 +804,7 @@ async function scenarioMissionReplay(browser) {
         detail: last.detail, applied,
         cashEnd: Math.round(eco.cash), netEnd: Math.round(eco.cash - (eco.loans || 0)),
         bioEnd: { index: bio.index, richness: bio.richness, plantRichness: bio.plantRichness, evenness: bio.evenness } };
-    }, { id, scripted, actions: scripted ? (SCRIPTS[id] || []) : [], policy: id === 'fire-season' && scripted ? 'weekly-drops' : null });
+    }, { id, scripted, actions: scripted ? (script || SCRIPTS[id] || []) : [], policy: id === 'fire-season' && scripted && !script ? 'weekly-drops' : null });
     await page.close();
     return { ...out, consoleErrors: errors };
   };
@@ -819,6 +824,7 @@ async function scenarioMissionReplay(browser) {
   const order = ['pride', 'balanced-range', 'in-the-black', 'fire-season'];
   for (const id of order) {
     missions[id] = { idle: await runVariant(id, false), replay: await runVariant(id, true) };
+    if (SHORTCUTS[id]) missions[id].shortcut = await runVariant(id, true, SHORTCUTS[id], 'shortcut');
   }
   // 3. determinism: the first mission's replay again, fresh load → identical outcome
   const detA = missions.pride.replay;
@@ -827,10 +833,10 @@ async function scenarioMissionReplay(browser) {
   const determinism = { mission: 'pride', identical: strip(detA) === strip(detB), a: `${detA.status}/★${detA.stars}/d${detA.day}`, b: `${detB.status}/★${detB.stars}/d${detB.day}` };
 
   const allErrors = [...paramErrors];
-  for (const m of Object.values(missions)) allErrors.push(...m.idle.consoleErrors, ...m.replay.consoleErrors);
+  for (const m of Object.values(missions)) allErrors.push(...m.idle.consoleErrors, ...m.replay.consoleErrors, ...(m.shortcut?.consoleErrors || []));
   const out = { missions, determinism };
   out.pass = urlParam.status === 'active' && urlParam.id === 'pride' && determinism.identical
-    && Object.values(missions).every((m) => m.replay.status === 'won' && m.replay.stars >= 1 && m.idle.status !== 'won');
+    && Object.values(missions).every((m) => m.replay.status === 'won' && m.replay.stars >= 1 && m.idle.status !== 'won' && (!m.shortcut || m.shortcut.status !== 'won'));
   const result = { scenario: 'mission-replay', urlParam, result: out, consoleErrors: [...new Set(allErrors)] };
   writeJson('mission-replay', result);
   return result;
@@ -1058,7 +1064,7 @@ function writeJson(name, data) {
       console.log(JSON.stringify({ pass: r.pass, day1: r.day1, afterZebraRemoved: { richness: r.afterZebraRemoved.richness, index: r.afterZebraRemoved.index }, afterRhinoBought: { rhino: r.afterRhinoBought.bigFive.rhino, index: r.afterRhinoBought.index }, plantMeans: r.plantMeans }, null, 2));
     }
     if (SCENARIOS.includes('mission-replay')) {
-      console.log('[mission-replay] four starter missions × (idle, scripted replay) + determinism');
+      console.log('[mission-replay] four starter missions × (idle, scripted replay) + the pride buy-only shortcut + determinism');
       results['mission-replay'] = await scenarioMissionReplay(browser);
       const r = results['mission-replay'];
       const per = Object.fromEntries(Object.entries(r.result.missions).map(([id, m]) => [id, {

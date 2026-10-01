@@ -35,10 +35,18 @@ export const MISSIONS = Object.freeze([
   {
     id: 'pride',
     name: 'The Pride Grows',
-    brief: 'Visitors cross the world for a big cat sighting. Grow the lion pride to a healthy size — the rangers will call it a success at six.',
-    goal: Object.freeze({ type: 'population', species: 'lion', n: 6 }),
+    brief: 'Visitors cross the world for a big cat sighting. Build a pride the range can feed — the rangers will call it a success when six or more lions have thrived for two months straight.',
+    // was a population goal (6 lions on any day end): buying 3 lions on day 1 won it on day 2, and the
+    // stars (6/8/10 lions at the win) were a shop purchase too. Measured on the demo (full game, seed 1,
+    // 180 days, lions in habitat 7): idle 3 → 1 lions, never 6; buy 3 lions → 6 for 7 days, then 4
+    // starve; buy 7 → 10 lions, ≥ 6 for 15 days; prey only (15 zebra + 15 impala) → 3 lions, no cubs;
+    // buy 3 lions + that prey ($57k) → 6 lions held 164 days. No run produced a single cub (lion breed
+    // 0.004/day × happiness), so a births goal would be unwinnable. Holding the pride for 60 days is
+    // what separates feeding a pride from buying one. Stars: the pride's mean size over the run
+    // (6 / 8 / 10 lions).
+    goal: Object.freeze({ type: 'hold', metric: 'population.lion', min: 6, days: 60 }),
     deadlineDays: 180,
-    stars: Object.freeze([6, 8, 10]),
+    stars: Object.freeze([60, 2, 4]),
   },
   {
     id: 'balanced-range',
