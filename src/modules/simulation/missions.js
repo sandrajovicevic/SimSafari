@@ -74,7 +74,9 @@ export const MISSIONS = Object.freeze([
     brief: 'The long dry is here and the lightning is looking for fuel. Three wildfires will threaten the park — hold the line: protect the buildings and the range.',
     // maxHa calibrated 15 → 20 on the demo park (seed 1): the weekly-water-drop defence loses
     // 15.62 ha while saving every building — three stamina-150 fires alone account for ~11.5 ha,
-    // and a defence that saves buildings should not also lose the mission on area
+    // and a defence that saves buildings should not also lose the mission on area. Stars re-checked
+    // 2026-10-01: buildings-only drops now lose 10.65 ha (★1); adding a daily water ring around each
+    // fire wins ★3 at 1.08 ha with no building lost, so ★2/★3 are reachable by active defence
     goal: Object.freeze({ type: 'survive-fire', fires: 3, stamina: 150, maxBuildingsLost: 1, maxHa: 20 }),
     deadlineDays: 90,
     stars: Object.freeze([

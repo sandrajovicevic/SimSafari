@@ -757,9 +757,17 @@ async function scenarioMissionReplay(browser) {
     // push the room rates the market still pays — lodge 92%-occupied at $180 takes $240, the
     // always-full tents take $80. Measured: idle $1,192,829 < $1.3M < trim+rates $1,524,060
     'in-the-black': [{ day: 1, price: 15 }, { day: 1, fire: ['ranger', 1] }, { day: 1, rate: ['lodge', 240] }, { day: 1, rate: ['tent', 80] }],
-    'fire-season': [], // policy: weekly water drops on every building through the season
+    // policy 'defend': weekly water drops on every building AND, each morning, a water ring over every
+    // burning cluster (+1 cell) so it cannot spread. Measured (full game, seed 1): buildings-only drops
+    // win ★1 at 10.65 ha; ringing the fires alone keeps 0.49 ha but loses 2 buildings (a fire starting
+    // beside one takes it before the next morning); both together win ★3 at 1.08 ha, 0 buildings.
+    // The harness now proves the top star is reachable (EXPECT_STARS), not just ★1.
+    'fire-season': [],
   };
 
+  // minimum stars a replay must earn (default 1): fire-season's ★3 was once believed unreachable — the
+  // replay now proves it is, so a later wave that makes it impossible fails here instead of silently
+  const EXPECT_STARS = { 'fire-season': 3 };
   // shortcut controls: a cheap script that must NOT win (the pride used to be won by buying 3 lions)
   const SHORTCUTS = { pride: [{ day: 1, buy: ['lion', 3] }] };
 
@@ -789,11 +797,27 @@ async function scenarioMissionReplay(browser) {
             else if (a.rate) r = { ok: true, rate: sim.setRoomRate(a.rate[0], a.rate[1]) };
             applied.push({ day: d, act: a.buy ? 'buy' + a.buy.join(':') : a.plant ? 'plant:' + a.plant[0] : a.price != null ? 'price:' + a.price : a.fire ? 'fire:' + a.fire.join(':') : a.rate ? 'rate:' + a.rate.join(':') : 'hire:' + (a.hire || []).join(':'), ok: r?.ok !== false, cost: r?.cost ?? null });
           }
-          if (policy === 'weekly-drops' && (d - 1) % 6 === 0) {
+          if (policy === 'defend' && (d - 1) % 6 === 0) {
             for (const b of world.buildings.values()) sim.waterDrop(b.x, b.z, 40);
           }
         }
         sim.runDays(1);
+        if (scripted && policy === 'defend') {
+          // the player sees the flames (world.vegetation.burn is what the effects module renders): ring
+          // each burning cluster (120 m linkage) with water, extent + 1 cell, so the front cannot spread
+          const veg = world.vegetation, res = veg.res, cell = veg.cell, half = world.size / 2;
+          const pts = [];
+          for (let i = 0; i < veg.burn.length; i++) if (veg.burn[i] === 1) pts.push([((i % res) + 0.5) * cell - half, (Math.floor(i / res) + 0.5) * cell - half]);
+          const used = new Array(pts.length).fill(false);
+          for (let a = 0; a < pts.length; a++) {
+            if (used[a]) continue;
+            const cl = [a]; used[a] = true;
+            for (let k = 0; k < cl.length; k++) for (let b = 0; b < pts.length; b++) if (!used[b] && Math.hypot(pts[cl[k]][0] - pts[b][0], pts[cl[k]][1] - pts[b][1]) < 120) { used[b] = true; cl.push(b); }
+            let cx = 0, cz = 0; for (const i of cl) { cx += pts[i][0]; cz += pts[i][1]; } cx /= cl.length; cz /= cl.length;
+            let R = 0; for (const i of cl) R = Math.max(R, Math.hypot(pts[i][0] - cx, pts[i][1] - cz));
+            sim.waterDrop(cx, cz, R + cell);
+          }
+        }
         last = sim.getMissionState();
         if (last.status !== 'active') break;
         if (d % 45 === 0) await new Promise((r) => setTimeout(r)); // keep the page responsive
@@ -804,7 +828,7 @@ async function scenarioMissionReplay(browser) {
         detail: last.detail, applied,
         cashEnd: Math.round(eco.cash), netEnd: Math.round(eco.cash - (eco.loans || 0)),
         bioEnd: { index: bio.index, richness: bio.richness, plantRichness: bio.plantRichness, evenness: bio.evenness } };
-    }, { id, scripted, actions: scripted ? (script || SCRIPTS[id] || []) : [], policy: id === 'fire-season' && scripted && !script ? 'weekly-drops' : null });
+    }, { id, scripted, actions: scripted ? (script || SCRIPTS[id] || []) : [], policy: id === 'fire-season' && scripted && !script ? 'defend' : null });
     await page.close();
     return { ...out, consoleErrors: errors };
   };
@@ -836,7 +860,7 @@ async function scenarioMissionReplay(browser) {
   for (const m of Object.values(missions)) allErrors.push(...m.idle.consoleErrors, ...m.replay.consoleErrors, ...(m.shortcut?.consoleErrors || []));
   const out = { missions, determinism };
   out.pass = urlParam.status === 'active' && urlParam.id === 'pride' && determinism.identical
-    && Object.values(missions).every((m) => m.replay.status === 'won' && m.replay.stars >= 1 && m.idle.status !== 'won' && (!m.shortcut || m.shortcut.status !== 'won'));
+    && Object.values(missions).every((m) => m.replay.status === 'won' && m.replay.stars >= (EXPECT_STARS[m.replay.id] || 1) && m.idle.status !== 'won' && (!m.shortcut || m.shortcut.status !== 'won'));
   const result = { scenario: 'mission-replay', urlParam, result: out, consoleErrors: [...new Set(allErrors)] };
   writeJson('mission-replay', result);
   return result;
