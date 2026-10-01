@@ -216,7 +216,10 @@ float height(vec2 uv){
   float fine = tfbm(uv, 50.0, 3, uSeed + 5.0) * 0.5 + 0.5;
   float lf = tfbm(uv, 4.0, 3, uSeed + 9.0) * 0.5 + 0.5;
   float dried = smoothstep(0.45, 0.7, lf);
-  return clamp(0.5 * plate + 0.15 * fine + 0.2 * lf - 0.45 * crack * (0.5 + 0.5 * dried) - 0.15 * crack2 * dried, 0.0, 1.0);
+  // wet mud is smooth; only dried crusts curl into plates and crack. Cracks and plate domes used to run at
+  // half strength through the wet mud too, so every riverbank read as crazy paving at close range
+  float plateD = mix(0.62, plate, dried);
+  return clamp(0.5 * plateD + 0.15 * fine + 0.2 * lf - 0.45 * crack * dried - 0.15 * crack2 * dried, 0.0, 1.0);
 }`,
   albedo: /* glsl */ `
 vec3 albedo(vec2 uv, float h){
@@ -230,7 +233,7 @@ vec3 albedo(vec2 uv, float h){
   vec3 col = mix(wetc, dryc, dried);
   col = mix(col, vec3(0.105, 0.150, 0.030), algae * 0.7 * (1.0 - dried));
   col *= mix(0.55, 1.05, smoothstep(0.1, 0.8, h));
-  col *= 1.0 - 0.5 * crack;
+  col *= 1.0 - 0.5 * crack * dried;   // crack lines only in the dried crust (wet mud has none)
   col *= 0.94 + 0.12 * hash12(floor(uv * 1024.0) + uSeed);
   return col;
 }`,
