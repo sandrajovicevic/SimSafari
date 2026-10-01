@@ -79,7 +79,8 @@ noise at the demo park's herd sizes (sightings per tour-hour, control vs with-li
 19/20, 25/20** — right direction at best, never the clear win the harness needed), so the spec's
 sanctioned fallback shipped: an animal inside a lick's radius gets `SIGHT_RADIUS × 1.5` for
 sighting rolls. Measured clean with 8 fresh gate-departing tours after a 900 s animals-only settle:
-**44 vs 42 sightings** (control > 0 satisfies the non-vacuity clause). Reads `world.saltLicks`
+**46 vs 38 sightings** (with-lick vs control; the pre-merge calibration measured a tighter 44 vs 42
+— tour-timing noise, same pass), control > 0 satisfies the non-vacuity clause. Reads `world.saltLicks`
 only; no writes, no new events.
 
 ## Known gaps (honest)

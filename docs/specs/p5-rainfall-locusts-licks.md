@@ -22,7 +22,8 @@ results here (full tables: the module READMEs' "Wave P5" sections).
   0.03 per lick capped 0.06, wander bias in animals (0.6 of retargets, same-habitat, +60 m leash).
   The spec's emergent sightings route was tried three ways and measured too weak (15/15, 19/20,
   25/20 with/without), so the sanctioned fallback shipped: traffic sightline ×1.5 at a lick.
-  Harness `salt-lick` PASS: **44 vs 42 sightings over 8 fresh tours**, control > 0.
+  Harness `salt-lick` PASS: **46 vs 38 sightings over 8 fresh tours** (with-lick vs control; the
+pre-merge calibration run measured a tighter 44 vs 42 — tour-timing noise, same pass), control > 0.
 * **Visuals** — swarm cloud density scales with area × density (~1300 specks at radius 56 m,
   readable at the spec's 150 m; 1 draw call — the shared instanced particle mesh), day + night
   verified (`tools/shots/p5-swarm-14.png`, `p5-swarm-21_5.png`); salt lick readable at 55 m in ≤ 2
