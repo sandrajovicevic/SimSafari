@@ -82,7 +82,14 @@ replan() → plannedArrivals                        // re-plan today from the li
                                                   //   a park built after init() spawns animals and sets
                                                   //   its price after day 1 was already planned)
 injectEvent(type, opts) → event | null            // debug/harness: force 'drought' | 'disease' |
-                                                  //   'poachers' through the normal event paths
+                                                  //   'fire' | 'locusts' | 'poachers' through the
+                                                  //   normal event paths (locusts: see P5 below)
+placeSaltLick(x, z) → {ok, id, cost}              // Wave P5: inside a habitat only; $3,500 via
+                                                  //   spend(…, 'saltlick'); emits saltlick:changed
+removeSaltLick(id) → boolean / listSaltLicks() → [{id, x, z, radius, strength}]
+sprayLocusts(x, z, radius=48) → {ok, swarms, ha, cost}
+                                                  // Wave P5: cuts swarm density in the disc by
+                                                  //   80 %, $180/ha via spend(…, 'spray')
 speed(n) / reset(seed) / runDays(n) / markStart()
 plant(type, x, z, radius, cover=0.25)             // plant a core/Plants.js id in a disc: cells get
   → {ok, cost, cells, ha}                         //   cover ≥ min(cover, maxCover) on prepared ground
@@ -128,7 +135,9 @@ getSim() → Simulation                             // raw instance (debugging /
 visitors, inParkPeak, lodgeNights, satisfaction, satisfactionBreakdown, reputation, attraction,
 population, happiness, habitats, born, died, left, predation, staff, staffCoverage, morale,
 prosperity, efficiency, spend, season, weather, loans, bankrupt, vegetation, biodiversity, events,
-activeEvents}` (`biodiversity` = Wave P3; `lodging`/`villageTrust`/`poachRisk` = Wave P4 — per-tier occupancy, village trust, and the day's poaching probability).
+activeEvents}` (`biodiversity` = Wave P3; `lodging`/`villageTrust`/`poachRisk` = Wave P4 — per-tier occupancy, village trust, and the day's poaching probability;
+`rainfall = {rain, stressed}` and `locusts` = Wave P5 — the day's rain value with the species it
+stresses, and the locust stats slice from `LocustSwarms.stats()`).
 `report.habitats[id].species[s]` now also carries `spaceCapacity`, `foodCapacity`, `food`;
 `report.vegetation = {rain, changed}`; the daily step's timing is in `getState().vegetation.stepMs`
 (kept out of the report so same-seed reports stay byte-identical).
@@ -154,6 +163,8 @@ measured 0 births in the demo's first month — births per animal per day at ful
 | `mission:progress` | emits | Wave P3: `{id, progress, day}` once per day end while a mission is active |
 | `mission:completed` | emits | Wave P3: `{id, won, stars, day}` exactly once when a mission is won or fails (abandon emits nothing) |
 | `fire:building` | consumes/emits | unchanged (Wave P2); Wave P4 counts each emission against a survive-fire mission |
+| `saltlick:changed` | emits | Wave P5: `{id, removed?}` after place/remove (props rebuilds its instanced meshes) |
+| `locusts:changed` | emits | Wave P5: `{version}` after any swarm spawn/death/density change (effects follows) |
 
 ## Modules consumed (all optional)
 
@@ -391,6 +402,49 @@ fire; the report's habitat species rows now carry `need` (n × per-animal need, 
 and the rule reads it. 9 tests added (7 fail on the old code). `herd-unhappy` still oscillates
 under stress (9 firings in 75 days shown when every ranger and keeper is fired) — genuine
 happiness swings around its 0.45 line, left as is.
+
+### Wave P5 — rainfall axis + locusts + salt licks (2026-10-01, branch `claude/p5-rainfall`)
+
+**Rainfall preference** (`tables.js` species rows, same four tiers and `rainfallFit()` as plants):
+hippo, buffalo `high`; elephant, rhino, zebra, wildebeest, impala, lion `medium`; giraffe, cheetah,
+warthog `low`; ostrich `drought` (as proposed). **Drought stress** (`_rainStress`, `STRESS`): when
+the vegetation `rain` value puts a species' fit below 0.6, its happiness target loses
+`(0.6 − fit) × 1.0` and its mortality gains 0.006/day — high-rainfall species are stressed first by
+construction (fit falls off with the tier). **Water mitigation**: the stress term is multiplied by
+`(1 − 0.6 × waterAccess)` using the habitat's existing measured water proximity, so a waterhole in
+the habitat more than halves the hit. Harness `drought-water` (30-day injected drought; the dry
+variant strips the wetland habitat's pump + waterhole buildings): **deaths 17 (dry) vs 4 (control)**,
+hippo happiness **0.514 → 0.390**, and the ordering check (hippo/buffalo fall before warthog/ostrich) passes.
+
+**Locusts** (`locusts.js`, `LOCUSTS`): seeded outbreaks roll `Rng('locust:<seed>')` at 1.5%/day in
+the first 20 days of a wet season that follows a drought; `injectEvent('locusts', {x, z, radius,
+days, budget, density})` is bounded by construction — `budget` (default 400 cells) caps total cells
+eaten ever, `days` (default 12) its lifetime, a swarm dies at density < 0.05 (natural decay
+0.04/day). Each day it eats grass + shrub cover at `0.25 × density` per cell (never trees), drifts
+8 m with the weather wind, and loses 0.3 × clearedFraction where cells were burnt or firebroken;
+`sprayLocusts(x, z, radius)` cuts density 80 % at $180/ha via `spend(…, 'spray')`. Metric note: the
+harness scores **cover volume removed** (`eatenCoverTotal`), not cells touched — a nibbled cell
+counted the same as a stripped one and measured only 2.8×; by volume the unmanaged swarm removes
+**65.2 cover units vs 16.3 sprayed-on-day-2 (4.0×, ≥ 3× required)**, the firebreak pair passes the
+same bar, and every swarm dies within its `days` in all variants.
+
+**Salt licks** (`LICKS`): `placeSaltLick(x, z)` is habitat-gated (refused elsewhere) at $3,500,
+radius 10 m; grazers and mixed feeders in that habitat gain a happiness bonus of 0.03 per lick,
+capped at 0.06 (predators nothing); `reset()` clears them. Animals get a wander bias toward a lick
+in their habitat (60 % of retargets, ±2 m scatter, animals module — it never touches the ledger).
+The spec asked for an emergent sightings effect first; three designs measured too weak to separate
+from tour noise (with/without lick: 15/15, 19/20, 25/20 sightings per tour-hour), so the traffic
+sightline radius is ×1.5 at a lick (the spec's sanctioned fallback): **44 vs 42 sightings over 8
+fresh tours** — control > 0 (non-vacuity), effect in the expected direction. Measurement gotcha
+(the harness now encodes it): `animals.update` is pause-gated, so at `?speed=0` the settling phase
+must pump the clock or herds never move toward anything.
+
+**Daily-step budget** (spec: additions < 2 ms): with 4 swarms alive all 60 days and 3 licks placed,
+the day step measured **3.91 ms/day vs 5.41 ms/day baseline** on the same synthetic park — the
+difference is inside run-to-run noise (the base itself measured 2.9–5.4 across runs), so the
+additions are below measurement resolution. Tests: 245/245 (24 new — tier table fit values, stress
+ordering + mitigation factor, locust budget cap/lifetime/spray/firebreak/second-swarm-own-budget,
+lick refusal/bonus/cap/happiness move, reset, determinism).
 
 ## Known gaps (honest)
 
