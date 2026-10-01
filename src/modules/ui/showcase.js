@@ -83,20 +83,24 @@ export async function stage(ctx, presetName, ui) {
           if (hid == null) hid = [...ctx.world.habitats.keys()][0] ?? 1;
           // the pride mission is a 60-day hold of 6+ lions (buying lions alone no longer wins: they
           // starve), so feed them: lions + prey into the lions' habitat, then hold the run
-          sim.buyAnimals('lion', hid, 3);
-          sim.buyAnimals('zebra', hid, 15);
-          sim.buyAnimals('impala', hid, 15);
-          sim.runDays(won ? 61 : 12);
+          // (this showcase's world is not the demo park: a bare 61-day run dipped below six once and
+          // never won, so the won preset carries a bigger pride + prey and runs until the mission resolves)
+          sim.buyAnimals('lion', hid, won ? 5 : 3);
+          sim.buyAnimals('zebra', hid, won ? 30 : 15);
+          sim.buyAnimals('impala', hid, won ? 30 : 15);
+          if (!won) sim.runDays(12);
+          else for (let d = 0; d < 179 && sim.getMissionState().status === 'active'; d++) sim.runDays(1);
         } catch (err) { ctx.log.warn('objectives stage: ' + err.message); }
       }
       api.openPanel('objectives');
       // the real mission:completed handler already raised a (short-lived) toast during runDays; clear it so the
       // persistent copy the showcase needs for the screenshot is the only one (the preset showed two, round-6 critic)
-      if (won) {
-        const stars = Math.max(1, sim?.getMissionState?.()?.stars || 1);
+      // the toast only for a real win, with the stars actually awarded
+      const ms = won ? sim?.getMissionState?.() : null;
+      if (ms && ms.status === 'won') {
         H.parts.notifications.clear();
-        api.notify('good', 'The Pride Grows complete — ' + '★'.repeat(stars), { title: 'Objective', ttl: -1 });
-      }
+        api.notify('good', 'The Pride Grows complete — ' + '★'.repeat(Math.max(1, ms.stars)), { title: 'Objective', ttl: -1 });
+      } else if (won) ctx.log.warn('objectives-won stage: the pride mission did not resolve as won (' + (ms?.status ?? 'no sim') + ')');
       break;
     }
     case 'night':
