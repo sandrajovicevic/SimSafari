@@ -88,8 +88,9 @@ isEnabled() → bool
   tooltip "not in this park" — we have no leopard and do not substitute another species**), from
   `report.biodiversity` (`simulation.getBiodiversity()`); the mock report carries a computed copy for
   the showcase.
-* Showcase presets **`objectives`** (mid-mission: pride started, one lion bought, 3 days in → 83 %)
-  and **`objectives-won`** (won with 3 stars + sticky toast). Both drive a *real* mission through the
+* Showcase presets **`objectives`** (mid-mission: pride started, 3 lions + 15 zebra + 15 impala bought,
+  12 days into the 60-day hold) and **`objectives-won`** (the same pride held 61 days → won; the sticky
+  toast shows the stars actually awarded). A head-count hold reads as "6+ lions for 60 days running". Both drive a *real* mission through the
   simulation API (present in this showcase's optional-dependency closure) with `autoReport` off so the
   report modal doesn't cover the panel.
 

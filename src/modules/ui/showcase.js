@@ -81,14 +81,22 @@ export async function stage(ctx, presetName, ui) {
             break;
           }
           if (hid == null) hid = [...ctx.world.habitats.keys()][0] ?? 1;
-          sim.buyAnimals('lion', hid, won ? 6 : 1);
-          sim.runDays(won ? 1 : 3);
+          // the pride mission is a 60-day hold of 6+ lions (buying lions alone no longer wins: they
+          // starve), so feed them: lions + prey into the lions' habitat, then hold the run
+          sim.buyAnimals('lion', hid, 3);
+          sim.buyAnimals('zebra', hid, 15);
+          sim.buyAnimals('impala', hid, 15);
+          sim.runDays(won ? 61 : 12);
         } catch (err) { ctx.log.warn('objectives stage: ' + err.message); }
       }
       api.openPanel('objectives');
       // the real mission:completed handler already raised a (short-lived) toast during runDays; clear it so the
       // persistent copy the showcase needs for the screenshot is the only one (the preset showed two, round-6 critic)
-      if (won) { H.parts.notifications.clear(); api.notify('good', 'The Pride Grows complete — ★★★', { title: 'Objective', ttl: -1 }); }
+      if (won) {
+        const stars = Math.max(1, sim?.getMissionState?.()?.stars || 1);
+        H.parts.notifications.clear();
+        api.notify('good', 'The Pride Grows complete — ' + '★'.repeat(stars), { title: 'Objective', ttl: -1 });
+      }
       break;
     }
     case 'night':
