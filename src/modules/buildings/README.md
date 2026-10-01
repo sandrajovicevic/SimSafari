@@ -44,7 +44,7 @@ rondavel cones. Roofs you can stand under get an `underside` surface in the reed
 
 Albedo constants in `textures.js` are **true linear** values. The core sRGB double-encode bug is
 fixed, so nothing here is darkened to compensate for tone mapping. Thatch is a golden brown
-(linear ≈ 0.33/0.21/0.08 → sRGB ≈ 0.61/0.50/0.31), timber a warm mid brown, stone a mid grey.
+(linear ≈ 0.33/0.21/0.08 → sRGB ≈ 0.61/0.50/0.31), timber a warm mid brown, stone a warm grey-brown field stone in 0.29 m courses of ~0.46 m stones with thin pale lime joints (2026-10-01: was 0.64 m-tall stones with near-black joints that read as a keyboard up close).
 The arrays are written with an explicit `linearToSRGBv()` into a `NoColorSpace` target — one encode —
 and decoded in the shader.
 
