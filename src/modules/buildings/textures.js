@@ -37,7 +37,7 @@ export const TILE = Object.freeze({
   thatch: 2.60,    // 5 courses per repeat → a thatch course every 0.52 m
   timber: 1.20,    // 6 boards per repeat → 200 mm boards
   pole: 0.90,
-  stone: 3.20,     // 5 courses per repeat → 0.64 m courses, ~0.35 m stones
+  stone: 3.20,     // 11 courses per repeat → 0.29 m courses, ~0.46 m stones (wider than tall)
   plaster: 3.00,
   iron: 1.20,      // 12 corrugations per repeat → 100 mm pitch
   canvas: 2.00,
@@ -144,45 +144,50 @@ const SPECS = [
   },
   // ------------------------------------------------------------------ 3 STONE (coursed rubble)
   {
-    name: 'stone', seed: 59, normalStrength: 0.26,
+    name: 'stone', seed: 59, normalStrength: 0.18,
     height: /* glsl */ `float height(vec2 uv){
-  float row = uv.y * 5.0;
+  // 11 courses x 7 stones per repeat: 0.29 m courses of ~0.46 m stones. It was 5 x 9 — stones taller
+  // than wide (0.64 x 0.36 m) with joints a third of the cell, and AO pressed the joints near-black:
+  // close up the plinths and terraces read as a keyboard, not as masonry
+  float row = uv.y * 11.0;
   float ri = floor(row), rf = fract(row);
   float off = hash12(vec2(ri, 3.0)) * 0.5;
-  float col = (uv.x + off) * 9.0;
+  float col = (uv.x + off) * 7.0;
   float ci = floor(col), cf = fract(col);
   vec2 cid = vec2(ci, ri);
-  float jx = (hash12(cid + 1.0) - 0.5) * 0.34;
-  float jy = (hash12(cid + 5.0) - 0.5) * 0.26;
+  float jx = (hash12(cid + 1.0) - 0.5) * 0.06;
+  float jy = (hash12(cid + 5.0) - 0.5) * 0.06;
   vec2 d = vec2(cf - 0.5 - jx, rf - 0.5 - jy);
-  float rx = 0.36 + hash12(cid + 9.0) * 0.10;
-  float ry = 0.34 + hash12(cid + 17.0) * 0.08;
-  float stone = 1.0 - smoothstep(0.70, 1.0, max(abs(d.x) / rx, abs(d.y) / ry)
-                                 + 0.16 * (tfbm(uv * 18.0, 26.0, 2, uSeed + 2.0) * 0.5 + 0.5));
-  float face = tfbm(uv * 26.0, 40.0, 3, uSeed + 6.0) * 0.5 + 0.5;
+  float rx = 0.46 + hash12(cid + 9.0) * 0.03;    // stones fill ~90 % of the cell: thin mortar joints
+  float ry = 0.43 + hash12(cid + 17.0) * 0.04;
+  float stone = 1.0 - smoothstep(0.86, 1.0, max(abs(d.x) / rx, abs(d.y) / ry)
+                                 + 0.10 * (tfbm(uv * 18.0, 26.0, 2, uSeed + 2.0) * 0.5 + 0.5));
+  float face = tfbm(uv * 14.0, 21.0, 3, uSeed + 6.0) * 0.5 + 0.5;   // broad, soft face relief (26x/0.22 sparkled)
   float mortar = tfbm(uv * 30.0, 60.0, 2, uSeed + 11.0) * 0.5 + 0.5;
-  return clamp(stone * (0.70 + 0.22 * face) + (1.0 - stone) * mortar * 0.16, 0.0, 1.0);
+  return clamp(stone * (0.74 + 0.12 * face) + (1.0 - stone) * mortar * 0.16, 0.0, 1.0);
 }`,
     albedo: /* glsl */ `vec3 albedo(vec2 uv, float h){
-  float ri = floor(uv.y * 5.0);
+  float ri = floor(uv.y * 11.0);
   float off = hash12(vec2(ri, 3.0)) * 0.5;
-  float ci = floor((uv.x + off) * 9.0);
+  float ci = floor((uv.x + off) * 7.0);
   vec2 cid = vec2(ci, ri);
-  vec3 grey = vec3(0.150, 0.146, 0.138);
-  vec3 warm = vec3(0.215, 0.170, 0.118);
-  vec3 dark = vec3(0.058, 0.054, 0.049);
-  vec3 pale = vec3(0.310, 0.298, 0.270);
+  // true linear albedo of a warm grey-brown field stone (granite/laterite mix), lime mortar paler than it
+  vec3 grey = vec3(0.200, 0.188, 0.168);
+  vec3 warm = vec3(0.265, 0.205, 0.140);
+  vec3 dark = vec3(0.110, 0.100, 0.088);
+  vec3 pale = vec3(0.340, 0.320, 0.285);
   vec3 s = mix(grey, warm, hash12(cid + 23.0));
-  s = mix(s, pale, smoothstep(0.62, 1.0, hash12(cid + 47.0)) * 0.7);
-  s = mix(s, dark, smoothstep(0.24, 0.0, hash12(cid + 71.0)) * 0.55);
-  vec3 c = mix(vec3(0.215, 0.205, 0.185), s, smoothstep(0.14, 0.34, h));   // mortar → stone
+  s = mix(s, pale, smoothstep(0.62, 1.0, hash12(cid + 47.0)) * 0.6);
+  s = mix(s, dark, smoothstep(0.20, 0.0, hash12(cid + 71.0)) * 0.40);
+  vec3 c = mix(vec3(0.300, 0.282, 0.245), s, smoothstep(0.14, 0.34, h));   // mortar → stone
   c *= 0.82 + 0.34 * (tfbm(uv * 22.0, 34.0, 3, uSeed + 15.0) * 0.5 + 0.5);
   float lich = smoothstep(0.80, 0.99, tfbm(uv * 6.0, 9.0, 3, uSeed + 51.0) * 0.5 + 0.5);
   c = mix(c, vec3(0.105, 0.115, 0.058), lich * 0.5);
   return c;
 }`,
     rough: `float rough(vec2 uv, float h){ return clamp(0.94 - 0.14 * h, 0.65, 1.0); }`,
-    ao: `float ao(vec2 uv, float h){ return mix(0.30, 1.0, smoothstep(0.05, 0.45, h)); }`,
+    // joints keep some occlusion but no longer read as black slots (0.30 floor before)
+    ao: `float ao(vec2 uv, float h){ return mix(0.62, 1.0, smoothstep(0.05, 0.45, h)); }`,
     metal: `float metal(vec2 uv, float h){ return 0.0; }`,
   },
   // ------------------------------------------------------------------ 4 PLASTER (limewashed render)

@@ -723,10 +723,13 @@ console.log('\nWave P3 — biodiversity + missions');
       assert(s.sim.listMissions().length === 4 && s.sim.listMissions().every((m) => m.goal && m.deadlineDays && m.stars.length === 3), 'missions: listMissions() exposes the four starter rows');
       assert(s.sim.getMissionState().status === 'none', 'missions: no mission by default (free play)');
       assert(s.sim.startMission('nope').ok === false, 'missions: unknown id rejected');
-      const st = s.sim.startMission('pride');
-      assert(st.ok && s.sim.getMissionState().id === 'pride' && s.sim.getMissionState().status === 'active' && s.sim.getMissionState().deadline === 1 + 180, 'missions: startMission sets active state with start-day deadline');
+      // the population goal type is exercised through a synthetic row: the shipped pride mission is a
+      // 60-day hold since buying 3 lions won the population version on day 2 (see missions.js)
+      const POP = { id: 'pop-test', name: 'Six lions', brief: '', goal: { type: 'population', species: 'lion', n: 6 }, deadlineDays: 180, stars: [6, 8, 10] };
+      const st = s.sim.startMission(POP);
+      assert(st.ok && s.sim.getMissionState().id === 'pop-test' && s.sim.getMissionState().status === 'active' && s.sim.getMissionState().deadline === 1 + 180, 'missions: startMission sets active state with start-day deadline');
       // the state is right on frame one, before any day end (critic simulation-round8 issue 1):
-      // the demo has lions already, so a fresh pride mission must not read "0 / 6, 0 %"
+      // the demo has lions already, so a fresh population mission must not read "0 / 6, 0 %"
       const lions0 = s.sim.population().lion ?? 0;
       const st0 = s.sim.getMissionState();
       assert(lions0 > 0 && st0.detail.count === lions0 && st0.detail.target === 6 && Math.abs(st0.progress - Math.min(1, lions0 / 6)) < 1e-3,
@@ -748,6 +751,22 @@ console.log('\nWave P3 — biodiversity + missions');
       s.sim.abandonMission();
       assert(s.sim.getMissionState().status === 'none', 'missions: abandonMission() returns to no-mission');
     }
+    // the shipped pride: a 60-day hold of 6+ lions — buying the pride wins nothing on day 2 any more
+    {
+      const k0 = makeSim(41);
+      const pr = k0.sim.listMissions().find((m) => m.id === 'pride');
+      assert(pr.goal.type === 'hold' && pr.goal.metric === 'population.lion' && pr.goal.min === 6 && pr.goal.days === 60,
+        'missions: pride is a 60-day hold of 6+ lions (buying 3 lions won the population version on day 2)');
+      const k = makeSim(41);
+      const hab = [...k.world.habitats.keys()].find((h) => (k.sim.pop.get(h)?.get('lion')?.n ?? 0) > 0);
+      k.sim.startMission('pride');
+      k.sim.buyAnimals('lion', hab, 6);
+      k.sim.runDays(2);
+      assert(k.sim.getMissionState().status === 'active', `missions: a bought pride does not win on day 2 (streak ${k.sim.getMissionState().detail.streak} / 60)`);
+      k.sim.runDays(60);
+      const ks = k.sim.getMissionState();
+      assert(ks.status !== 'won' || (ks.day >= 60 && ks.detail.streak >= 60), `missions: the pride is won only after a full 60-day streak (${ks.status}, day ${ks.day}, streak ${ks.detail.streak})`);
+    }
     // start-of-mission seeding: cash goal, and a goal that is already satisfied when the mission starts
     {
       const c = makeSim(39);
@@ -760,7 +779,7 @@ console.log('\nWave P3 — biodiversity + missions');
       const p = makeSim(39);
       const hab = [...p.world.habitats.keys()].find((h) => (p.sim.pop.get(h)?.get('lion')?.n ?? 0) > 0);
       p.sim.buyAnimals('lion', hab, 3);
-      p.sim.startMission('pride');
+      p.sim.startMission({ id: 'pop-test', name: 'Six lions', brief: '', goal: { type: 'population', species: 'lion', n: 6 }, deadlineDays: 180, stars: [6, 8, 10] });
       const ps = p.sim.getMissionState();
       assert(ps.progress === 1 && ps.status === 'active', 'missions: an already-met goal reads 100 % at start but stays active until the day-end evaluator decides');
       p.sim.runDays(1);

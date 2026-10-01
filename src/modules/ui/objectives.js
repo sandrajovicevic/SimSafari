@@ -11,6 +11,11 @@ const BIG_FIVE = ['elephant', 'rhino', 'buffalo', 'lion'];
 function goalText(m) {
   const g = m.goal;
   if (g.type === 'population') return { line: `${g.n} ${g.species}s in the park`, stars: `${m.stars[0]} / ${m.stars[1]} / ${m.stars[2]} at the win` };
+  if (g.type === 'hold' && String(g.metric).startsWith('population.')) {
+    // a head-count hold (the pride): "6+ lions for 60 days running", stars as pride sizes
+    const sp = g.metric.split('.')[1];
+    return { line: `${g.min}+ ${sp}s for ${g.days} days running`, stars: `${g.min} / ${g.min + m.stars[1]} / ${g.min + m.stars[2]} ${sp}s on average` };
+  }
   if (g.type === 'hold') return { line: `hold ${titleCase((g.metric || '').split('.').pop())} ≥ ${g.min} for ${g.days} days`, stars: `1★ / mean +${m.stars[1]} / +${m.stars[2]} over the floor` };
   if (g.type === 'cash') return { line: `${fmtMoney(g.amount)} net of loans`, stars: `by the deadline / with ${Math.round(m.stars[1] * 100)}% / ${Math.round(m.stars[2] * 100)}% of it left` };
   return { line: `survive ${g.fires} fires — lose ≤ ${g.maxBuildingsLost} building${g.maxBuildingsLost === 1 ? '' : 's'}, ≤ ${g.maxHa} ha`, stars: `≤ ${m.stars[1].buildings} b / ≤ ${m.stars[1].ha} ha → 2★ · ≤ ${m.stars[2].ha} ha → 3★` };
@@ -70,7 +75,9 @@ export function createObjectives(root, s) {
     if (m.goal.type === 'population') {
       add(`${titleCase(m.goal.species)}s`, `${d.count ?? 0} / ${m.goal.n}`, (d.count ?? 0) >= m.goal.n ? 'good' : '');
     } else if (m.goal.type === 'hold') {
-      add('Today', d.value != null ? d.value.toFixed(1) : '—');
+      const sp = String(m.goal.metric).startsWith('population.') ? m.goal.metric.split('.')[1] : null;
+      if (sp) add(`${titleCase(sp)}s today`, d.value != null ? `${d.value} / ${m.goal.min}` : '—', (d.value ?? 0) >= m.goal.min ? 'good' : '');
+      else add('Today', d.value != null ? d.value.toFixed(1) : '—');
       add('Streak', `${d.streak ?? 0} / ${m.goal.days} days`);
       add('Run mean', d.mean != null ? d.mean.toFixed(1) : '—', (d.mean ?? 0) >= m.goal.min ? 'good' : '');
     } else if (m.goal.type === 'cash') {
