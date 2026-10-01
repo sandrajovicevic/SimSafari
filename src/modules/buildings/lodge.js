@@ -120,7 +120,7 @@ export function buildLodge(bc) {
   st.box(-12.5, -0.35, pz1 + cw, 12.5, TY, 15.9, TILE.stone, '-y');
   st.box(-12.5, -0.35, pz0 - cw, px0 - cw, TY, pz1 + cw, TILE.stone, '-y');
   st.box(px1 + cw, -0.35, pz0 - cw, 12.5, TY, pz1 + cw, TILE.stone, '-y');
-  stair(bc, 0, DZ1, DZ1 + 2.0, PT + 0.03, TY, 3.2, 5);
+  stair(bc, 0, DZ1, DZ1 + 2.0, PT + 0.03, TY, 3.2, 5, { risers: true });
 
   st.box(px0 - cw, TY, pz0 - cw, px1 + cw, TY + 0.16, pz0, TILE.stone, '-y');
   st.box(px0 - cw, TY, pz1, px1 + cw, TY + 0.16, pz1 + cw, TILE.stone, '-y');

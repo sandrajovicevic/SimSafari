@@ -53,9 +53,13 @@ export function poleRow(buf, x0, z0, x1, z1, n, y0, y1, r = 0.15, taper = 0.86) 
   }
 }
 
-/** Stone footing pad under a post. */
+/** Stone footing pad under a post: a dressed square block with a slightly smaller cap course. (It was an
+ * 8-sided tapered cylinder; with the coursed-stone texture wrapped round it, it read up close as a flared
+ * metal skirt at every column base.) `r` keeps its meaning as the pad's half-width scale. */
 export function footing(buf, x, z, y, r = 0.34, h = 0.22) {
-  buf.cyl(x, z, y - 0.04, y + h, r, r * 0.86, 8, TILE.stone, 'top');
+  const a = r * 0.82, b = r * 0.70, hc = Math.min(0.05, h * 0.3);
+  buf.box(x - a, y - 0.04, z - a, x + a, y + h - hc, z + a, TILE.stone, '-y');
+  buf.box(x - b, y + h - hc, z - b, x + b, y + h, z + b, TILE.stone, '-y');
 }
 
 /**
@@ -210,8 +214,10 @@ export function latticeMast(bc, x, z, y0, h, base = 1.15, top = 0.34, bays = 6, 
   return top;
 }
 
-/** Straight timber stair from (x, z0, y0) up to (x, z1, y1) with treads and stringers. */
-export function stair(bc, x, z0, z1, y0, y1, width = 1.1, steps = 0) {
+/** Straight timber stair from (x, z0, y0) up to (x, z1, y1) with treads and stringers.
+ * opts.risers closes each step with a vertical board (a terrace stair; open treads over paving read as
+ * floating planks up close). Leave it off for ladder-like stairs (hide stilts, tower flights). */
+export function stair(bc, x, z0, z1, y0, y1, width = 1.1, steps = 0, opts = {}) {
   const t = bc.f('timber');
   const dz = z1 - z0, dy = y1 - y0;
   const n = steps || Math.max(2, Math.round(Math.abs(dy) / 0.21));
@@ -220,6 +226,11 @@ export function stair(bc, x, z0, z1, y0, y1, width = 1.1, steps = 0) {
     const zz = z0 + (dz * i) / n;
     const yy = y0 + (dy * i) / n;
     t.box(x - hw, yy - 0.07, zz - Math.abs(dz) / n * 0.52, x + hw, yy, zz + Math.abs(dz) / n * 0.52, TILE.timber, '');
+    if (opts.risers) {
+      // the riser between step i-1 and step i, at their shared edge, from the lower tread up to the higher
+      const ze = z0 + (dz * (i - 0.5)) / n, ya = y0 + (dy * (i - 1)) / n;
+      t.box(x - hw, Math.min(ya, yy) - 0.07, ze - 0.02, x + hw, Math.max(ya, yy) - 0.07, ze + 0.02, TILE.timber, '');
+    }
   }
   t.beam(x - hw - 0.06, y0 - 0.12, z0, x - hw - 0.06, y1 - 0.10, z1, 0.09, 0.26, TILE.timber);
   t.beam(x + hw + 0.06, y0 - 0.12, z0, x + hw + 0.06, y1 - 0.10, z1, 0.09, 0.26, TILE.timber);

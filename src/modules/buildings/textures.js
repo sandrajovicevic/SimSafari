@@ -421,7 +421,7 @@ export function signTexture(ctx, parkName) {
     c.strokeRect(s * 0.045, s * 0.13, s * 0.91, s * 0.74);
     c.strokeStyle = 'rgba(206,166,104,0.35)'; c.lineWidth = s * 0.006;
     c.strokeRect(s * 0.055, s * 0.145, s * 0.89, s * 0.71);
-    const name = String(parkName || 'MARA RIDGE').toUpperCase();
+    const name = String(parkName || 'Serengeti Ridge').toUpperCase();
     c.textAlign = 'center'; c.textBaseline = 'middle';
     let fs = Math.round(s * 0.155);
     c.font = `700 ${fs}px Georgia, "Times New Roman", serif`;
@@ -439,5 +439,5 @@ export function signTexture(ctx, parkName) {
     c.fillText('SAFARI PARK', s * 0.5, s * 0.635);
     c.strokeStyle = 'rgba(206,166,104,0.35)'; c.lineWidth = s * 0.008;
     c.beginPath(); c.moveTo(s * 0.2, s * 0.735); c.lineTo(s * 0.8, s * 0.735); c.stroke();
-  }, { key: 'buildings:sign:' + String(parkName || 'MARA RIDGE'), srgb: true });
+  }, { key: 'buildings:sign:' + String(parkName || 'Serengeti Ridge'), srgb: true });
 }
