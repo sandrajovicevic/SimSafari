@@ -71,6 +71,18 @@ The `close` and `night` hero trucks are pinned (`_state = 'stopped'`, like `sigh
 * World-state check in the same review: 6 vehicles with plausible in-bounds positions on the live
   graph; `graphBackend()` = `'roads'`.
 
+## Salt-lick sightline bonus (Wave P5, 2026-10-01)
+
+The P5 spec asked for an *emergent* sightings effect first (animals wander toward a lick → more
+sightings on a route past it). Three measured attempts could not separate it from tour-to-tour
+noise at the demo park's herd sizes (sightings per tour-hour, control vs with-lick: **15/15,
+19/20, 25/20** — right direction at best, never the clear win the harness needed), so the spec's
+sanctioned fallback shipped: an animal inside a lick's radius gets `SIGHT_RADIUS × 1.5` for
+sighting rolls. Measured clean with 8 fresh gate-departing tours after a 900 s animals-only settle:
+**46 vs 38 sightings** (with-lick vs control; the pre-merge calibration measured a tighter 44 vs 42
+— tour-timing noise, same pass), control > 0 satisfies the non-vacuity clause. Reads `world.saltLicks`
+only; no writes, no new events.
+
 ## Known gaps (honest)
 
 * **`overview`'s default camera (430 m) makes vehicles nearly invisible** — verification was

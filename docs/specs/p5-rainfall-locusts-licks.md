@@ -1,5 +1,43 @@
 # Wave P5 — Rainfall axis, locusts, salt licks (contract)
 
+Shipped 2026-10-01 on `claude/p5-rainfall`. Below the fold is the original contract; measured
+results here (full tables: the module READMEs' "Wave P5" sections).
+
+* **Rainfall tiers** — exactly the proposed table (hippo/buffalo high; elephant/rhino/zebra/
+  wildebeest/impala/lion medium; giraffe/cheetah/warthog low; ostrich drought), reusing the plants'
+  `rainfallFit()`. Drought stress per §2 (fit < 0.6 → happiness target −(0.6−fit)×1.0, +0.006/day
+  mortality), mitigation ×(1 − 0.6 × waterAccess) per §3 — the existing water proximity term, so
+  **no new waterhole building was needed** (the buildings catalogue already has pump/waterhole rows;
+  the harness variant strips them to prove the term works). Harness `drought-water` PASS:
+  **17 vs 4 deaths** (dry vs control, 30-day injected drought), hippo happiness **0.514 → 0.390**,
+  hippo/buffalo fall before warthog/ostrich.
+* **Locusts** — seeded outbreak (forked `Rng('locust:<seed>')`, 1.5%/day in the first 20 days of a
+  wet season after a drought) + bounded `injectEvent('locusts', …)` (budget 400 cells default,
+  days 12 default, dies < 0.05 density; rule 8 satisfied by construction). Spray $180/ha cuts
+  density 80 %; a firebreak through the disc costs a swarm 0.3 × the cleared fraction. Harness
+  `locusts` PASS — scored on **cover volume removed** (a cell-count metric measured only 2.8×,
+  volume separates cleanly): **unmanaged 65.2 vs sprayed-day-2 16.3 = 4.0× (≥ 3×)**; the firebreak
+  pair passes the same bar; every swarm dies within `days` in all variants.
+* **Salt licks** — habitat-gated placement ($3,500, radius 10 m), grazer/mixed happiness bonus
+  0.03 per lick capped 0.06, wander bias in animals (0.6 of retargets, same-habitat, +60 m leash).
+  The spec's emergent sightings route was tried three ways and measured too weak (15/15, 19/20,
+  25/20 with/without), so the sanctioned fallback shipped: traffic sightline ×1.5 at a lick.
+  Harness `salt-lick` PASS: **46 vs 38 sightings over 8 fresh tours** (with-lick vs control; the
+pre-merge calibration run measured a tighter 44 vs 42 — tour-timing noise, same pass), control > 0.
+* **Visuals** — swarm cloud density scales with area × density (~1300 specks at radius 56 m,
+  readable at the spec's 150 m; 1 draw call — the shared instanced particle mesh), day + night
+  verified (`tools/shots/p5-swarm-14.png`, `p5-swarm-21_5.png`); salt lick readable at 55 m in ≤ 2
+  draw calls (`props-saltlick-auto.png`). Fixing the day shot surfaced a real particle-system bug:
+  narrow ranged GPU updates of the 1-float instanced kind attribute never arrived, so staged
+  swarms rendered as invisible ambient motes — `_flush()` now re-uploads that buffer full-range
+  (see the effects README).
+* **Budgets** — 4 swarms alive all 60 days + 3 licks: day step 3.91 ms vs 5.41 ms baseline on the
+  same park (inside run-to-run noise; base measured 2.9–5.4 across runs). Effects + props add
+  1 particle draw + 2 instanced draws — inside the ≤ 4 total for this wave.
+* **Tests** — 245/245 (24 new: tier table, stress ordering/mitigation, locust budget/lifetime/
+  spray/firebreak/second-swarm budget, lick refusal/bonus/cap, reset, determinism).
+  `tools/check-harness.mjs` OK (23 default scenarios dispatched).
+
 Agenda: `docs/ideas-roadmap.md` Wave P5. Mechanics source: `docs/ideas-simsafari-1998.md` (patterns
 only). Requires P1 (plants already carry a `rainfall` tier in `core/Plants.js`); uses P2's firebreak
 as a locust-clearing verb. Separable: each of the three parts may ship alone. Read

@@ -72,8 +72,19 @@ function checkSighting(ctx, v) {
   const near = animals.nearest(v.x, v.z, SIGHT_RADIUS);
   if (!near || !near.length) return false;
   const a = near[0];
+  let radius = SIGHT_RADIUS;
+  // Wave P5 salt lick (docs/specs/p5-rainfall-locusts-licks.md): an animal at a mineral lick stands
+  // in the open trampled patch and lingers — the emergent wander bias alone measured too weak to
+  // move the sighting rate (15/15, 19/20, 25/20 across three designs), so the spec's fallback kicks
+  // in: a visitor's sightline reaches 1.5x as far onto a lick.
+  const licks = ctx.world.saltLicks;
+  if (licks?.size) {
+    for (const l of licks.values()) {
+      if ((a.x - l.x) ** 2 + (a.z - l.z) ** 2 <= (l.radius ?? 10) ** 2) { radius = SIGHT_RADIUS * 1.5; break; }
+    }
+  }
   const dist = Math.hypot(a.x - v.x, a.z - v.z);
-  if (dist > SIGHT_RADIUS) return false;
+  if (dist > radius) return false;
   const world = ctx.world;
   if (!lineOfSight(world, v.x, v.z, v.y + 1.6, a.x, a.z, (a.y ?? 0) + 1)) return false;
   v._state = 'sighting';
