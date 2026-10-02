@@ -1154,6 +1154,56 @@ console.log('\nWave P5 — rainfall stress, locusts, salt licks');
   }
 }
 
+// ------------------------------------------- predator–prey stability (type-III predation, 2026-10-02)
+console.log('\nPredator–prey stability — type-III saturating predation');
+{
+  const LION_HAB = 4; // the node park's Lion Ridge (5 lions + mixed prey)
+  const strip = (sim, keep) => { for (const s of ['zebra', 'wildebeest', 'impala', 'warthog', 'ostrich', 'buffalo', 'cheetah']) if (!keep.includes(s)) sim.setPopulation(LION_HAB, s, 0); };
+  // scarce prey: 3 lions over 4 impala — the flat rate ate exactly this to 0 (verifier: kopje impala
+  // extinct by d270); type-III must leave a refuge (impala ≥ 1) while hunger still bites (lions < 3)
+  {
+    const s = makeSim(71);
+    strip(s.sim, []);
+    s.sim.setPopulation(LION_HAB, 'lion', 3);
+    s.sim.setPopulation(LION_HAB, 'impala', 4);
+    s.sim.runDays(60);
+    const imp = s.sim.pop.get(LION_HAB).get('impala').n, lions = s.sim.pop.get(LION_HAB).get('lion').n;
+    assert(imp >= 1, `predation: scarce prey is not hunted to 0 (4 impala under 3 lions → ${imp} left at d60)`);
+    assert(lions < 3, `predation: hunger still bites above the lagged prey capacity (${lions} of 3 lions at d60)`);
+  }
+  // coexistence: a kopje-shaped habitat (3 lions + 14 impala) holds both for 730 days. Seed choice
+  // matters: on seed 72 an organic poaching event killed 2 of 3 lions on day 33 and the lone
+  // survivor cannot re-breed (n ≥ 2 gate) — that is the game's poaching system, not predation;
+  // seed 5 has no lion-poaching roll and the pride grows 3 → 6 with impala 14 → 102.
+  const runKopje = (seed) => {
+    const s = makeSim(seed);
+    strip(s.sim, []);
+    s.sim.setPopulation(LION_HAB, 'lion', 3);
+    s.sim.setPopulation(LION_HAB, 'impala', 14);
+    s.sim.runDays(730);
+    const reps = s.sim.getReports(730);
+    let minLions = Infinity, minImpala = Infinity;
+    for (const r of reps) {
+      const sp = (r.habitats[LION_HAB] || {}).species || {};
+      if (sp.lion) minLions = Math.min(minLions, sp.lion.n);
+      if (sp.impala) minImpala = Math.min(minImpala, sp.impala.n);
+    }
+    return { minLions, minImpala, reports: reps };
+  };
+  {
+    const a = runKopje(5);
+    assert(a.minLions >= 2, `predation: lions ≥ 2 on every day of 730 (min ${a.minLions})`);
+    assert(a.minImpala >= 1, `predation: impala never 0 across 730 days (min ${a.minImpala})`);
+    const b = runKopje(5);
+    assert(JSON.stringify(a.reports) === JSON.stringify(b.reports), 'predation: 730-day coexistence deterministic for a given seed');
+    const c = makeSim(72);
+    strip(c.sim, []); // same habitat, prey removed → predators must go
+    c.sim.setPopulation(LION_HAB, 'lion', 3);
+    c.sim.runDays(60);
+    assert(c.sim.pop.get(LION_HAB).get('lion').n === 0, 'predation: prey removed → lions starve out within 60 days');
+  }
+}
+
 const R = base.sim.getReport();
 console.log(`\nbaseline day ${R.day}: cash $${fmt(R.cash)}  income $${fmt(R.income)}  expenses $${fmt(R.expenses)}  visitors ${R.visitors}  sat ${(R.satisfaction * 100).toFixed(0)} %  rep ${(R.reputation * 100).toFixed(0)} %  morale ${(R.morale * 100).toFixed(0)} %  village ${(R.prosperity * 100).toFixed(0)} %  season ${R.season}`);
 console.log('  population: ' + Object.entries(R.population).map(([s, n]) => `${s} ${n} (${(R.happiness[s] * 100).toFixed(0)} %)`).join(', '));
