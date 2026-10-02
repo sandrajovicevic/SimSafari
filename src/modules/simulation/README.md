@@ -495,6 +495,14 @@ every day, start lions ≥ 3 as non-vacuity): PASS — `tools/shots/fidelity-pre
 Tests 254/254 (6 new: refuge, hunger-bites, 730-day coexistence min lions ≥ 2 / min impala ≥ 1,
 same-seed determinism, prey-removal starvation).
 
+**Cross-wave interaction (open):** the healthier herds this fix produces exposed that the P5
+`salt-lick` harness bar (sightings with-lick > control) was riding single-tour noise — with
+staggered 8-tour measurement it now reads **39 vs 38**, i.e. the lick's sightings effect is
+genuinely ~nil at the spec's 60 m geometry (the herd does gather, median 3 m from the lick; the
+×1.5 sightline boost just doesn't add visibility there). The scenario fails honestly on this
+branch; the decision (traffic boost vs relaxed bar vs known-red) is recorded in
+`docs/requests/p5.md` #4 and belongs to the owner — this wave's scope is simulation-only.
+
 ## Known gaps (honest)
 
 * **Wave P3:**
