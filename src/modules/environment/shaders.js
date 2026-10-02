@@ -165,7 +165,11 @@ void main(){
     if (uNightAmount > 0.001) {
       vec3 cd = uCelestial * d;
       vec2 nuv = vec2(atan(cd.z, cd.x) / (2.0 * PI) + 0.5, asin(clamp(cd.y, -1.0, 1.0)) / PI + 0.5);
-      vec3 night = texture2D(uNight, nuv).rgb * uStarScale;
+      vec4 nt = texture2D(uNight, nuv);
+      // texels per pixel of the 2048x1024 bake (~0.13 at 45 deg / 1920 px). Below ~0.5 each baked star is
+      // magnified into a blob, so the faint field fades out; the STAR_VERT points carry the stars instead
+      float tpp = max(fwidth(nuv.x) * 2048.0, fwidth(nuv.y) * 1024.0);
+      vec3 night = (nt.rgb + vec3(0.86, 0.89, 1.0) * nt.a * smoothstep(0.35, 0.60, tpp)) * uStarScale;
       float horizonFade = smoothstep(0.0, 0.12, d.y);
       col += night * uNightAmount * horizonFade * uCloudDim;
     }
@@ -433,7 +437,11 @@ vec4 shade(vec2 uv){
   // the brighter point layer (STAR_VERT) and the band carry the sky.
   vec3 stars = starLayer(d, 46.0, 1.0 + uSeed, 0.0008, 0.35, 1.0) + starLayer(d, 150.0, 7.0 + uSeed, 0.0006, 0.22, 0.25);
   stars *= 1.0 + 1.2 * band; // denser field inside the band
-  return vec4(mwCol + stars, 1.0);
+  // the faint field goes to ALPHA (luminance), the smooth band stays in RGB, so the sky shader can drop
+  // the baked stars when a texel magnifies past ~2 px. A single-texel star bilinearly magnified is a
+  // soft diamond ~2 texels wide: at the game's 45 deg FOV and 1920 px, one texel is ~7.5 px, so the
+  // band's dense field drew as a cloud of 20-40 px grey diamonds (savannah night, measured 2026-10-01)
+  return vec4(mwCol, dot(stars, vec3(0.30, 0.50, 0.20)));
 }`;
 
 export const MOON_TEX_GLSL = /* glsl */ `
