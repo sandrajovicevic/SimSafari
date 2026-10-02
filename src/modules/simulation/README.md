@@ -447,6 +447,54 @@ additions are below measurement resolution. Tests: 245/245 (24 new — tier tabl
 ordering + mitigation factor, locust budget cap/lifetime/spray/firebreak/second-swarm-own-budget,
 lick refusal/bonus/cap/happiness move, reset, determinism).
 
+### Predator–prey stability — type-III predation (2026-10-02, branch `claude/predation-response`)
+
+**The bug (verifier-measured, demo park seed 1, idle):** the flat kill rate —
+`kills = poisson(rng, min(prey, predators × 0.03))` — never slowed as prey got scarce, so every
+predator habitat hunted its base to zero and then starved: Pride Kopje's 3 lions ate 14 impala down
+to 0 by day 270 and were extinct themselves by day 270–365 (lions 3/3/1/0/0 and impala 14/6/2/0/0 at
+d1/90/180/270/365). Adding prey only delayed the crash (+6 warthog: 4→1 lions by d730; +6 warthog
++6 impala: extinct by d545; +6 zebra: collapsed by ~d180), and captures showed constant
+"lion starved / lions leaving" toasts.
+
+**The fix** (`sim.js _populationStep`, `CONST.preyPerPredatorHalf`): a type-III saturating
+functional response — `ratio = prey/(predators × 10)`, per-predator kill rate
+`0.03 × ratio²/(1 + ratio²)`, still **one poisson draw per habitat per day** (no new rng draws, no
+stream-shape change). At prey = 10 per predator the rate is half of 0.03; below that it collapses as
+ratio², i.e. a scarce herd becomes hard to find — a prey refuge. **Hunger is unchanged**: the
+lagged-biomass path (`hungerRate` EMA → `foodCap` → `starveRate`) still starves predators whose prey
+is gone (prey removed from a habitat: lions 5 → 0 within 60 days, before and after).
+
+**Calibration, old (flat) → new (type-III, half-saturation 10 prey/predator):**
+
+| measurement | old | new |
+|---|---|---|
+| kills at 3 lions × 14 impala | 0.09/day (flat 0.03) | 0.016/day (ratio 0.47 → 0.03 × 0.18) |
+| demo kopje, idle 730 d | lions 0 / impala 0 by ~d270 | **lions 4 / impala 25 at d730** (3/14 → 3/14 → 3/21 → 3/26 → 4/25 → 4/25 at d1/90/180/365/545/730; min lions 3, min prey 13) |
+| 4 impala under 3 lions, 60 d (node) | hunted to 0 | all 4 survive; lions 3 → 1 via hunger (refuge + hunger both real) |
+| prey removed → predators | 5 → 0 in 60 d | 5 → 0 in 60 d (unchanged) |
+| `remove-prey` harness | PASS (lag ≥ 3 d) | PASS, lag 11 d |
+| baseline netPerDay @ $25 | −$2,883 | **−$2,778.10** |
+| $15 break-even netPerDay | +$941.23 | **+$1,100.97** ($12: +$487.73 → +$678.40) |
+| determinism.identical | true | true |
+
+The economy move is intended and mechanical: suppressed kills keep ~10 more impala alive in the
+kopje (feed +$70/day) but their sightings raise attraction — arrivals 141.57 → 143.97/day @ $25,
+income +$133/day, net +$105/day @ $25 and +$160/day @ $15. Half-saturation 10 was the first value
+tried and met every acceptance bar (730-day kopje, refuge, starvation lag, remove-prey); it was
+left un-tuned rather than shopping for a prettier number.
+
+**Missions, old → new (no recalibration needed — every idle still fails, every replay still wins):**
+pride idle fails at 3 lions both; replay ★1 d61 both; the buy-only shortcut still fails (5 lions,
+never holds 6). balanced-range idle fails both (bio index 79.2 now); replay ★2 d61 → **★1** d61
+(bio 94.62 → 93.18 at the win — the fixed cheetah predation shifts evenness; still a win).
+in-the-black idle fails both ($1,192,829 → $1,194,644 at the deadline); replay ★1, crossing d333 →
+**d308** ($1,307,321 vs the $1.3 M target — margin ~$7 k, did not flip). fire-season idle fails,
+replay ★3 d92, unchanged. New harness `predator-stability` (idle 730 d, lions ≥ 2 and prey ≥ 1 on
+every day, start lions ≥ 3 as non-vacuity): PASS — `tools/shots/fidelity-predator-stability.json`.
+Tests 254/254 (6 new: refuge, hunger-bites, 730-day coexistence min lions ≥ 2 / min impala ≥ 1,
+same-seed determinism, prey-removal starvation).
+
 ## Known gaps (honest)
 
 * **Wave P3:**
@@ -472,6 +520,14 @@ lick refusal/bonus/cap/happiness move, reset, determinism).
 
 
 * **Food web (Wave P1):**
+  * **Predation is type-III since 2026-10-02** (see the Predator–prey stability section) — the old
+    "predators eat at full rate until prey hits zero" behaviour is gone; the half-saturation
+    constant (10 prey/predator) is calibrated to the demo kopje, not fitted across habitats.
+  * **A pride reduced to one lion never recovers on its own** (found while testing the stability
+    fix): births need `n ≥ 2`, so an organic poaching event that kills 2 of 3 lions leaves a
+    healthy, happy, permanently solitary lion (measured: seed 72, poachers on day 33, lion held at
+    1 with happiness 0.73 for 700 days). The player's answer is buying a second lion; the game
+    could instead let a lone animal migrate or be relocated — not done this change.
   * **No insectivores** among our 12 species, so the original's "insects come free with grass/shrub
     cover" rule does not apply this wave.
   * **Overgrazing floor added after merge** (`VEG.rootReserve` 0.1, see P1 follow-ups). Previously: Cover can be grazed to 0, and grass only regrows from neighbours,
