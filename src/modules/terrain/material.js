@@ -53,7 +53,8 @@ vec3 tAlbedo; float tRough; float tAo; vec3 tNormalW;
   if (eb > 0.001) {
     float ptE = fbm(wxz * (1.0 / 90.0) + vec2(37.3, 91.7), 3);
     float gE = smoothstep(0.50, 0.62, moist + 0.22 * ptE);
-    float dE = smoothstep(0.36, 0.46, ptE) * (1.0 - smoothstep(0.30, 0.45, moist)) * 0.8;
+    float latE = ptE + 1.2 * fbm(wxz * (1.0 / 380.0) + vec2(11.9, 53.1), 2) + 0.06 * fbm(wxz * (1.0 / 24.0) + vec2(5.7, 19.3), 2);
+    float dE = smoothstep(0.63, 0.73, latE) * (1.0 - smoothstep(0.30, 0.45, moist)) * 0.8;
     float wDirtSE = smoothstep(0.05, 0.16, slope) * (1.0 - wRockS);
     float keepE = 1.0 - max(wRockS, wDirtSE);
     float a0 = gE * keepE, a1 = max(1.0 - max(gE, dE), 0.0) * keepE, a2 = min(dE * keepE + wDirtSE, 1.0), a3 = wRockS;
@@ -209,7 +210,7 @@ export function createTerrainMaterial(ctx, layers, control) {
       .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(tNormalW, 0.0)).xyz);')
       .replace('#include <aomap_fragment>', 'reflectedLight.indirectDiffuse *= tAo; reflectedLight.directDiffuse *= mix(1.0, tAo, 0.35);');
   };
-  m.customProgramCacheKey = () => 'terrain-splat-v9';
+  m.customProgramCacheKey = () => 'terrain-splat-v10';
   return m;
 }
 
