@@ -158,6 +158,7 @@ export function generateSavannah(world, noise, rng, opts = {}) {
   const plateauMask = new Float32Array(N);
   const localLevel = new Float32Array(N);
   const patch = new Float32Array(N);
+  const laterite = new Float32Array(N);
 
   for (let iz = 0; iz < res; iz++) {
     const z = iz * cell - half;
@@ -277,6 +278,11 @@ export function generateSavannah(world, noise, rng, opts = {}) {
       H[i] = h;
       localLevel[i] = level;
       patch[i] = fb(x, z, 90, 3);
+      // bare-laterite field: the 90 m patch noise alone thresholded into equal blobs at even spacing
+      // everywhere (read as camouflage print from the overview). A 380 m cluster term shifts the
+      // threshold by region (about a third of 128 m blocks bare, merged pans elsewhere) and a 24 m octave roughens outlines.
+      // Threshold 0.68 keeps the total patch area of the old pt > 0.42 rule (7.6 %).
+      laterite[i] = patch[i] + 1.2 * noise.fbm2D(x / 380 + 11.9, z / 380 + 53.1, 2) + 0.06 * noise.fbm2D(x / 24 + 5.7, z / 24 + 19.3, 2);
     }
   }
 
@@ -307,7 +313,7 @@ export function generateSavannah(world, noise, rng, opts = {}) {
 
   const gen = {
     river, kopjes, pans, escarp, waterLevel: WATER,
-    dRiver, hwAt, tAt, kopjeMask, cliffMask, plateauMask, localLevel, patch, moisture,
+    dRiver, hwAt, tAt, kopjeMask, cliffMask, plateauMask, localLevel, patch, laterite, moisture,
     painted: new Uint8Array(N),
     pointOnRiver: (t) => pointOnRiver(river, t),
   };
@@ -354,7 +360,7 @@ export function classifySample(world, gen, ix, iz) {
   else if (slope > 0.09) b = (nearRiver || pt <= 0.15 ? BIOME.DIRT : BIOME.ROCK);
   else if (above < 2.2 && m > 0.55 && d > hw * 1.6 && gen.localLevel[i] !== gen.waterLevel && pt < 0.2) b = BIOME.DIRT; // trampled pan rim
   else if (m + 0.22 * pt > 0.58) b = BIOME.GRASS;
-  else if (pt > 0.42 && m < 0.4) b = BIOME.DIRT;                            // bare laterite patches
+  else if (gen.laterite[i] > 0.68 && m < 0.4) b = BIOME.DIRT;               // bare laterite patches
   else if (gen.plateauMask[i] > 0.5 && pt > 0.25) b = BIOME.ROCK;             // rocky plateau top
   else b = BIOME.DRY_GRASS;
   T.biome[i] = b;
