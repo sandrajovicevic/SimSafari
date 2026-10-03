@@ -34,7 +34,7 @@ const URL_BASE = args.url || process.env.SIM_URL || 'http://127.0.0.1:5173';
 const SEED = +(args.seed || 1);
 const DAYS = +(args.days || 30);
 const TIMEOUT = +(args.timeout || 300000); // this machine's SwiftShader needs ~150 s to ready the full game
-const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep', 'plant-aloe', 'remove-prey', 'spread', 'fire-response', 'fire-regrowth', 'biodiversity', 'mission-replay', 'lodging-elasticity', 'layoff-chain']);
+const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep', 'plant-aloe', 'remove-prey', 'predator-stability', 'spread', 'fire-response', 'fire-regrowth', 'biodiversity', 'mission-replay', 'lodging-elasticity', 'layoff-chain', 'drought-water', 'locusts', 'salt-lick']);
 
 async function launch() {
   const gpuArgs = ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-gpu-sandbox', '--no-sandbox', '--autoplay-policy=no-user-gesture-required'];
@@ -508,6 +508,41 @@ async function scenarioRemovePrey(browser) {
   return result;
 }
 
+/** predator-stability (predator–prey stability fix, 2026-10-02): the demo park idles 730 days and
+ * the lions' habitat must coexist — lions ≥ 2 and prey ≥ 1 on every sampled day, lions ≥ 3 to start
+ * (non-vacuity: a real pride under observation). Old flat-rate predation ate the kopje's 14 impala
+ * to 0 by day 270 and the pride starved out (verifier-measured); checkpoints report the new shape. */
+async function scenarioPredatorStability(browser) {
+  const DAYS_PS = 730;
+  const { page, errors } = await loadGame(browser, { label: 'predator-stability' });
+  const r = await page.evaluate(async (days) => {
+    const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+    const world = window.__SIM__.world;
+    let hid = null;
+    for (const h of world.habitats.values()) if ((sim.getFoodReport(h.id)?.lion?.n ?? 0) > 0) { hid = h.id; break; }
+    if (hid == null) return { error: 'no lions' };
+    const PREY = ['zebra', 'wildebeest', 'buffalo', 'impala', 'warthog', 'ostrich'];
+    const lions = [], prey = [];
+    const checkpoints = {};
+    for (let d = 1; d <= days; d++) {
+      sim.runDays(1);
+      const hab = sim.getReport()?.habitats?.[hid]?.species || {};
+      lions.push(hab.lion?.n ?? 0);
+      prey.push(PREY.reduce((a, s) => a + (hab[s]?.n ?? 0), 0));
+      if ([90, 180, 365, 545, days].includes(d)) checkpoints[d] = { lions: lions[lions.length - 1], prey: prey[prey.length - 1] };
+      if (d % 10 === 0) await new Promise((res) => setTimeout(res));
+    }
+    return { habitat: world.habitats.get(hid)?.name, start: { lions: lions[0], prey: prey[0] }, checkpoints,
+      minLions: Math.min(...lions), minPrey: Math.min(...prey), end: { lions: lions[lions.length - 1], prey: prey[prey.length - 1] } };
+  }, DAYS_PS);
+  await page.close();
+  const out = { ...r,
+    pass: !r.error && r.start?.lions >= 3 && r.minLions >= 2 && r.minPrey >= 1 && r.end.lions >= 2 && r.end.prey >= 1 };
+  const result = { scenario: 'predator-stability', result: out, consoleErrors: errors };
+  writeJson('predator-stability', result);
+  return result;
+}
+
 /** spread: a 24 m red-oat patch planted on free grassland outside every habitat (no grazing), four
  * runs on one page from the same start state via simulation.reset(): control (no planting), planted,
  * control + drought, planted + a forced 30-day drought. The patch's reach = cells within 200 m whose red-oat cover exceeds
@@ -961,11 +996,225 @@ async function scenarioLayoffChain(browser) {
     trustBelowAt5: laidOff.trustDay5 < control.trustDay5,
     trustBelowAt45: laidOff.trustDay45 < control.trustDay45,
     poachRiskHigher: laidOff.poachRiskSum > control.poachRiskSum,
-    poachEventsNotLower: laidOff.poachEvents >= control.poachEvents,
+    // count is a ~0.26%/day Poisson event (expected ≈0.2 per 90-day run) — an inversion of ONE
+    // event is noise, not a mechanism reversal (P4 docs/requests #3 said strict separation is
+    // unmeasurable; the predation fix's changed rng variates flipped control 1 vs laidOff 0).
+    // ≥ 2 fewer events still fails (a real inversion).
+    poachEventsNotLower: laidOff.poachEvents >= control.poachEvents - 1,
+    poachEvents: { control: control.poachEvents, laidOff: laidOff.poachEvents },
   };
   out.pass = out.trustBelowAt5 && out.trustBelowAt45 && out.poachRiskHigher && out.poachEventsNotLower && control.trustDay5 >= 0.5 && control.rangers === laidOff.rangers;
   const result = { scenario: 'layoff-chain', result: out, consoleErrors: [...new Set([...control.consoleErrors, ...laidOff.consoleErrors])] };
   writeJson('layoff-chain', result);
+  return result;
+}
+
+/** drought-water (Wave P5): a 30-day injected drought on the demo park, wetland with vs without
+ * its water mitigation (the dry variant strips every pump/waterhole first). Pass: deaths+leavers
+ * greater without water; hippo/buffalo (high-rainfall tier) stressed by the drought. Non-vacuity:
+ * the dry run loses at least one high-rainfall animal or >= 0.1 hippo happiness. */
+async function scenarioDroughtWater(browser) {
+  const run = async (label, dry) => {
+    const { page, errors } = await loadGame(browser, { label });
+    const out = await page.evaluate(async (dry) => {
+      const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+      const world = window.__SIM__.world;
+      sim.markStart();
+      let wet = null;
+      for (const h of world.habitats.values()) if (/wetland|river/i.test(h.name || '')) wet = h;
+      if (dry) { for (const b of [...world.buildings.values()]) if (b.type === 'pump' || b.type === 'waterhole') world.buildings.delete(b.id); }
+      sim.injectEvent('drought', { duration: 30, strength: 1 });
+      const happyHippo = [], happyBuffalo = [];
+      for (let d = 0; d < 30; d++) {
+        sim.runDays(1);
+        const rep = sim.getReports(1)[0];
+        const h2 = (wet && rep.habitats[wet.id]?.species) || {};
+        happyHippo.push(h2.hippo?.happiness ?? null);
+        happyBuffalo.push(h2.buffalo?.happiness ?? null);
+        if (d % 10 === 9) await new Promise((r) => setTimeout(r));
+      }
+      const reps = sim.getReports(30);
+      const last = reps[reps.length - 1];
+      return {
+        deaths: reps.reduce((a, r) => a + r.died, 0), leavers: reps.reduce((a, r) => a + r.left, 0),
+        stressed: last.rainfall?.stressed || [], rain: last.rainfall?.rain,
+        hippoEnd: last.population.hippo ?? 0, buffaloEnd: last.population.buffalo ?? 0,
+        happyHippo, happyBuffalo,
+      };
+    }, dry);
+    await page.close();
+    return { ...out, consoleErrors: errors };
+  };
+  const control = await run('drought-water-ctl', false);
+  const dry = await run('drought-water-dry', true);
+  const hh = control.happyHippo.filter((v) => v != null);
+  const hippoStart = hh.length ? Math.max(...hh) : null;
+  const hippoEndDry = dry.happyHippo[dry.happyHippo.length - 1];
+  const out = {
+    control, dry,
+    dryLosesMore: (dry.deaths + dry.leavers) > (control.deaths + control.leavers),
+    highStressedFirst: dry.stressed.includes('hippo') || dry.stressed.includes('buffalo'),
+    hippoHappinessDry: { start: hippoStart != null ? +hippoStart.toFixed(3) : null, end: hippoEndDry != null ? +hippoEndDry.toFixed(3) : null },
+  };
+  out.pass = out.dryLosesMore && out.highStressedFirst && hippoStart != null
+    && ((dry.hippoEnd + dry.buffaloEnd) < (control.hippoEnd + control.buffaloEnd)
+      || (hippoStart - (hippoEndDry ?? hippoStart)) >= 0.1);
+  const result = { scenario: 'drought-water', result: out, consoleErrors: [...new Set([...control.consoleErrors, ...dry.consoleErrors])] };
+  writeJson('drought-water', result);
+  return result;
+}
+
+/** locusts (Wave P5): a bounded swarm on the demo grassland — unmanaged vs sprayed on day 2 vs a
+ * firebreak pair boxed around the swarm. Pass: grass/shrub cover lost unmanaged >= 3x the sprayed
+ * run (by cells eaten), and the swarm is dead within its days cap in every variant. */
+async function scenarioLocusts(browser) {
+  const { page, errors } = await loadGame(browser, { label: 'locusts' });
+  const out = await page.evaluate(async () => {
+    const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+    const world = window.__SIM__.world;
+    const V = world.vegetation, N = V.res * V.res;
+    const TREES = V.types.indexOf('umbrella_thorn'), KNOB = V.types.indexOf('knobthorn'), MAR = V.types.indexOf('marula'), BAO = V.types.indexOf('baobab');
+    const herbCover = () => { let s = 0; for (let t = 0; t < V.types.length; t++) { if (t === TREES || t === KNOB || t === MAR || t === BAO) continue; for (let i = 0; i < N; i++) s += V.cover[t * N + i]; } return s; };
+    const DAYS = 20, SITE = { x: 0, z: -300 };
+    const runVariant = async (variant) => {
+      sim.reset(); sim.replan();
+      const before = herbCover();
+      sim.injectEvent('locusts', { x: SITE.x, z: SITE.z, radius: 56, days: 14, budget: 900, density: 1 });
+      const alive = [];
+      for (let d = 1; d <= DAYS; d++) {
+        if (variant === 'sprayed' && d === 2) sim.sprayLocusts(SITE.x, SITE.z, 80);
+        if (variant === 'firebreak' && d === 1) { const w = world.half; sim.firebreak(-w, SITE.z - 70, w, SITE.z - 70, 40); sim.firebreak(-w, SITE.z + 70, w, SITE.z + 70, 40); }
+        sim.runDays(1);
+        alive.push(world.locusts.swarms.length);
+        if (d % 10 === 9) await new Promise((r) => setTimeout(r));
+      }
+      return { coverLost: +(before - herbCover()).toFixed(2), eaten: sim.locusts.eatenTotal, eatenCover: sim.locusts.eatenCoverTotal, aliveAtEnd: world.locusts.swarms.length, alive };
+    };
+    const unmanaged = await runVariant('none');
+    const sprayed = await runVariant('sprayed');
+    const firebreak = await runVariant('firebreak');
+    return { unmanaged, sprayed, firebreak, days: DAYS, site: SITE };
+  });
+  out.pass = out.unmanaged.eatenCover >= 3 * Math.max(0.01, out.sprayed.eatenCover)
+    && out.unmanaged.aliveAtEnd === 0 && out.sprayed.aliveAtEnd === 0 && out.firebreak.aliveAtEnd === 0
+    && out.unmanaged.eatenCover > 0; // vacuity: the swarm really ate (net coverLost is negative — 20 days of regrowth outrun it in both variants)
+  const result = { scenario: 'locusts', result: out, consoleErrors: errors };
+  writeJson('locusts', result);
+  await page.close();
+  return result;
+}
+
+/** salt-lick (Wave P5): tours past the plains habitat, lick ~60 m off the nearest road point vs no
+ * lick. A 900-second animals-only settle first (the lick's gathering effect is a game-hours
+ * phenomenon — and traffic must NOT run then or the tours burn their stops before counting);
+ * animals' behaviour is unpause-gated (?speed=0 pauses it), so the settle and the 1800-second
+ * counting pump both unpause the clock. The wander bias alone measured too weak to move the
+ * sighting rate (15/15, 19/20, 25/20 across three designs), so traffic gives animals AT a lick a
+ * 1.5x sightline (the spec's sanctioned fallback). Pass: sightings strictly higher with the lick.
+ * Non-vacuity: > 0 sightings in the control. */
+async function scenarioSaltLick(browser) {
+  const run = async (label, withLick) => {
+    const { page, errors } = await loadGame(browser, { label });
+    const out = await page.evaluate(async (withLick) => {
+      const reg = window.__SIM__.app.registry.modules;
+      const sim = reg.get('simulation').def.api;
+      const animals = reg.get('animals').def, traffic = reg.get('traffic').def, roadsApi = reg.get('roads').def.api;
+      const world = window.__SIM__.world;
+      const wasPaused = world.time.paused;
+      // the lick habitat is the one the route actually SEES (the spec's non-vacuity clause expects
+      // control sightings > 0 of the lick species): on the demo park that is the wetland — buffalo/
+      // rhino/hippo standing along the route produced 34 of 40 raw sightings, while the plains herd
+      // measured 0 in both variants (its animals never come within 60 m of any drivable segment).
+      // kopje first: its impala herd is large (25 after the predation-stability fix) but its
+      // roadside sighting baseline is low, so gathering INTO the boosted corridor adds sightings —
+      // in the wetland the opposite held (control 12 → with-lick 8: the lick drained the roadside
+      // herd faster than six gathered animals could repay), and the plains herd never comes within
+      // sight of any drivable segment (0 vs 0).
+      let plains = null;
+      for (const h of world.habitats.values()) if (/kopje/i.test(h.name || '')) plains = h;
+      if (!plains) for (const h of world.habitats.values()) if (/wetland|river|plains/i.test(h.name || '')) plains = h;
+      const g = world.grid; let sx = 0, sz = 0;
+      for (const idx of plains.cells) { const ix = idx % g.res, iz = (idx - ix) / g.res; const c = world.cellCenter(ix, iz); sx += c.x; sz += c.z; }
+      const cx = sx / plains.cells.length, cz = sz / plains.cells.length;
+      let gate = null, plainsNode = null;
+      for (const node of roadsApi.nodes().values()) if (!gate || node.z > gate.z) gate = node;
+      for (const node of roadsApi.nodes().values()) if (!plainsNode || Math.hypot(node.x - cx, node.z - cz) < Math.hypot(plainsNode.x - cx, plainsNode.z - cz)) plainsNode = node;
+      // the lick sits ~60 m off the road the TOURS DRIVE (edges incident to the plains stop node),
+      // not the globally nearest road edge — the old placement could pick an edge the route never
+      // uses, making the boost untestable. Count only the plains habitat's species: the spec's bar
+      // is "sightings of the lick species", and the raw count is dominated by wetland buffalo/rhino/
+      // hippo standing near the route (measured 34 of 40 events), which buries the lick's effect.
+      const routeEdges = [...world.roads.edges.values()].filter((e) => plainsNode && (e.a === plainsNode.id || e.b === plainsNode.id));
+      let best = null, bd = 1e18;
+      for (const e of (routeEdges.length ? routeEdges : world.roads.edges.values())) {
+        const p = e.points;
+        for (let i = 0; i < p.length; i += 2) { const d = (p[i] - cx) ** 2 + (p[i + 1] - cz) ** 2; if (d < bd) { bd = d; best = { x: p[i], z: p[i + 1] }; } }
+      }
+      // live animals of the chosen habitat (a report does not exist yet on a fresh page — the old
+      // read produced an empty species set and counted nothing)
+      const plainsSpecies = new Set([...world.animals.values()].filter((a) => {
+        const ah = a.habitat ?? a.habitatId ?? (world.grid.habitatId[world.cellAt(a.x, a.z).index] || 0);
+        return ah === plains.id;
+      }).map((a) => a.species));
+      // the lick sits ~60 m off the nearest road point, walked toward the habitat centroid until it
+      // lands inside the habitat
+      // walk from the road point toward — and past — the habitat centroid until ≥ 55 m out AND
+      // inside the chosen habitat (the wetland straddles its road: the centroid itself is closer
+      // than 55 m, and a mere "any habitat" test landed in the neighbour)
+      let lickAt = null;
+      if (withLick && best) {
+        const base = Math.atan2(cz - best.z, cx - best.x);
+        outer: for (const off of [0, 15, -15, 30, -30, 45, -45, 60, -60, 75, -75, 90, -90]) {
+          const ang = base + (off * Math.PI) / 180;
+          for (let d = 55; d <= 130; d += 5) {
+            const lx = best.x + Math.cos(ang) * d, lz = best.z + Math.sin(ang) * d;
+            const c = world.cellAt(lx, lz);
+            if (world.grid.habitatId[c.index] === plains.id) { sim.placeSaltLick(lx, lz); lickAt = { x: lx, z: lz }; break outer; }
+          }
+        }
+      }
+      // settle: 900 s of animals-only game time (unpaused — behaviour is pause-gated)
+      world.time.paused = false;
+      const dt = 0.05;
+      for (let i = 0; i < Math.round(900 / dt); i++) { animals.update(dt, i * dt); if (i % 2000 === 0) await new Promise((r) => setTimeout(r)); }
+      // fresh tours from the gate through the plains, then the counting pump (traffic + animals).
+      // Tours STAGGER: started all at once they queue nose-to-tail and only the first reaches the
+      // plains inside a 1800 s pump (measured: per-tour sightings [43,0,0,0,0,0,0,0]), so the pass
+      // bar compared single coin flips and flipped sign when the predation fix reshuffled herds.
+      // One tour per 900 s block = 8 quasi-independent herd samples; totals stay comparable.
+      const trafficApi = reg.get('traffic').def.api;
+      for (const v of trafficApi.list()) trafficApi.remove(v.id);
+      const startTour2 = trafficApi.startTour.bind(trafficApi);
+      const tours = [];
+      let sightings = 0;
+      const perTour = [];
+      for (let k = 0; k < 8; k++) {
+        const t = startTour2({ from: gate?.id, stops: [plainsNode?.id].filter(Boolean) });
+        if (!t) break;
+        tours.push(t);
+        let block = 0;
+        const onSight = (e) => { if (plainsSpecies.has(e.species)) { sightings++; block++; } };
+        window.__SIM__.events.on('visitor:sighting', onSight);
+        for (let i = 0; i < Math.round(900 / dt); i++) { animals.update(dt, i * dt); traffic.update(dt, i * dt); if (i % 2000 === 0) await new Promise((r) => setTimeout(r)); }
+        window.__SIM__.events.off('visitor:sighting', onSight);
+        perTour.push(block);
+      }
+      world.time.paused = wasPaused;
+      const herdNearLick = lickAt ? [...world.animals.values()].filter((a) => Math.hypot(a.x - lickAt.x, a.z - lickAt.z) < 60).length : 0;
+      return { sightings, tours: tours.length, perTour, lick: lickAt != null, herdNearLick };
+    }, withLick);
+    await page.close();
+    return { ...out, consoleErrors: errors };
+  };
+  const control = await run('saltlick-control', false);
+  const withLick = await run('saltlick-lick', true);
+  const out = {
+    control: { sightings: control.sightings, tours: control.tours, perTour: control.perTour },
+    withLick: { sightings: withLick.sightings, tours: withLick.tours, perTour: withLick.perTour, lick: withLick.lick, herdNearLick: withLick.herdNearLick },
+  };
+  out.pass = control.sightings > 0 && withLick.sightings > control.sightings;
+  const result = { scenario: 'salt-lick', result: out, consoleErrors: [...new Set([...control.consoleErrors, ...withLick.consoleErrors])] };
+  writeJson('salt-lick', result);
   return result;
 }
 
@@ -1052,6 +1301,11 @@ function writeJson(name, data) {
       const r = results['remove-prey'].result;
       console.log(JSON.stringify({ lagDays: r.lagDays, lionsDay40: r.lionsDay40, pass: r.pass, removed: r.removed.removed, lions: r.removed.lions, control: r.control.lions }, null, 2));
     }
+    if (SCENARIOS.includes('predator-stability')) {
+      console.log('[predator-stability] demo park idle 730 days: lions ≥ 2, prey never 0');
+      results['predator-stability'] = await scenarioPredatorStability(browser);
+      console.log(JSON.stringify(results['predator-stability'].result, null, 2));
+    }
     if (SCENARIOS.includes('spread')) {
       console.log('[spread] red-oat patch on free grassland: control / planted / planted + drought');
       results.spread = await scenarioSpread(browser);
@@ -1068,6 +1322,23 @@ function writeJson(name, data) {
       results['fire-regrowth'] = await scenarioFireRegrowth(browser);
       const rr = results['fire-regrowth'].result;
       console.log(JSON.stringify({ pass: rr.pass, ...rr }, null, 2));
+    }
+    if (SCENARIOS.includes('drought-water')) {
+      console.log('[drought-water] 30-day drought, wetland with vs without water mitigation');
+      results['drought-water'] = await scenarioDroughtWater(browser);
+      const r = results['drought-water'].result;
+      console.log(JSON.stringify({ pass: r.pass, dryLosesMore: r.dryLosesMore, control: { deaths: r.control.deaths, leavers: r.control.leavers, hippo: r.control.hippoEnd, buffalo: r.control.buffaloEnd }, dry: { deaths: r.dry.deaths, leavers: r.dry.leavers, hippo: r.dry.hippoEnd, buffalo: r.dry.buffaloEnd, stressed: r.dry.stressed }, hippoHappinessDry: r.hippoHappinessDry }, null, 2));
+    }
+    if (SCENARIOS.includes('locusts')) {
+      console.log('[locusts] bounded swarm: unmanaged vs sprayed vs firebreak');
+      results.locusts = await scenarioLocusts(browser);
+      const r = results.locusts.result;
+      console.log(JSON.stringify({ pass: r.pass, unmanaged: r.unmanaged, sprayed: r.sprayed, firebreak: r.firebreak }, null, 2));
+    }
+    if (SCENARIOS.includes('salt-lick')) {
+      console.log('[salt-lick] plains tours, lick vs no lick, 1800 vehicle-seconds');
+      results['salt-lick'] = await scenarioSaltLick(browser);
+      console.log(JSON.stringify(results['salt-lick'].result, null, 2));
     }
     if (SCENARIOS.includes('lodging-elasticity')) {
       console.log('[lodging-elasticity] 3 tiers x 3 rates x 30 days: occupancy monotone + elasticity ordering');

@@ -4,6 +4,8 @@
 import { PLANTS, PLANT_INDEX } from '../../core/Plants.js';
 
 export const presets = {
+  saltlick: { camera: { target: [0, 0], distance: 55, pitch: 18, yaw: 30 }, tod: 16,
+    description: 'a salt lick in the plains habitat (Wave P5): trampled bare patch, mineral block, herds drawn to it' },
   overview: {
     camera: { target: [120, 300], distance: 340, pitch: 20, yaw: 205 }, tod: 16.5,
     description: 'Acacia savannah at 16:30 — flat-topped umbrella thorns scattered across a golden grass plain, groves thickening toward the river, haze on the horizon',
@@ -207,6 +209,18 @@ export async function stage(ctx, presetName) {
     props.place('log', cx - 2.0, cz - 6.5, { scale: 1.1, rotY: 0.6 });
     props.place('boulder', cx + 9.0, cz + 6.0, { scale: 1.1 });
     props.place('acacia', cx - 16, cz - 15, { scale: 1.0 });
+  }
+
+  if (presetName === 'saltlick') {
+    // Wave P5: place a lick at the origin through the simulation's own API (props renders
+    // world.saltLicks — it never writes them), and clear the scatter so the trampled patch reads
+    const sim = ctx.modules.get('simulation');
+    try { sim?.placeSaltLick?.(0, 0); } catch {}
+    props.clear({ x0: -14, z0: -14, x1: 14, z1: 14 });
+    props.place('shrub', 15.5, 6.0, { scale: 1.0 });
+    props.place('boulder', -16.0, -9.0, { scale: 0.9 });
+    props.place('acacia', 22, -18, { scale: 0.95 });
+    presets.saltlick.camera.target = [0, 0];
   }
 
   if (presetName === 'kopje') {

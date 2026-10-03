@@ -124,8 +124,17 @@ const api = {
   getLodging: () => sim?.getLodging() ?? null,
   /** Village trust 0..1 (Wave P4) — a lagged memory of layoffs (also report.villageTrust). */
   getVillageTrust: () => sim?.getVillageTrust() ?? 0.6,
+  /** Wave P5: the locust manager (stats + eatenTotal counters; read-only use). */
+  get locusts() { return sim?.locusts ?? null; },
   /** Today's advisor messages (Wave P4): [{advisor, level, key, text, since}] — pure data. */
   getAdvice: () => sim?.getAdvice() ?? [],
+
+  /** Wave P5: place a salt lick inside a habitat (→ {ok, id, cost}); removeSaltLick(id) → bool. */
+  placeSaltLick: (x, z) => sim?.placeSaltLick(x, z) ?? { ok: false, id: null, cost: 0 },
+  removeSaltLick: (id) => sim?.removeSaltLick(id) ?? false,
+  listSaltLicks: () => sim?.listSaltLicks() ?? [],
+  /** Wave P5: insecticide over a disc (swarms inside lose 80% density; $180/ha via spend). */
+  sprayLocusts: (x, z, radius = 48) => sim?.sprayLocusts(x, z, radius) ?? { ok: false, swarms: 0, ha: 0, cost: 0 },
   /** { [plantId]: cover 0..1 } of the 16 m vegetation cell at world (x, z). */
   getVegetation: (x, z) => sim?.getVegetation(x, z) ?? null,
   /** Per species in a habitat: { n, food, need, perAnimal, capacity, foodCapacity, spaceCapacity }. */

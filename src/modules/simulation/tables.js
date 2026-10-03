@@ -17,18 +17,18 @@
 // still caps growth at carrying capacity, and a full 90 days of growth stays inside the feed bill
 // (test.mjs: "a well-designed park makes money"). Births per animal per day at FULL happiness = breed.
 export const SPECIES = Object.freeze({
-  elephant:   { diet: 'mixed',    rarity: 0.90, visibility: 1.00, herd: 8,  space: 5000,  prefs: { grass: 0.50, trees: 0.60, water: 0.80, roughness: 0.20, cover: 0.30 }, predatorTolerance: 0.90, breed: 0.0020, lifespan: 60 * 365, feed: 60, vet: 8, price: 12000, nocturnal: 0.30 },
-  giraffe:    { diet: 'browser',  rarity: 0.80, visibility: 0.95, herd: 6,  space: 3500,  prefs: { grass: 0.40, trees: 0.80, water: 0.30, roughness: 0.15, cover: 0.30 }, predatorTolerance: 0.60, breed: 0.0040, lifespan: 25 * 365, feed: 30, vet: 5, price: 6000,  nocturnal: 0.20 },
-  zebra:      { diet: 'grazer',   rarity: 0.50, visibility: 0.80, herd: 12, space: 1200,  prefs: { grass: 0.85, trees: 0.20, water: 0.60, roughness: 0.15, cover: 0.15 }, predatorTolerance: 0.30, breed: 0.0070, lifespan: 20 * 365, feed: 15, vet: 3, price: 1500, nocturnal: 0.20 },
-  wildebeest: { diet: 'grazer',   rarity: 0.40, visibility: 0.75, herd: 20, space: 900,   prefs: { grass: 0.90, trees: 0.15, water: 0.60, roughness: 0.10, cover: 0.10 }, predatorTolerance: 0.35, breed: 0.0080, lifespan: 18 * 365, feed: 14, vet: 3, price: 1000, nocturnal: 0.25 },
-  buffalo:    { diet: 'grazer',   rarity: 0.55, visibility: 0.80, herd: 15, space: 1500,  prefs: { grass: 0.80, trees: 0.30, water: 0.80, roughness: 0.20, cover: 0.30 }, predatorTolerance: 0.60, breed: 0.0055, lifespan: 20 * 365, feed: 22, vet: 4, price: 2500, nocturnal: 0.30 },
-  lion:       { diet: 'predator', rarity: 0.95, visibility: 0.60, herd: 6,  space: 9000,  prefs: { grass: 0.50, trees: 0.40, water: 0.40, roughness: 0.30, cover: 0.50 }, predatorTolerance: 1.00, breed: 0.0040, lifespan: 15 * 365, feed: 45, vet: 7, price: 9000,  nocturnal: 0.50 },
-  cheetah:    { diet: 'predator', rarity: 0.85, visibility: 0.50, herd: 2,  space: 12000, prefs: { grass: 0.70, trees: 0.20, water: 0.30, roughness: 0.10, cover: 0.30 }, predatorTolerance: 1.00, breed: 0.0030, lifespan: 12 * 365, feed: 30, vet: 6, price: 8000,  nocturnal: 0.10 },
-  hippo:      { diet: 'grazer',   rarity: 0.70, visibility: 0.70, herd: 8,  space: 1000,  prefs: { grass: 0.60, trees: 0.20, water: 1.00, roughness: 0.05, cover: 0.20 }, predatorTolerance: 0.90, breed: 0.0040, lifespan: 40 * 365, feed: 40, vet: 6, price: 7000,  nocturnal: 0.60 },
-  rhino:      { diet: 'grazer',   rarity: 0.95, visibility: 0.85, herd: 3,  space: 5000,  prefs: { grass: 0.70, trees: 0.40, water: 0.60, roughness: 0.30, cover: 0.40 }, predatorTolerance: 0.80, breed: 0.0020, lifespan: 40 * 365, feed: 45, vet: 8, price: 15000, nocturnal: 0.30 },
-  warthog:    { diet: 'mixed',    rarity: 0.30, visibility: 0.60, herd: 5,  space: 600,   prefs: { grass: 0.70, trees: 0.30, water: 0.40, roughness: 0.20, cover: 0.40 }, predatorTolerance: 0.30, breed: 0.0110, lifespan: 12 * 365, feed: 8,  vet: 2, price: 400,   nocturnal: 0.10 },
-  ostrich:    { diet: 'mixed',    rarity: 0.50, visibility: 0.85, herd: 8,  space: 1200,  prefs: { grass: 0.70, trees: 0.10, water: 0.20, roughness: 0.10, cover: 0.10 }, predatorTolerance: 0.40, breed: 0.0080, lifespan: 35 * 365, feed: 10, vet: 2, price: 900,   nocturnal: 0.10 },
-  impala:     { diet: 'browser',  rarity: 0.35, visibility: 0.70, herd: 25, space: 500,   prefs: { grass: 0.60, trees: 0.50, water: 0.50, roughness: 0.20, cover: 0.40 }, predatorTolerance: 0.25, breed: 0.0100, lifespan: 12 * 365, feed: 7,  vet: 2, price: 500,   nocturnal: 0.15 },
+  elephant:   { diet: 'mixed',     rainfall: 'medium',rarity: 0.90, visibility: 1.00, herd: 8,  space: 5000,  prefs: { grass: 0.50, trees: 0.60, water: 0.80, roughness: 0.20, cover: 0.30 }, predatorTolerance: 0.90, breed: 0.0020, lifespan: 60 * 365, feed: 60, vet: 8, price: 12000, nocturnal: 0.30 },
+  giraffe:    { diet: 'browser',   rainfall: 'low',rarity: 0.80, visibility: 0.95, herd: 6,  space: 3500,  prefs: { grass: 0.40, trees: 0.80, water: 0.30, roughness: 0.15, cover: 0.30 }, predatorTolerance: 0.60, breed: 0.0040, lifespan: 25 * 365, feed: 30, vet: 5, price: 6000,  nocturnal: 0.20 },
+  zebra:      { diet: 'grazer',    rainfall: 'medium',rarity: 0.50, visibility: 0.80, herd: 12, space: 1200,  prefs: { grass: 0.85, trees: 0.20, water: 0.60, roughness: 0.15, cover: 0.15 }, predatorTolerance: 0.30, breed: 0.0070, lifespan: 20 * 365, feed: 15, vet: 3, price: 1500, nocturnal: 0.20 },
+  wildebeest: { diet: 'grazer',    rainfall: 'medium',rarity: 0.40, visibility: 0.75, herd: 20, space: 900,   prefs: { grass: 0.90, trees: 0.15, water: 0.60, roughness: 0.10, cover: 0.10 }, predatorTolerance: 0.35, breed: 0.0080, lifespan: 18 * 365, feed: 14, vet: 3, price: 1000, nocturnal: 0.25 },
+  buffalo:    { diet: 'grazer',    rainfall: 'high',rarity: 0.55, visibility: 0.80, herd: 15, space: 1500,  prefs: { grass: 0.80, trees: 0.30, water: 0.80, roughness: 0.20, cover: 0.30 }, predatorTolerance: 0.60, breed: 0.0055, lifespan: 20 * 365, feed: 22, vet: 4, price: 2500, nocturnal: 0.30 },
+  lion:       { diet: 'predator',  rainfall: 'medium',rarity: 0.95, visibility: 0.60, herd: 6,  space: 9000,  prefs: { grass: 0.50, trees: 0.40, water: 0.40, roughness: 0.30, cover: 0.50 }, predatorTolerance: 1.00, breed: 0.0040, lifespan: 15 * 365, feed: 45, vet: 7, price: 9000,  nocturnal: 0.50 },
+  cheetah:    { diet: 'predator',  rainfall: 'low',rarity: 0.85, visibility: 0.50, herd: 2,  space: 12000, prefs: { grass: 0.70, trees: 0.20, water: 0.30, roughness: 0.10, cover: 0.30 }, predatorTolerance: 1.00, breed: 0.0030, lifespan: 12 * 365, feed: 30, vet: 6, price: 8000,  nocturnal: 0.10 },
+  hippo:      { diet: 'grazer',    rainfall: 'high',rarity: 0.70, visibility: 0.70, herd: 8,  space: 1000,  prefs: { grass: 0.60, trees: 0.20, water: 1.00, roughness: 0.05, cover: 0.20 }, predatorTolerance: 0.90, breed: 0.0040, lifespan: 40 * 365, feed: 40, vet: 6, price: 7000,  nocturnal: 0.60 },
+  rhino:      { diet: 'grazer',    rainfall: 'medium',rarity: 0.95, visibility: 0.85, herd: 3,  space: 5000,  prefs: { grass: 0.70, trees: 0.40, water: 0.60, roughness: 0.30, cover: 0.40 }, predatorTolerance: 0.80, breed: 0.0020, lifespan: 40 * 365, feed: 45, vet: 8, price: 15000, nocturnal: 0.30 },
+  warthog:    { diet: 'mixed',     rainfall: 'low',rarity: 0.30, visibility: 0.60, herd: 5,  space: 600,   prefs: { grass: 0.70, trees: 0.30, water: 0.40, roughness: 0.20, cover: 0.40 }, predatorTolerance: 0.30, breed: 0.0110, lifespan: 12 * 365, feed: 8,  vet: 2, price: 400,   nocturnal: 0.10 },
+  ostrich:    { diet: 'mixed',     rainfall: 'drought',rarity: 0.50, visibility: 0.85, herd: 8,  space: 1200,  prefs: { grass: 0.70, trees: 0.10, water: 0.20, roughness: 0.10, cover: 0.10 }, predatorTolerance: 0.40, breed: 0.0080, lifespan: 35 * 365, feed: 10, vet: 2, price: 900,   nocturnal: 0.10 },
+  impala:     { diet: 'browser',   rainfall: 'medium',rarity: 0.35, visibility: 0.70, herd: 25, space: 500,   prefs: { grass: 0.60, trees: 0.50, water: 0.50, roughness: 0.20, cover: 0.40 }, predatorTolerance: 0.25, breed: 0.0100, lifespan: 12 * 365, feed: 7,  vet: 2, price: 500,   nocturnal: 0.15 },
 });
 
 export const SPECIES_ORDER = Object.freeze(Object.keys(SPECIES));
@@ -101,6 +101,43 @@ export const TRUST = Object.freeze({
   poachK: 0.06,      // poachP += poachK × max(0, 0.5 − trust) — calibrated: trust 0 adds ~0.03/day
 });
 
+// ---------------------------------------------------------------- Wave P5: rainfall axis, locusts, salt licks
+
+/**
+ * Drought stress (docs/specs/p5-rainfall-locusts-licks.md §2-3): when the vegetation rain value
+ * puts a species' rainfallFit below 0.6, its daily happiness target drops by (0.6 − fit) × s and
+ * mortality rises by mort × the same term — both multiplied by (1 − 0.6 × waterAccess), so a
+ * habitat's measured water proximity mitigates (the demo's pump is the placeable lever).
+ * High-rainfall species are stressed first by construction. Calibrated on the drought-water harness.
+ */
+export const STRESS = Object.freeze({
+  fitFloor: 0.6,
+  s: 1.0,        // happiness-target drop per unit of shortfall (mitigated)
+  mort: 0.006,   // extra deaths/animal/day per unit of shortfall (mitigated)
+});
+
+/** Locusts (§4): swarm dynamics + player verbs. */
+export const LOCUSTS = Object.freeze({
+  outbreakP: 0.015,   // per-day seeded roll, first 20 days of a wet season following a drought
+  eatRate: 0.25,      // grass/shrub cover eaten per day × density (trees untouched)
+  drift: 8,           // metres/day the swarm centre moves with the weather wind
+  decay: 0.04,        // natural density loss per day
+  dieAt: 0.05,        // a swarm dies below this density
+  clearLoss: 0.3,     // density lost per day proportional to the cleared/burnt fraction of its disc
+  sprayCut: 0.8,      // sprayLocusts() cuts density by this share in the disc
+  sprayCost: 180,     // $/ha
+  budgetDefault: 400, // injectEvent default: cells a scripted swarm may eat (rule 8 bounding)
+  daysDefault: 12,    // injectEvent default lifetime
+});
+
+/** Salt licks (§5). */
+export const LICKS = Object.freeze({
+  cost: 3500,         // flat, via spend(…, 'saltlick')
+  radius: 10,
+  bonus: 0.03,        // happiness-target bonus per lick for grazer/mixed species in the habitat
+  bonusCap: 0.06,     // capped: two licks max out a habitat
+});
+
 /** Staff roles: reference daily wage and what one person covers. */
 export const STAFF = Object.freeze({
   ranger:      { wage: 130, label: 'Rangers',     per: 'habitat hectares', covers: 40 },   // one ranger patrols 40 ha
@@ -132,7 +169,10 @@ export const CONST = Object.freeze({
   migrationDays: 3,           // consecutive unhappy days before animals leave
   migrationShare: 0.20,       // share of a group that leaves per day once migrating
   unhappyMortality: 0.025,    // extra deaths/animal/day at happiness 0 (quadratic ramp below 0.55)
-  predationRate: 0.03,        // prey killed per predator per day when prey is available (a lion kills every ~33 days)
+  predationRate: 0.03,        // prey killed per predator per day at saturating prey (a lion kills every ~33 days)
+  preyPerPredatorHalf: 10,    // type-III half-saturation: prey per predator at which the kill rate is half
+                             // predationRate; below it the rate falls as ratio², leaving a prey refuge
+                             // (predator–prey stability fix — the flat rate hunted prey to 0 by construction)
   sightingK: 0.12,            // P(see species) = 1 - exp(-n * visibility * roadFactor * K)
   seasonLength: 90,           // days per season in the internal fallback calendar (dry, wet alternate)
   firebreakCost: 200,         // $/ha to bulldoze a firebreak stroke (Wave P2)

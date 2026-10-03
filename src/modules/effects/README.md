@@ -345,6 +345,31 @@ active front, measured). Verified on the real GPU: `tools/shots/nfog-after-fire-
 clusters with bloom halos over the scorched slope at 21.5 h. Gap: 8 pairs sample a 143-cell front,
 so big fires read as scattered clusters rather than a continuous wall of flame.
 
+## Locust swarms (Wave P5, 2026-10-01)
+
+New `locust` particle kind (KIND.locust = 6, next free after firesmoke): a speck in a flying swarm —
+jittery direction changes, holds a low band above the ground (spawn y = ground + 3 m ± 1.5 m, shader
+adds a slow rise that flattens with age), dark sandy (0.42, 0.35, 0.20), not self-lit — a swarm at
+night is a moonlit shadow, which the round-9 ambient floor carries. `updateLocustSwarms(t)` reads
+`world.locusts` (simulation owns writes) and pins up to 4 emitters, one per swarm, roaming the disc on
+a Lissajous so the cloud isn't static. **Density scales with swarm area × density**: live specks
+target `min(1300, max(280, radius² × 0.42 × (0.35 + 0.65·density)))` — a dense 56 m swarm holds
+~1300 specks so it reads at the spec's 150 m; four max swarms × 1300 fit the 5692 dynamic slots left
+after the ambient motes. A one-time 600-speck burst on first positioning means a fresh swarm exists
+immediately instead of after warm-up frames. One emitter per swarm, all drawn by the single
+instanced particle mesh — 1 draw call, no extra draw over ambient.
+
+Two calibration notes. (1) The first version (rate 30 + 110·density from one point, ±5 m jitter)
+put ~220 specks in a 15 m blob inside a 112 m disc — invisible at 90 m in the day screenshot; the
+area-scaled target + per-emitter jitter (radius × 1.7, horizontal only — y jitter stays ±1.5 m) is
+the fix. (2) **Real bug found while verifying**: a staged swarm was invisible even with 600 alive
+particles at the right positions — the 1-float instanced `aKind` attribute's narrow update ranges
+never reached the GPU (pos/vel/info ranged uploads work), so the kind-6 slots kept their
+constructor-time kind 0 and rendered in the ambient branch, wrapped into the camera-follow box.
+`_flush()` now re-uploads the kind buffer full-range (32 KB/frame) — proven by A/B: a full-range
+re-upload of the *unchanged* buffer alone made the swarm appear at its correct positions. Verified
+day (14 h) and night (21.5 h): `tools/shots/p5-swarm-14.png`, `p5-swarm-21_5.png`.
+
 ## Known gaps (honest)
 
 * **Effects' own showcase test-yard costs far more draw calls (157-197) than the pipeline it exists to

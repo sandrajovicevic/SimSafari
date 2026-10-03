@@ -64,6 +64,13 @@ export function defaultCategories(s) {
       { id: 'water', name: 'Water drop', icon: 'water', tool: 'fire.water', options: { mode: 'water' }, cost: '$120/ha', tag: 'click', description: 'Click to wet a disc: cells cannot ignite or carry fire for about a week. [ ] resize.' },
     ] });
   }
+  // wildlife enrichment (Wave P5) — only when the simulation has the verbs
+  if (get('simulation')?.placeSaltLick) {
+    cats.push({ id: 'wildlife', name: 'Wildlife', icon: 'paw', key: '9', hint: 'Salt lick: click inside a habitat ($3,500) — grazers gather there. Spray: click over a locust swarm ($180/ha).', items: [
+      { id: 'saltlick', name: 'Salt lick', icon: 'habitat', tool: 'wildlife.saltlick', options: { mode: 'saltlick' }, cost: '$3,500', tag: 'click', description: 'Place a mineral lick on a trampled patch: grazers and mixed feeders gather (a small happiness bonus), and tours can plan a stop.' },
+      { id: 'spray', name: 'Locust spray', icon: 'spray', tool: 'wildlife.spray', options: { mode: 'spray' }, cost: '$180/ha', tag: 'click', description: 'Insecticide over a disc: locust swarms inside lose 80% of their density. [ ] resize.' },
+    ] });
+  }
   // plants (Wave P1 food web) — only when the simulation can plant
   if (get('simulation')?.plant) {
     const RAIN = { drought: 'drought-hardy', low: 'dry', medium: 'moderate rain', high: 'wet ground' };

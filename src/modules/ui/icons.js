@@ -79,6 +79,7 @@ const P = {
   dry: '<path d="M12 3.5v6M8 6.5l8 0M6 20c0-3 2.5-5 6-5s6 2 6 5"/><path d="M4 20h16"/>',
   wet: '<path d="M8 15.5c-2 3-2 5.5 0 5.5s2-2.5 0-5.5zM16 15.5c-2 3-2 5.5 0 5.5s2-2.5 0-5.5z"/><path d="M7 12.5h9.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 5.6 6.3 3.2 3.2 0 0 0 7 12.5z"/>',
   species: '<path d="M4 20l3-7 2 2 3-5 2 3 3-6 3 13z"/>',
+  spray: '<path d="M9 9.5h6l-1.2 10.5h-3.6z"/><path d="M10.2 6.8V4.6a1.8 1.8 0 0 1 3.6 0v2.2"/><path d="M16.5 5.5l2.6-1.6M17.5 8h3M16.5 10.5l2.6 1.6" stroke-width="1.2"/>',
   target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/>',
   trophy: '<path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 5H4.5a3 3 0 0 0 3 4M17 5h2.5a3 3 0 0 1-3 4"/><path d="M12 14v3M8.5 20.5h7M9.5 17h5"/>' ,
   ruler: '<path d="M3.5 15.5l12-12 5 5-12 12z"/><path d="M8 11l1.5 1.5M10.5 8.5L12 10M13 6l1.5 1.5"/>',
