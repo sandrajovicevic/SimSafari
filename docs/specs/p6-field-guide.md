@@ -1,5 +1,33 @@
 # Wave P6 — Field guide + trivia (contract)
 
+Shipped 2026-10-03 on `claude/p6-guide`. Below the fold is the original contract; measured results
+here. Pure presentation, exactly as scoped — **no simulation change**: the full harness on this
+branch is byte-identical to main (`baseline` −$2,883/day @ $25, `determinism.identical` true; the
+224 sim tests unchanged), and the guide's draw-call cost is **zero, measured in-page**: 378 draws
+before opening the panel, 378 open, 378 closed.
+
+* **animals** — `guide.js` + `guideEntry(species)` on the api: 12 entries (leopard none), each an
+  original 60–120-word summary (all landed in-band first pass), 3–5 facts, latin binomial, social
+  note, and prey/predator lists that mirror `DIET` in `simulation/tables.js` **both directions**
+  (a test cross-checks lion/cheetah prey lists and every prey species' hunters). Attractors come
+  live from `core/Plants.js`. 124 node checks green (`animals/guide.test.mjs`).
+* **ui** — `guide.js` panel (top-bar button, **B** key, and a Guide action on any animal's side
+  panel): Species | Plants | Quiz tabs, two-pane layout. The live block reads only existing sim
+  APIs (count, mean happiness, best habitat quality from the day's report). Plant text lives in
+  ui (`guideData.js`) over core/Plants.js data — 10 entries, same length rules. Quiz: 10 questions
+  from a forked `Rng('quiz:<seed>')`, **answer keys derived from the data at build time** (a test
+  re-derives every key across 4 seeds); same seed → identical quiz; no park effect. Degradation:
+  without the animals module (ui's own showcase) the quiz deals plant-only questions — documented,
+  tested. 60 node checks green (`ui/guide.test.mjs`).
+* **Portraits**: not shipped (optional per the contract — text + icons carry the pages).
+* Screenshots, all verified: `p6-guide-animal-dom.png` (lion page, live block populated, Hunts
+  chips), `p6-guide-plant-dom.png` (marula/*Sclerocarya birrea*), `p6-guide-quiz-dom.png`
+  (Question 1 of 10, 4 options, one picked), `p6-game-closed.png` (panel closed — the draw-call
+  proof above). Verification note: the panel's first "visual check" was a hallucinated confirmation
+  from a leading prompt while the eval had actually thrown — the re-verification uses neutral
+  describe-first prompts plus DOM-side assertions (`.guide` present, latin text read back), and the
+  quiz/animal pages were re-shot that way.
+
 Agenda: `docs/ideas-roadmap.md` Wave P6. Pure presentation: **no simulation behaviour changes**.
 Read `ideas-wave-rules.md` first. Branch: `claude/p6-guide`.
 

@@ -103,6 +103,7 @@ every skin is baked from GLSL, every motion is evaluated procedurally each frame
 | `get(id)` | `animal \| null` | |
 | `count(species?)` | `number` | |
 | `speciesInfo(id)` | `object \| null` | catalogue entry without the `body` build data |
+| `guideEntry(species)` | `entry \| null` | Wave P6 field guide: `{ name, latin, summary (60–120 words), facts[3–5], diet, social, prey, predators, attracts, herd, lifespanYears }` — pure data from `guide.js`; leopard and unknown ids → null. `guideIds()` lists the 12 in table order |
 | `allSpecies()` | `string[]` | 12 ids |
 | `getHappiness(id)` | `number` | 0–1 |
 | `setHabitatQualityFn(fn)` | `void` | `fn(herdId, species) → 0..1`; auto-wired to `zoning.getHabitatQuality` when present |
@@ -253,6 +254,19 @@ pass adds one instanced draw call for the whole module.
 
 Budget position: draw calls are far inside the ≤1500 total / 200 per-module budget everywhere.
 **Triangles at `overview` (2.60 M frame total) are over the module spec's 1.5 M** — see Known gaps.
+
+## Field guide entries (Wave P6, 2026-10-03)
+
+`guide.js` owns the species side of the field guide (docs/specs/p6-field-guide.md): 12 entries —
+one per species in the simulation table, **leopard none** (not in the park). Every word is ours;
+the contract's content rule forbids copying or close paraphrase from the original game's guide,
+Wikipedia or any published source, and no page carries numbers that contradict the simulation:
+`herd`, `lifespanYears` and `diet` are repeated in the data and cross-checked against
+`simulation/tables.js` by `guide.test.mjs`, which also proves the prey/predator lists mirror
+`DIET` in **both** directions (lion/cheetah menus, and every prey species' hunters). Attractors
+(`attracts`) are computed live from `core/Plants.js`, never duplicated. Summaries all landed in
+the 60–120-word band on the first pass; 124 checks green. The ui reads this only through the api
+(`guideEntry`, `guideIds`) — no cross-module imports at runtime.
 
 ## Known gaps (honest)
 

@@ -115,6 +115,8 @@ table), `environment` (weather readout), `terrain` (minimap sampling).
 | `objectives` | 15 | objectives panel mid-mission: progress, days left, biodiversity strip (Wave P3) |
 | `objectives-won` | 15 | objectives panel on a won mission: stars, result rows, toast (Wave P3) |
 | `night` | 22 | HUD legibility on the night grade |
+| `guide` | 15 | field guide on a plant page (Wave P6 — plants tab is fully ui-owned, so the preset works without the animals module) |
+| `guide-quiz` | 15 | field-guide quiz mid-way (Wave P6): question 3 of 10, one option picked |
 
 Use `node tools/screenshot.mjs --module ui --preset <p> --dom` — the DOM surfaces only appear in
 full-page (`--dom`) captures.
@@ -156,6 +158,28 @@ here): `tools`/`roads` throw while `building.place` is the active tool (`toolbar
   the same diurnal formula `environment`'s own `tick()` uses, instead of only when `environment` is
   absent — `environment`'s real model converges too slowly (a per-tick lerp) to move visibly across a
   showcase capture's few settle frames, so the readout sat near its startup default regardless of tod.
+
+## Field guide (Wave P6, 2026-10-03)
+
+`guide.js` — the guide panel (docs/specs/p6-field-guide.md): top-bar book button, **B** key, and a
+Guide action on any animal's side panel. Tabs Species | Plants | Quiz in a two-pane modal
+(`p6-guide-animal-dom.png` / `-plant-` / `-quiz-`). Data flows strictly through module boundaries:
+species text via the animals api `guideEntry` (ui never imports across modules), plant text in
+ui's own `guideData.js` over core/Plants.js data, live numbers from the simulation's existing
+`getReport()` (count, mean happiness, best habitat quality — no new sim reads, no sim changes).
+**Zero render cost, measured in-page**: 378 draws before opening / open / closed (DOM only, the
+closed panel costs nothing by construction). Quiz (`quiz.js`): 10 questions from a forked
+`Rng('quiz:<seed>')`; **options and keys are derived from the guide data at build time** — the test
+suite re-derives every key across four seeds, so a wrong entry can only make a hard quiz, never a
+wrong one. Same park seed deals the same hand; nothing about the park changes. Without the animals
+module (ui's own showcase) the quiz degrades to plant-only questions — documented and tested.
+
+Verification honesty note: the panel's first "visual check" was a hallucinated confirmation — the
+capture eval had thrown (`__SIM__.api` is not the ui api) yet a leading prompt got a full
+"description" of the never-opened panel. Re-verified with DOM-side assertions (`.guide` present,
+latin read back from the DOM) plus neutral describe-first image prompts; the quiz/animal pages
+were re-shot that way. Lesson recorded for future waves: assert the staging worked before asking
+a vision model what it sees.
 
 ## Known gaps (honest)
 
