@@ -28,6 +28,17 @@ export const presets = {
     camera: { target: [0, 0], distance: 240, pitch: 26, yaw: 35 }, tod: 17.5,
     description: 'Same view and time as overview with the whole pipeline bypassed (direct MSAA render, no particles) for A/B comparison.',
   },
+  locusts: {
+    // Wave P5 capture recipe (verifier ask, 2026-10-03): one dense swarm (r 56 m, density 1) staged
+    // straight into world.locusts — standalone, nobody else writes it — viewed from ~150 m, the
+    // distance the spec says it must read at. Reproduce: --module effects --preset locusts.
+    camera: { target: [0, -40], distance: 150, pitch: 14, yaw: 20 }, tod: 14,
+    description: 'Wave P5 locust swarm at 14:00 seen from ~150 m: a dense airborne cloud of dark sandy specks hanging low over a 56 m disc.',
+  },
+  'locusts-night': {
+    camera: { target: [0, -40], distance: 150, pitch: 14, yaw: 20 }, tod: 21.5,
+    description: 'The same swarm at 21:30: specks must read as a dark band against the moonlit ground and sky, never as glowing points.',
+  },
   calibrate: {
     // Near top-down, 14 m up: the 80x80 m neutral grey card below fills every pixel of the frame, so
     // any mean-luminance difference between pipeline-on and bypass is chain gain, not scene content.
@@ -344,6 +355,11 @@ export async function stage(ctx, presetName, api, group) {
   // exposure only when environment is not loaded (updateStage drives it from the sun elevation).
   ST.ownsExposure = !ctx.modules.has('environment');
   // preset-specific state
+  // locust presets stage one swarm; every other preset clears it (sessions reuse the world)
+  const locustPreset = presetName === 'locusts' || presetName === 'locusts-night';
+  if (locustPreset || ctx.world.locusts?.swarms?.length) {
+    ctx.world.locusts = { swarms: locustPreset ? [{ id: 1, x: 0, z: -40, radius: 56, density: 1 }] : [], version: (ctx.world.locusts?.version ?? 0) + 1 };
+  }
   if (presetName === 'heat') {
     ctx.world.weather.temperature = 37;   // environment owns weather; in this standalone showcase nobody else writes it
     api.setAmbientDust(0.1);

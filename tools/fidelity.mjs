@@ -1212,7 +1212,10 @@ async function scenarioSaltLick(browser) {
     control: { sightings: control.sightings, tours: control.tours, perTour: control.perTour },
     withLick: { sightings: withLick.sightings, tours: withLick.tours, perTour: withLick.perTour, lick: withLick.lick, herdNearLick: withLick.herdNearLick },
   };
-  out.pass = control.sightings > 0 && withLick.sightings > control.sightings;
+  // margin, not a bare ">" (verifier, 2026-10-03): the same seed measured 22 vs 17 and 18 vs 5 on two
+  // machines, so a one-sighting lead is noise. Pass needs >= 25 % more AND >= 4 more sightings.
+  out.margin = { need: Math.max(Math.ceil(control.sightings * 1.25), control.sightings + 4), got: withLick.sightings };
+  out.pass = control.sightings > 0 && withLick.sightings >= out.margin.need;
   const result = { scenario: 'salt-lick', result: out, consoleErrors: [...new Set([...control.consoleErrors, ...withLick.consoleErrors])] };
   writeJson('salt-lick', result);
   return result;

@@ -412,3 +412,18 @@ A/B on that preset (warmth 0 / 0.18 / 0.35) showed the grade carried about a thi
 is the low sun and its forward in-scatter, which stays. 0.18 keeps the warm mood while whites, the pool
 and the canopy hold their own colour. `savannah/hero` (17.4 h, sun behind camera) is visually unchanged;
 noon is unaffected (neutral sun → tint ≈ 1).
+
+## Locust look + capture recipe (verifier follow-up, 2026-10-03)
+
+* **Look.** The specks were lit like dust (ambient + 3.2·sunUp sun radiance × (0.45 + 1.8·forward
+  lobe)): cream glowing motes by day, pale points under the ~12× night exposure. A diagnostic red tint
+  proved they render through the locust branch (no GPU upload bug), so the fix is lighting only: flat
+  `ambient·0.6 + sun·0.14`, albedo (0.16, 0.13, 0.08). Verified in the full game: dark insect specks over
+  the grass at 14 h from 130 m; no glowing points at 21.5 h (`loc-game-14.png`, `loc-game-21.png`).
+* **Recipe.** `node tools/screenshot.mjs --module effects --preset locusts --slow` (or `locusts-night`),
+  or in the full game: `--game --tod 14 --slow --eval` injecting
+  `injectEvent('locusts', {x:-170, z:-90, radius:56, days:30, budget:4000, density:1})` then
+  `__SIM__.app.rig.lookAt(-170, -90, 130, 14, 200)`. **`--slow` is required**: the default fast-settle
+  advances the simulation without rendering, so the 2.4 s specks spawned during settle expire before the
+  4 real frames and the swarm looks absent. Swarm state is `world.locusts.swarms` (an array; there is no
+  `.size`).
