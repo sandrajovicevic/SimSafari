@@ -101,7 +101,8 @@ void main() {
         cos(age * 8.0 + seed * 23.0) * 0.5);
       radius = size * (1.0 - 0.3 * t);
       alpha = smoothstep(0.0, 0.05, t) * (1.0 - t) * 0.95;
-      albedo = vec3(0.42, 0.35, 0.20);
+      albedo = vec3(0.16, 0.13, 0.08);
+      selfLit = -2.0; // flat, dark lighting below — never the dust glow
       rot += age * 7.0;
     } else {
       // flame (Wave P2): fast rise, flicker, shrink; self-lit hot colour (bloom catches it at night)
@@ -123,7 +124,12 @@ void main() {
   float fwd = pow(max(dot(viewDir, uSunDir), 0.0), 6.0);
   vec3 light = uAmbient + uSunColor * (0.45 + 1.8 * fwd);
   if (selfLit > 0.5) light = vec3(1.0); // flames emit their own light
-  else if (selfLit < -0.5) {
+  else if (selfLit < -1.5) {
+    // locust (verifier 2026-10-03): lit like dust, the specks read as cream glowing motes by day and
+    // white points at night. Insects are opaque silhouettes: a little ambient, a fraction of the sun,
+    // no forward-scatter lobe — dark against the golden grass, a dark band against moonlit ground.
+    light = uAmbient * 0.6 + uSunColor * 0.14;
+  } else if (selfLit < -0.5) {
     // fire smoke: flat-lit (ambient + a third of the sun) plus a fire-lit underside for the first metres
     float t2 = clamp(age / max(life, 0.001), 0.0, 1.0);
     // + fire-lit from below: strong near the flames, fading up the column (warm at night, not moon-blue)
