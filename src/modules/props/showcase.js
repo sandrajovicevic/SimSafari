@@ -215,7 +215,15 @@ export async function stage(ctx, presetName) {
     // Wave P5: place a lick at the origin through the simulation's own API (props renders
     // world.saltLicks — it never writes them), and clear the scatter so the trampled patch reads
     const sim = ctx.modules.get('simulation');
-    try { sim?.placeSaltLick?.(0, 0); } catch {}
+    let placed = false;
+    try { placed = !!sim?.placeSaltLick?.(0, 0)?.ok; } catch {}
+    // the props showcase loads no simulation (and has no habitats), so the call above is a no-op and
+    // this preset rendered no lick at all (verifier, 2026-10-03). Standalone, nobody else writes
+    // world.saltLicks — stage the lick directly, like other standalone presets stage weather.
+    if (!placed && ctx.world.saltLicks) {
+      ctx.world.saltLicks.set(1, { id: 1, x: 0, z: 0, radius: 10, strength: 1 });
+      ctx.events.emit('saltlick:changed', { id: 1 });
+    }
     props.clear({ x0: -14, z0: -14, x1: 14, z1: 14 });
     props.place('shrub', 15.5, 6.0, { scale: 1.0 });
     props.place('boulder', -16.0, -9.0, { scale: 0.9 });

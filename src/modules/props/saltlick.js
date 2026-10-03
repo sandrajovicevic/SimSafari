@@ -20,8 +20,9 @@ function discGeometry() {
 
 /** The lick itself: a rough rectangular mineral block tilted on a short timber stake. */
 function blockGeometry() {
-  const block = new THREE.BoxGeometry(0.5, 0.62, 0.34);
-  block.translate(0, 0.31, 0);
+  // 0.9 x 0.8 x 0.6 m (was 0.5 x 0.62 x 0.34: a nub at the preset's 55 m — verifier, 2026-10-03)
+  const block = new THREE.BoxGeometry(0.9, 0.8, 0.6);
+  block.translate(0, 0.4, 0);
   // weather the block: jitter every vertex a touch so it reads hewn, not extruded
   const pos = block.attributes.position;
   for (let i = 0; i < pos.count; i++) {
@@ -29,8 +30,8 @@ function blockGeometry() {
     pos.setXYZ(i, pos.getX(i) + (s - 0.5) * 0.05, pos.getY(i) + Math.cos(s * 9.0) * 0.02, pos.getZ(i) + (s - 0.5) * 0.04);
   }
   block.computeVertexNormals();
-  const stake = new THREE.CylinderGeometry(0.05, 0.06, 0.5, 6);
-  stake.translate(0, 0.25, 0);
+  const stake = new THREE.CylinderGeometry(0.07, 0.08, 0.6, 6);
+  stake.translate(0, 0.3, 0);
   // merge without a util dependency: stake as a second draw would break the ≤2 budget, so bake it
   // into the block geometry manually (both non-indexed, position+normal only)
   const a = block.toNonIndexed(), b = stake.toNonIndexed();
@@ -51,8 +52,11 @@ export class SaltLickRenderer {
     this.group.name = 'props-saltlicks';
     parent.add(this.group);
     // true colours (the sRGB pipeline is fixed — no compensation): pale trampled earth, ochre block
-    this.discMat = new THREE.MeshStandardMaterial({ color: 0x9d8f78, roughness: 1.0, metalness: 0.0 });
-    this.blockMat = new THREE.MeshStandardMaterial({ color: 0xb08954, roughness: 0.85, metalness: 0.0 });
+    // the disc sat 1 cm over uneven terrain, which poked through its middle (a crescent at 55 m):
+    // polygon offset + a small lift keep it on top. The block is pale grey-white like a real
+    // mineral block, so it reads against both the trampled earth and the golden grass.
+    this.discMat = new THREE.MeshStandardMaterial({ color: 0x9d8f78, roughness: 1.0, metalness: 0.0, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+    this.blockMat = new THREE.MeshStandardMaterial({ color: 0xd9d2c5, roughness: 0.8, metalness: 0.0 });
     this.discGeo = discGeometry();
     this.blockGeo = blockGeometry();
     this.discs = new THREE.InstancedMesh(this.discGeo, this.discMat, 16);
@@ -78,7 +82,7 @@ export class SaltLickRenderer {
     for (let i = 0; i < n; i++) {
       const l = licks[i];
       const y = this.world.getHeight ? this.world.getHeight(l.x, l.z) : 0;
-      this._v.set(l.x, y - 0.02, l.z);
+      this._v.set(l.x, y + 0.08, l.z);
       this._q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (l.x * 12.9898 + l.z * 78.233) % (Math.PI * 2));
       this._s.set(l.radius ?? 10, 1, l.radius ?? 10);
       this._m.compose(this._v, this._q, this._s);
