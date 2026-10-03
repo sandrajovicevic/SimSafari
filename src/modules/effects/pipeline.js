@@ -327,7 +327,10 @@ export class Pipeline {
     this.ctx = ctx; this.renderer = ctx.renderer; this.camera = ctx.camera; this.scene = ctx.scene; this.particles = particles;
     this.log = ctx.log;
     this.enabled = { pipeline: true, ao: true, bloom: true, haze: true, grade: true, vignette: true, grain: true, aa: true, particles: true };
-    this.grade = { exposure: 1, contrast: 1.06, saturation: 1.05, warmth: 0.35, lift: 0, vignette: 0.28, grain: 0.02, bloom: 0.18, floor: 1 };
+    // warmth 0.35 -> 0.18 (2026-10-02): the tint re-applies the sun colour to the WHOLE frame, on top of
+    // lighting that already carries it, so at golden hour shadows, whites and foliage all collapsed to one
+    // orange-sepia hue (park/lodge 17.5 h). Half strength keeps the warm cast; noon is unaffected (neutral sun).
+    this.grade = { exposure: 1, contrast: 1.06, saturation: 1.05, warmth: 0.18, lift: 0, vignette: 0.28, grain: 0.02, bloom: 0.18, floor: 1 };
     this.aoParams = { radius: 2.5, intensity: 1.0, scale: 1.2, thickness: 1.0 };
     this.bloomParams = { threshold: 1.0, knee: 0.5, mode: opts.bloomMode || 'mip' };
     this.haze = { strength: 0, near: 120, far: 650, amplitude: 3, height: 18, groundY: 0 };

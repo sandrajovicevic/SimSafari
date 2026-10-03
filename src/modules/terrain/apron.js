@@ -170,7 +170,8 @@ vec3 tAlbedo; float tRough; float tAo; vec3 tNormalW;
   // plains layer weights mirroring generate.js classifySample (grass / dryGrass / laterite dirt patches)
   // plus the splat's slope-driven dirt and rock so cut banks and cliff exits keep grading correctly
   float wGrass = smoothstep(0.50, 0.62, moist + 0.22 * pt);
-  float wDirt = smoothstep(0.36, 0.46, pt) * (1.0 - smoothstep(0.30, 0.45, moist)) * 0.8;
+  float lat = pt + 1.2 * fbm(wxz * (1.0 / 380.0) + vec2(11.9, 53.1), 2) + 0.06 * fbm(wxz * (1.0 / 24.0) + vec2(5.7, 19.3), 2); // generate.js laterite
+  float wDirt = smoothstep(0.63, 0.73, lat) * (1.0 - smoothstep(0.30, 0.45, moist)) * 0.8;
   float wRockS = smoothstep(0.10, 0.34, slope + 0.05 * (m3 - 0.5));
   float wDirtS = smoothstep(0.05, 0.16, slope) * (1.0 - wRockS);
   float keep = 1.0 - max(wRockS, wDirtS);
