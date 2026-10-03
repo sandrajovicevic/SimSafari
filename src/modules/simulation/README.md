@@ -434,8 +434,9 @@ capped at 0.06 (predators nothing); `reset()` clears them. Animals get a wander 
 in their habitat (60 % of retargets, ±2 m scatter, animals module — it never touches the ledger).
 The spec asked for an emergent sightings effect first; three designs measured too weak to separate
 from tour noise (with/without lick: 15/15, 19/20, 25/20 sightings per tour-hour), so the traffic
-sightline radius is ×1.5 at a lick (the spec's sanctioned fallback): **46 vs 38 sightings over 8
-fresh tours** (with-lick vs control; pre-merge calibration measured 44 vs 42 — tour-timing noise) —
+sightline fallback shipped — ×2 at a lick since 2026-10-02 (the ×1.5 was dead code; the predation
+branch proved it and re-measured: **22 vs 17 over 8 staggered kopje tours**, see the
+Predator–prey stability section and `docs/requests/p5.md` #4) —
 control > 0 (non-vacuity), effect in the expected direction. Measurement gotcha
 (the harness now encodes it): `animals.update` is pause-gated, so at `?speed=0` the settling phase
 must pump the clock or herds never move toward anything.

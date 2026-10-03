@@ -21,9 +21,11 @@ results here (full tables: the module READMEs' "Wave P5" sections).
 * **Salt licks** — habitat-gated placement ($3,500, radius 10 m), grazer/mixed happiness bonus
   0.03 per lick capped 0.06, wander bias in animals (0.6 of retargets, same-habitat, +60 m leash).
   The spec's emergent sightings route was tried three ways and measured too weak (15/15, 19/20,
-  25/20 with/without), so the sanctioned fallback shipped: traffic sightline ×1.5 at a lick.
-  Harness `salt-lick` PASS: **46 vs 38 sightings over 8 fresh tours** (with-lick vs control; the
-pre-merge calibration run measured a tighter 44 vs 42 — tour-timing noise, same pass), control > 0.
+  25/20 with/without), so the sanctioned fallback shipped: traffic sightline **×2** at a lick
+  (raised from ×1.5 on 2026-10-02 with the owner's OK — the ×1.5 turned out to be dead code; see
+  `docs/requests/p5.md` #4). Harness `salt-lick` PASS: **22 vs 17 sightings over 8 staggered
+  tours** in the kopje (the only habitat where the effect is positive; the count follows the
+  spec's "lick species" wording), control > 0.
 * **Visuals** — swarm cloud density scales with area × density (~1300 specks at radius 56 m,
   readable at the spec's 150 m; 1 draw call — the shared instanced particle mesh), day + night
   verified (`tools/shots/p5-swarm-14.png`, `p5-swarm-21_5.png`); salt lick readable at 55 m in ≤ 2

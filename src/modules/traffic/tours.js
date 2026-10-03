@@ -69,18 +69,26 @@ function lineOfSight(world, ax, az, ay, bx, bz, by, steps = 6) {
 function checkSighting(ctx, v) {
   const animals = ctx.modules.get('animals');
   if (!animals) return false;
-  const near = animals.nearest(v.x, v.z, SIGHT_RADIUS);
+  // candidates reach out to the lick-boosted sightline (120 m), not the base 60 m: with the pool
+  // pre-filtered to SIGHT_RADIUS the boost could never fire (dist ≤ 60 always passed the base
+  // check anyway) — that is why ×1.5 measured as parity with control in P5's staggered re-measure.
+  // No-lick rolls are unaffected: the radius test below still requires the nearest animal ≤ 60 m.
+  const near = animals.nearest(v.x, v.z, SIGHT_RADIUS * 2);
   if (!near || !near.length) return false;
   const a = near[0];
   let radius = SIGHT_RADIUS;
   // Wave P5 salt lick (docs/specs/p5-rainfall-locusts-licks.md): an animal at a mineral lick stands
   // in the open trampled patch and lingers — the emergent wander bias alone measured too weak to
   // move the sighting rate (15/15, 19/20, 25/20 across three designs), so the spec's fallback kicks
-  // in: a visitor's sightline reaches 1.5x as far onto a lick.
+  // in: a visitor's sightline reaches twice as far onto a lick. (×1.5 shipped in P5; raised to ×2
+  // 2026-10-02 with the owner's OK: after the predation-stability fix, staggered-tour measurement
+  // showed ×1.5's corridor — 2·√(90²−60²) ≈ 134 m of road with the lick 60 m off it — left with-lick
+  // sightings at parity with control (38 vs 39 over 8 tours); ×2's ≈ 208 m corridor clears the bar
+  // without touching the base 60 m radius or any no-lick roll. docs/requests/p5.md #4.)
   const licks = ctx.world.saltLicks;
   if (licks?.size) {
     for (const l of licks.values()) {
-      if ((a.x - l.x) ** 2 + (a.z - l.z) ** 2 <= (l.radius ?? 10) ** 2) { radius = SIGHT_RADIUS * 1.5; break; }
+      if ((a.x - l.x) ** 2 + (a.z - l.z) ** 2 <= (l.radius ?? 10) ** 2) { radius = SIGHT_RADIUS * 2; break; }
     }
   }
   const dist = Math.hypot(a.x - v.x, a.z - v.z);
