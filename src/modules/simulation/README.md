@@ -449,6 +449,10 @@ lick refusal/bonus/cap/happiness move, reset, determinism).
 
 ## Known gaps (honest)
 
+* **Salt-lick happiness bonus is not measurable in a single full-game run**: the +0.03 target bonus is
+  unit-tested, but over 20 days it sits below the run-to-run noise a lick introduces (seeds 1/2/3: mean
+  gain days 5–12 +0.022/+0.015/−0.002). Gathering at the lick is robust. Licks make no sightings claim.
+
 * **Wave P3:**
   * **`reset()` is a ledger reset, not a whole-game restart.** In the headless Node game it is a
     byte-identical round trip (tested), but in the live game `world.animals` belongs to the animals

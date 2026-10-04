@@ -23,8 +23,8 @@ results here (full tables: the module READMEs' "Wave P5" sections).
   **No sightings effect** (owner decision 2026-10-04): the emergent route, the ×1.5 fallback (dead
   code) and a ×2 rework were all measured; the effect flipped sign by seed because gathering a
   roadside herd onto one spot removes sighting stops along the route. The traffic boost was removed
-  (`docs/requests/p5.md` #5). Harness `salt-lick` now gates on what licks do: herd gathering at the
-  lick and grazer/mixed happiness, with vs without.
+  (`docs/requests/p5.md` #5). Harness `salt-lick` now gates on what licks do measurably in-game: herd
+  gathering at the lick, with vs without (happiness reported; the bonus is unit-tested).
 * **Visuals** — swarm cloud density scales with area × density (~1300 specks at radius 56 m,
   readable at the spec's 150 m; 1 draw call — the shared instanced particle mesh), day + night
   verified (`tools/shots/p5-swarm-14.png`, `p5-swarm-21_5.png`); salt lick readable at 55 m in ≤ 2
@@ -105,8 +105,9 @@ as a locust-clearing verb. Separable: each of the three parts may ship alone. Re
   grass cover lost unmanaged ≥ 3× sprayed; swarm dead within `days` in every variant (pass).
 - `salt-lick` — (redefined 2026-10-04, owner decision: licks make no sightings claim) same seed with
   vs without a lick at the centroid of the habitat holding the most grazer/mixed animals: more animals
-  within 30 m of the lick after a 900 s animals-only settle, and that habitat's grazer/mixed mean
-  happiness after 20 game days higher by >= 0.02 (pass).
+  within 30 m of the lick after a 900 s animals-only settle (pass; seeds 1/2/3: 28→35, 2→24, 9→32).
+  The habitat's grazer/mixed happiness is reported per day but not gated: the +0.03 target bonus is
+  unit-tested and sits below in-game run-to-run noise (`docs/requests/p5.md` #5).
 
 ## Unit tests
 
