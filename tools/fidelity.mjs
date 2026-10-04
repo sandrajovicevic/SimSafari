@@ -1064,101 +1064,58 @@ async function scenarioLocusts(browser) {
   return result;
 }
 
-/** salt-lick (Wave P5): tours past the plains habitat, lick 25–40 m off the nearest route point vs no
- * lick. A 900-second animals-only settle first (the lick's gathering effect is a game-hours
- * phenomenon — and traffic must NOT run then or the tours burn their stops before counting);
- * animals' behaviour is unpause-gated (?speed=0 pauses it), so the settle and the 1800-second
- * counting pump both unpause the clock. The wander bias alone measured too weak to move the
- * sighting rate (15/15, 19/20, 25/20 across three designs), so traffic gives animals AT a lick a
- * 1.5x sightline (the spec's sanctioned fallback). Pass: sightings strictly higher with the lick.
- * Non-vacuity: > 0 sightings in the control. */
+/** salt-lick (Wave P5, redefined 2026-10-04 — owner decision "drop the sightings claim"): licks raise
+ * happiness for grazer/mixed species in their habitat (+0.03 to the target per lick, cap 0.06) and draw
+ * the herd toward them (animals' wander bias). They do NOT raise tour sightings: measured over seeds,
+ * gathering a roadside herd onto one spot reduced sightings (16 vs 16, 6 vs 19, 16 vs 22) and only
+ * helped where the herd started out of sight (2 vs 17, 18 vs 5) — sightings count stops along the
+ * route, and a spread-out roadside herd offers more of them than a clustered one. So this scenario
+ * gates on the two effects licks actually have, on the same seed with vs without a lick:
+ *   - gathering: animals within 30 m of the lick spot after a 900 s animals-only settle (unpaused —
+ *     behaviour is pause-gated) — must be higher with the lick;
+ *   - happiness: the habitat's grazer/mixed mean happiness after 20 game days — must rise >= 0.02.
+ * The habitat is the one holding the most grazer/mixed animals; the lick sits at its centroid (or the
+ * nearest cell inside it). */
 async function scenarioSaltLick(browser) {
   const run = async (label, withLick) => {
     const { page, errors } = await loadGame(browser, { label });
     const out = await page.evaluate(async (withLick) => {
       const reg = window.__SIM__.app.registry.modules;
       const sim = reg.get('simulation').def.api;
-      const animals = reg.get('animals').def, traffic = reg.get('traffic').def, roadsApi = reg.get('roads').def.api;
+      const animals = reg.get('animals').def;
       const world = window.__SIM__.world;
+      const g = world.grid;
+      const habOf = (a) => a.habitat ?? a.habitatId ?? (g.habitatId[world.cellAt(a.x, a.z).index] || 0);
+      const lickDiet = (s) => { const d = sim.species(s)?.diet; return d === 'grazer' || d === 'mixed'; };
+      // habitat with the most grazer/mixed animals
+      const counts = new Map();
+      for (const a of world.animals.values()) if (lickDiet(a.species)) counts.set(habOf(a), (counts.get(habOf(a)) || 0) + 1);
+      let hid = null, hn = -1;
+      for (const [h, n] of counts) if (h && n > hn) { hid = h; hn = n; }
+      const hab = hid != null ? world.habitats.get(hid) : null;
+      if (!hab) return { error: 'no grazer/mixed habitat' };
+      let sx = 0, sz = 0;
+      for (const idx of hab.cells) { const ix = idx % g.res, iz = (idx - ix) / g.res; const c = world.cellCenter(ix, iz); sx += c.x; sz += c.z; }
+      let px = sx / hab.cells.length, pz = sz / hab.cells.length;
+      if (g.habitatId[world.cellAt(px, pz).index] !== hid) { // centroid outside a concave habitat
+        let bd = Infinity, bx = px, bz = pz;
+        for (const idx of hab.cells) { const ix = idx % g.res, iz = (idx - ix) / g.res; const c = world.cellCenter(ix, iz); const d = (c.x - px) ** 2 + (c.z - pz) ** 2; if (d < bd) { bd = d; bx = c.x; bz = c.z; } }
+        px = bx; pz = bz;
+      }
+      const placed = withLick ? !!sim.placeSaltLick(px, pz)?.ok : false;
+      // settle: 900 s of animals-only game time, then count animals near the lick spot
       const wasPaused = world.time.paused;
-      // the lick habitat is the one the route actually SEES (the spec's non-vacuity clause expects
-      // control sightings > 0 of the lick species): on the demo park that is the wetland — buffalo/
-      // rhino/hippo standing along the route produced 34 of 40 raw sightings, while the plains herd
-      // measured 0 in both variants (its animals never come within 60 m of any drivable segment).
-      // kopje first: its impala herd is large (25 after the predation-stability fix) but its
-      // roadside sighting baseline is low, so gathering INTO the boosted corridor adds sightings —
-      // in the wetland the opposite held (control 12 → with-lick 8: the lick drained the roadside
-      // herd faster than six gathered animals could repay), and the plains herd never comes within
-      // sight of any drivable segment (0 vs 0).
-      let plains = null;
-      for (const h of world.habitats.values()) if (/kopje/i.test(h.name || '')) plains = h;
-      if (!plains) for (const h of world.habitats.values()) if (/wetland|river|plains/i.test(h.name || '')) plains = h;
-      const g = world.grid; let sx = 0, sz = 0;
-      for (const idx of plains.cells) { const ix = idx % g.res, iz = (idx - ix) / g.res; const c = world.cellCenter(ix, iz); sx += c.x; sz += c.z; }
-      const cx = sx / plains.cells.length, cz = sz / plains.cells.length;
-      let gate = null, plainsNode = null;
-      for (const node of roadsApi.nodes().values()) if (!gate || node.z > gate.z) gate = node;
-      for (const node of roadsApi.nodes().values()) if (!plainsNode || Math.hypot(node.x - cx, node.z - cz) < Math.hypot(plainsNode.x - cx, plainsNode.z - cz)) plainsNode = node;
-      // the lick sits 25–40 m off the road the TOURS DRIVE (edges incident to the plains stop node),
-      // not the globally nearest road edge — the old placement could pick an edge the route never
-      // uses, making the boost untestable. Count only the plains habitat's species: the spec's bar
-      // is "sightings of the lick species", and the raw count is dominated by wetland buffalo/rhino/
-      // hippo standing near the route (measured 34 of 40 events), which buries the lick's effect.
-      const routeEdges = [...world.roads.edges.values()].filter((e) => plainsNode && (e.a === plainsNode.id || e.b === plainsNode.id));
-      let best = null, bd = 1e18;
-      for (const e of (routeEdges.length ? routeEdges : world.roads.edges.values())) {
-        const p = e.points;
-        for (let i = 0; i < p.length; i += 2) { const d = (p[i] - cx) ** 2 + (p[i + 1] - cz) ** 2; if (d < bd) { bd = d; best = { x: p[i], z: p[i + 1] }; } }
-      }
-      // live animals of the chosen habitat (a report does not exist yet on a fresh page — the old
-      // read produced an empty species set and counted nothing)
-      const plainsSpecies = new Set([...world.animals.values()].filter((a) => {
-        const ah = a.habitat ?? a.habitatId ?? (world.grid.habitatId[world.cellAt(a.x, a.z).index] || 0);
-        return ah === plains.id;
-      }).map((a) => a.species));
-      // the lick sits 25–40 m off the nearest route point: sweep angles around the bearing to the
-      // habitat centroid and take the first spot inside the chosen habitat (a mere "any habitat"
-      // test landed in the neighbour). No spot found → no lick → the scenario fails honestly.
-      let lickAt = null;
-      if (withLick && best) {
-        const base = Math.atan2(cz - best.z, cx - best.x);
-        outer: for (const off of [0, 15, -15, 30, -30, 45, -45, 60, -60, 75, -75, 90, -90]) {
-          const ang = base + (off * Math.PI) / 180;
-          // 25–40 m off the route (owner decision 2026-10-04): at >= 55 m the lick pulled a roadside
-          // herd OUT of the 60 m sightline (seed 2: 16 vs 16 here, 6 vs 19 on #33) and only helped
-          // when the herd started far away. Inside the base sightline the gathering itself is visible.
-          for (let d = 25; d <= 40; d += 5) {
-            const lx = best.x + Math.cos(ang) * d, lz = best.z + Math.sin(ang) * d;
-            const c = world.cellAt(lx, lz);
-            if (world.grid.habitatId[c.index] === plains.id) { sim.placeSaltLick(lx, lz); lickAt = { x: lx, z: lz }; break outer; }
-          }
-        }
-      }
-      // settle: 900 s of animals-only game time (unpaused — behaviour is pause-gated)
       world.time.paused = false;
       const dt = 0.05;
       for (let i = 0; i < Math.round(900 / dt); i++) { animals.update(dt, i * dt); if (i % 2000 === 0) await new Promise((r) => setTimeout(r)); }
-      // fresh tours from the gate through the plains, then the counting pump (traffic + animals)
-      const trafficApi = reg.get('traffic').def.api;
-      for (const v of trafficApi.list()) trafficApi.remove(v.id);
-      const startTour2 = trafficApi.startTour.bind(trafficApi);
-      const tours = [];
-      let sightings = 0;
-      const perTour = [];
-      for (let k = 0; k < 8; k++) {
-        const t = startTour2({ from: gate?.id, stops: [plainsNode?.id].filter(Boolean) });
-        if (!t) break;
-        tours.push(t);
-        let block = 0;
-        const onSight = (e) => { if (plainsSpecies.has(e.species)) { sightings++; block++; } };
-        window.__SIM__.events.on('visitor:sighting', onSight);
-        for (let i = 0; i < Math.round(900 / dt); i++) { animals.update(dt, i * dt); traffic.update(dt, i * dt); if (i % 2000 === 0) await new Promise((r) => setTimeout(r)); }
-        window.__SIM__.events.off('visitor:sighting', onSight);
-        perTour.push(block);
-      }
       world.time.paused = wasPaused;
-      const herdNearLick = lickAt ? [...world.animals.values()].filter((a) => Math.hypot(a.x - lickAt.x, a.z - lickAt.z) < 60).length : 0;
-      return { sightings, tours: tours.length, lick: lickAt != null, herdNearLick };
+      const near = [...world.animals.values()].filter((a) => Math.hypot(a.x - px, a.z - pz) < 30).length;
+      // happiness: 20 game days, then the habitat's grazer/mixed mean (weighted by head count)
+      sim.runDays(20);
+      const sp = sim.getReport()?.habitats?.[hid]?.species || {};
+      let hs = 0, hc = 0;
+      for (const [s, r] of Object.entries(sp)) if (lickDiet(s) && r.n > 0) { hs += r.happiness * r.n; hc += r.n; }
+      return { habitat: hab.name, placed, near, happiness: hc ? +(hs / hc).toFixed(4) : null, animals: hc };
     }, withLick);
     await page.close();
     return { ...out, consoleErrors: errors };
@@ -1166,13 +1123,12 @@ async function scenarioSaltLick(browser) {
   const control = await run('saltlick-control', false);
   const withLick = await run('saltlick-lick', true);
   const out = {
-    control: { sightings: control.sightings, tours: control.tours },
-    withLick: { sightings: withLick.sightings, tours: withLick.tours, lick: withLick.lick, herdNearLick: withLick.herdNearLick },
+    habitat: withLick.habitat,
+    control: { near: control.near, happiness: control.happiness, animals: control.animals },
+    withLick: { placed: withLick.placed, near: withLick.near, happiness: withLick.happiness, animals: withLick.animals },
   };
-  // margin, not a bare ">" (verifier, 2026-10-03): the same seed measured 22 vs 17 and 18 vs 5 on two
-  // machines, so a one-sighting lead is noise. Pass needs >= 25 % more AND >= 4 more sightings.
-  out.margin = { need: Math.max(Math.ceil(control.sightings * 1.25), control.sightings + 4), got: withLick.sightings };
-  out.pass = control.sightings > 0 && withLick.sightings >= out.margin.need;
+  out.happinessGain = (withLick.happiness != null && control.happiness != null) ? +(withLick.happiness - control.happiness).toFixed(4) : null;
+  out.pass = !control.error && !withLick.error && withLick.placed && out.happinessGain >= 0.02 && withLick.near > control.near;
   const result = { scenario: 'salt-lick', result: out, consoleErrors: [...new Set([...control.consoleErrors, ...withLick.consoleErrors])] };
   writeJson('salt-lick', result);
   return result;
@@ -1291,7 +1247,7 @@ function writeJson(name, data) {
       console.log(JSON.stringify({ pass: r.pass, unmanaged: r.unmanaged, sprayed: r.sprayed, firebreak: r.firebreak }, null, 2));
     }
     if (SCENARIOS.includes('salt-lick')) {
-      console.log('[salt-lick] plains tours, lick vs no lick, 1800 vehicle-seconds');
+      console.log('[salt-lick] lick vs no lick: herd gathering (900 s) + grazer/mixed happiness (20 days)');
       results['salt-lick'] = await scenarioSaltLick(browser);
       console.log(JSON.stringify(results['salt-lick'].result, null, 2));
     }

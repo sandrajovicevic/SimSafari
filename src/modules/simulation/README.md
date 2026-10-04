@@ -432,12 +432,11 @@ same bar, and every swarm dies within its `days` in all variants.
 radius 10 m; grazers and mixed feeders in that habitat gain a happiness bonus of 0.03 per lick,
 capped at 0.06 (predators nothing); `reset()` clears them. Animals get a wander bias toward a lick
 in their habitat (60 % of retargets, ±2 m scatter, animals module — it never touches the ledger).
-The spec asked for an emergent sightings effect first; three designs measured too weak to separate
-from tour noise (with/without lick: 15/15, 19/20, 25/20 sightings per tour-hour), so the traffic
-sightline fallback shipped — ×2 at a lick since 2026-10-02 (the ×1.5 was dead code; the predation
-branch proved it and re-measured: **22 vs 17 over 8 staggered kopje tours**, see the
-Predator–prey stability section and `docs/requests/p5.md` #4) —
-control > 0 (non-vacuity), effect in the expected direction. Measurement gotcha
+**No sightings effect** (owner decision 2026-10-04): the emergent route, the ×1.5 traffic fallback
+(dead code) and a ×2 rework were measured and the effect flipped sign by seed — gathering a roadside
+herd onto one spot removes sighting stops along the route. The traffic boost was removed; the
+`salt-lick` scenario now gates on herd gathering at the lick and grazer/mixed happiness, with vs
+without (`docs/requests/p5.md` #5). Measurement gotcha
 (the harness now encodes it): `animals.update` is pause-gated, so at `?speed=0` the settling phase
 must pump the clock or herds never move toward anything.
 
