@@ -360,6 +360,19 @@ particularly on first load or after a large camera jump (e.g. a showcase preset 
   ~half of them, so the LOD2 ring along a horizon does not repeat the same cut-out at regular
   intervals.
 
+## Salt-lick meshes (Wave P5, 2026-10-01)
+
+`SaltLickRenderer` (`saltlick.js`) reads `world.saltLicks` (simulation owns the writes) and draws
+every lick in exactly **two instanced draw calls**: one trampled disc — a ring of low hummocks
+around a packed bare-earth centre, tinted paler than the surrounding grass — and one weathered
+mineral block lashed to a stake (block + stake merged into one BufferGeometry by hand, so no extra
+draw per lick). `rebuild()` runs on `saltlick:changed {id, removed?}` only; nothing per-frame.
+Procedural geometry, seeded per-lick so two licks don't read as clones. Showcase preset `saltlick`
+(camera 55 m, verified `tools/shots/props-saltlick-auto.png`: pale disc distinct against savannah
+grass, block reads as a weathered man-made block rather than a rock, no z-fighting/float/seams,
+0 console errors, 165 draws / 3.89 M tris for the whole staged frame). Spec bar was "readable at
+30–80 m, ≤ 2 draw calls" — met.
+
 ## Known gaps (honest)
 
 * **Imposters have one silhouette per view.** The overview crowns shade as volumes and now cast a shadow

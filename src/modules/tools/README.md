@@ -245,6 +245,20 @@ No undo in v1: the ground change regrows naturally and the charges are in
 `simulation.getSpendLog()`. Verified live: `fire` in `availableTools()`, Fire category rendered,
 firebreak 0.23 ha/$46 and water 0.33 ha/$40 charged (`tools/shots/p2-tools-eval.json`).
 
+## Wildlife tool (Wave P5, 2026-10-01)
+
+`WildlifeTool` (id `wildlife`, needs `simulation`) — toolbar "Wildlife" category (hotkey 9), two modes:
+
+* **Salt lick** (`wildlife.saltlick`, click): `simulation.placeSaltLick(x, z)` — $3,500, refused
+  outside a habitat (the sim's own notify explains why; the tool draws nothing on refusal).
+* **Spray** (`wildlife.spray`, click): `simulation.sprayLocusts(x, z, radius)` — cuts locust swarm
+  density in the disc by 80 %, $180/ha; `[` `]` resizes the disc. Useless on a swarm that has
+  already moved on — the sim charges nothing when no swarm overlaps.
+
+Both route through simulation APIs (`spend` books `saltlick` / `spray` reasons); the tool never
+writes `world.*` itself. No undo: licks are removable via `removeSaltLick` (no refund), spray is
+instant. The P5-era `fire` tool's water drop shares the disc-resize pattern.
+
 ## Known gaps (honest)
 
 * **Plant tool:** click-per-disc only (no drag strokes — `plant()` charges every cell in the disc, so a drag

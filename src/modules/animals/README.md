@@ -254,6 +254,16 @@ pass adds one instanced draw call for the whole module.
 Budget position: draw calls are far inside the ≤1500 total / 200 per-module budget everywhere.
 **Triangles at `overview` (2.60 M frame total) are over the module spec's 1.5 M** — see Known gaps.
 
+## Salt-lick wander bias (Wave P5, 2026-10-01)
+
+`herdWander` retargets now check `world.saltLicks` (read-only — the ledger is simulation's): with
+probability 0.6, a herd picks a lick that lies in the same habitat and within `home.r + 60` as its
+next waypoint, scattered ±2 m so herds don't stack on the block. Predators are unaffected (no bias
+path). This is the "attraction point the animals module reads" from the spec, and it composes with
+the traffic sightline bonus rather than replacing it. Gotcha discovered while measuring (and now
+encoded in the harness): `update()` is pause-gated (`!world.time.paused || ctx.isShowcase`), so at
+`?speed=0` no herd ever moves toward anything — a settle phase must pump the clock.
+
 ## Known gaps (honest)
 
 * **Update budget (re-measured 2026-09-25).** Critic round 5 reported `update()` at 4.2–5.0 ms. A CPU

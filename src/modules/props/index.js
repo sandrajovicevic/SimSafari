@@ -5,6 +5,7 @@
 // every other prop is an item in `S.items` and is packed into per-(kind, variant, LOD) InstancedMeshes
 // whenever the camera moves far enough to change an LOD bucket.
 import * as THREE from 'three';
+import { SaltLickRenderer } from './saltlick.js';
 import { BIOME, OCC } from '../../core/World.js';
 import { presets, stage } from './showcase.js';
 import * as TEX from './textures.js';
@@ -1155,6 +1156,11 @@ export default {
       S.dirty = true;
     });
     ctx.events.on('terrain:modified', (p) => onTerrainModified(p));
+    // Wave P5: salt licks (world.saltLicks is simulation-owned; props only renders)
+    try {
+      S.saltLicks = new SaltLickRenderer(ctx.world, S.group);
+      ctx.events.on('saltlick:changed', () => S.saltLicks?.rebuild());
+    } catch (err) { ctx.log.error('[props] salt-lick renderer failed', err); }
     ctx.events.on('road:added', (p) => onRoadAdded(p));
     ctx.events.on('road:changed', (p) => onRoadAdded(p));
     ctx.events.on('building:placed', (p) => onBuildingPlaced(p));
