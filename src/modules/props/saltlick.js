@@ -18,10 +18,12 @@ function discGeometry() {
   return g;
 }
 
-/** The lick itself: a rough rectangular mineral block tilted on a short timber stake. */
+/** The lick itself: a rough rectangular mineral block tilted on a short timber stake. Sized to
+ * read at the spec's 30–80 m viewing band (the first pass was 0.6 m tall — ~3 px at 55 m, the
+ * verifier read the whole lick as "a small grey blob"; park mineral stations are man-sized). */
 function blockGeometry() {
-  const block = new THREE.BoxGeometry(0.5, 0.62, 0.34);
-  block.translate(0, 0.31, 0);
+  const block = new THREE.BoxGeometry(1.15, 1.35, 0.52);
+  block.translate(0, 0.67, 0);
   // weather the block: jitter every vertex a touch so it reads hewn, not extruded
   const pos = block.attributes.position;
   for (let i = 0; i < pos.count; i++) {
@@ -29,8 +31,8 @@ function blockGeometry() {
     pos.setXYZ(i, pos.getX(i) + (s - 0.5) * 0.05, pos.getY(i) + Math.cos(s * 9.0) * 0.02, pos.getZ(i) + (s - 0.5) * 0.04);
   }
   block.computeVertexNormals();
-  const stake = new THREE.CylinderGeometry(0.05, 0.06, 0.5, 6);
-  stake.translate(0, 0.25, 0);
+  const stake = new THREE.CylinderGeometry(0.09, 0.11, 0.95, 6);
+  stake.translate(0, 0.47, 0);
   // merge without a util dependency: stake as a second draw would break the ≤2 budget, so bake it
   // into the block geometry manually (both non-indexed, position+normal only)
   const a = block.toNonIndexed(), b = stake.toNonIndexed();
@@ -50,9 +52,11 @@ export class SaltLickRenderer {
     this.group = new THREE.Group();
     this.group.name = 'props-saltlicks';
     parent.add(this.group);
-    // true colours (the sRGB pipeline is fixed — no compensation): pale trampled earth, ochre block
-    this.discMat = new THREE.MeshStandardMaterial({ color: 0x9d8f78, roughness: 1.0, metalness: 0.0 });
-    this.blockMat = new THREE.MeshStandardMaterial({ color: 0xb08954, roughness: 0.85, metalness: 0.0 });
+    // true colours (the sRGB pipeline is fixed — no compensation): sun-bleached trampled earth
+    // against a dark rust-ochre block — the pairing is the contrast that makes a lick readable
+    // at distance (first pass: 0x9d8f78/0xb08954, too close in tone at 55 m per the verifier)
+    this.discMat = new THREE.MeshStandardMaterial({ color: 0xc7b79e, roughness: 1.0, metalness: 0.0 });
+    this.blockMat = new THREE.MeshStandardMaterial({ color: 0x96662f, roughness: 0.8, metalness: 0.0 });
     this.discGeo = discGeometry();
     this.blockGeo = blockGeometry();
     this.discs = new THREE.InstancedMesh(this.discGeo, this.discMat, 16);

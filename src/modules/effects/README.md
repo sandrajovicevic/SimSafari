@@ -370,6 +370,30 @@ constructor-time kind 0 and rendered in the ambient branch, wrapped into the cam
 re-upload of the *unchanged* buffer alone made the swarm appear at its correct positions. Verified
 day (14 h) and night (21.5 h): `tools/shots/p5-swarm-14.png`, `p5-swarm-21_5.png`.
 
+**Night fix (2026-10-04, verifier round):** the shared particle lighting has a forward-scatter
+lobe toward the light — at night that light is the moon (round-9 moon key), so specks seen toward
+the moon lit up ×2.25 and read as "scattered white glowing points, fireflies or stars" (verifier
+report on this PR). The locust kind now takes flat, scatter-free light
+(`ambient × 0.9 + light × 0.3`) — a swarm at night is a moonlit shadow band; re-shot and verified
+(`p5-swarm-21_5.png`, dark silhouettes concentrated in a low band, no glowing points).
+
+**Exact capture recipe** (the verifier's staging differed; `rig.lookAt` takes DEGREES — a call
+without pitch/yaw leaves the camera wherever it was, and `world.locusts` has no `.size` — read
+`world.locusts.swarms.length`):
+
+    node tools/screenshot.mjs --game --tod 21.5 --out p5-swarm-21_5 --timeout 400000 --eval '(async () => {
+      const api = window.__SIM__.app.registry.modules.get("simulation").def.api;
+      const r = api.injectEvent("locusts", { x: -170, z: -90, radius: 56, days: 12, budget: 400, density: 1 });
+      window.__SIM__.lookAt(-170, -90, 130, 25, 20);   // 130 m back, pitch 25°, yaw 20° — DEGREES
+      await new Promise((res) => { let i = 0; const f = () => (++i >= 14 ? res() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+      const L = window.__SIM__.world.locusts;
+      return JSON.stringify({ injected: !!r, swarms: L.swarms.length, d: L.swarms[0] && L.swarms[0].density });
+    })()'
+
+The 14-frame rAF pump lets the emitter burst + rate fill the cloud (a paused world still renders
+and particles spawn on real `dt`); the eval result must read `swarms: 1` — if it does not, the
+swarm never existed and the PNG proves nothing. Day shot identical with `--tod 14`.
+
 ## Known gaps (honest)
 
 * **Effects' own showcase test-yard costs far more draw calls (157-197) than the pipeline it exists to
