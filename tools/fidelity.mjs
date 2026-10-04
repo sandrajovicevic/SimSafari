@@ -1104,7 +1104,7 @@ async function scenarioLocusts(browser) {
   return result;
 }
 
-/** salt-lick (Wave P5): tours past the plains habitat, lick ~60 m off the nearest road point vs no
+/** salt-lick (Wave P5): tours past the plains habitat, lick 25–40 m off the nearest route point vs no
  * lick. A 900-second animals-only settle first (the lick's gathering effect is a game-hours
  * phenomenon — and traffic must NOT run then or the tours burn their stops before counting);
  * animals' behaviour is unpause-gated (?speed=0 pauses it), so the settle and the 1800-second
@@ -1139,7 +1139,7 @@ async function scenarioSaltLick(browser) {
       let gate = null, plainsNode = null;
       for (const node of roadsApi.nodes().values()) if (!gate || node.z > gate.z) gate = node;
       for (const node of roadsApi.nodes().values()) if (!plainsNode || Math.hypot(node.x - cx, node.z - cz) < Math.hypot(plainsNode.x - cx, plainsNode.z - cz)) plainsNode = node;
-      // the lick sits ~60 m off the road the TOURS DRIVE (edges incident to the plains stop node),
+      // the lick sits 25–40 m off the road the TOURS DRIVE (edges incident to the plains stop node),
       // not the globally nearest road edge — the old placement could pick an edge the route never
       // uses, making the boost untestable. Count only the plains habitat's species: the spec's bar
       // is "sightings of the lick species", and the raw count is dominated by wetland buffalo/rhino/
