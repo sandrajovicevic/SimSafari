@@ -169,7 +169,10 @@ export const CONST = Object.freeze({
   migrationDays: 3,           // consecutive unhappy days before animals leave
   migrationShare: 0.20,       // share of a group that leaves per day once migrating
   unhappyMortality: 0.025,    // extra deaths/animal/day at happiness 0 (quadratic ramp below 0.55)
-  predationRate: 0.03,        // prey killed per predator per day when prey is available (a lion kills every ~33 days)
+  predationRate: 0.03,        // prey killed per predator per day at saturating prey (a lion kills every ~33 days)
+  preyPerPredatorHalf: 10,    // type-III half-saturation: prey per predator at which the kill rate is half
+                             // predationRate; below it the rate falls as ratio², leaving a prey refuge
+                             // (predator–prey stability fix — the flat rate hunted prey to 0 by construction)
   sightingK: 0.12,            // P(see species) = 1 - exp(-n * visibility * roadFactor * K)
   seasonLength: 90,           // days per season in the internal fallback calendar (dry, wet alternate)
   firebreakCost: 200,         // $/ha to bulldoze a firebreak stroke (Wave P2)
