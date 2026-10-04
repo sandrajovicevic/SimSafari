@@ -169,7 +169,15 @@ SwiftShader software GL (fps is not representative; draws/tris/errors are real).
   Fixed by sub-texel star sigmas (0.0008/0.0006 rad: each star bakes to a single texel that magnifies
   back to a ~2-4 px point) plus density/brightness cuts (0.75→0.35, 0.55→0.22). After:
   `tools/shots/seb-after3-env-night-22.png` / `seb-after3-env-night-3.png` — star field of discrete
-  points + Milky Way band, star field dominates. Two cloud-side changes shipped in the same pass:
+  points + Milky Way band, star field dominates. **Follow-up 2026-10-01:** "magnifies back to a ~2-4 px
+  point" only held at low resolution. At the game's 45° FOV and 1920 px one texel is ~7.5 px, and a
+  bilinearly magnified single-texel star is a soft diamond about 2 texels wide, so the band's dense
+  field still drew as a cloud of 20–40 px grey diamonds (savannah `night`, measured; pinning
+  `uNightAmount` to 0 removed them, hiding the trees, clouds, stars points or bloom did not). The bake
+  now writes the faint field to alpha and the band to RGB, and the sky shader fades the baked stars out
+  below ~0.5 texels per pixel (`fwidth` of the sky UV), so at normal resolutions the 1400 `STAR_VERT`
+  points and the band carry the sky. Cost: the savannah night sky reads sparser.
+  Two cloud-side changes shipped in the same pass:
   (a) the moonlit-branch boost ×25 → ×4 (at exposure 12 the old value put cloud bodies at ~150 sRGB
   against a ~25 sRGB sky — near-day brightness; ×4 keeps them faint moonlit silhouettes scaling with
   the moon's illuminated fraction), and (b) the cumulus coverage field now has a ~4 km banking octave

@@ -187,6 +187,18 @@ and chars the albedo toward ash with a noise-modulated organic edge (roughness u
 organic mottled burn patch reads against unburnt grassland (`tools/shots/p2-scorch-check3.png`,
 `nfog-after-fire-night.png`, real GPU).
 
+## Laterite patch distribution (2026-10-02)
+
+Bare-laterite patches used to be `pt > 0.42` on the single 90 m patch noise: equal-sized blobs at even
+spacing over every plain, which read as a camouflage print from the overview. `gen.laterite` adds a
+380 m cluster term (×1.2) and a 24 m outline octave (×0.06); the rule is `laterite > 0.68`. About a
+third of 128 m blocks now carry no patch at all, others merge into larger pans, and outlines are
+ragged. Total DIRT share is unchanged (11.83 % → 11.74 % of the map; `simulation` seeds plant
+suitability from it). The apron and the splat's 80 m border fade use the same formula in GLSL
+(different noise, same frequencies and threshold). Checked: `terrain/overview`, `terrain/plains`,
+`savannah/overview`, 0 errors. Still open: the patch albedo reads mauve-brown from altitude rather
+than laterite red.
+
 ## Known gaps (honest)
 
 * **World-border seam fixed (2026-09-28).** A ruler-straight line crossed the game's default overview at

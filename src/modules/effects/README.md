@@ -426,3 +426,13 @@ swarm never existed and the PNG proves nothing. Day shot identical with `--tod 1
   is what keeps its cost at 2 draws instead of a full G-buffer pass, but it can be less accurate on
   extreme grazing-angle silhouettes than a full-normal GTAO; not independently audited at grazing
   angles this round.
+
+## Grade warmth halved (2026-10-02)
+
+`grade.warmth` 0.35 → 0.18. The warmth tint is the luminance-normalised sun colour applied to the
+whole frame, on top of lighting that already carries that colour, so at golden hour it double-counted:
+on `park/lodge` at 17.5 h shadows, white tents, foliage and roofs all collapsed to one orange-sepia hue.
+A/B on that preset (warmth 0 / 0.18 / 0.35) showed the grade carried about a third of the cast; the rest
+is the low sun and its forward in-scatter, which stays. 0.18 keeps the warm mood while whites, the pool
+and the canopy hold their own colour. `savannah/hero` (17.4 h, sun behind camera) is visually unchanged;
+noon is unaffected (neutral sun → tint ≈ 1).
