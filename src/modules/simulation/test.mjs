@@ -6,7 +6,7 @@ import { Rng } from '../../core/Rng.js';
 import { Simulation } from './sim.js';
 import { createPlainWorld, buildPark, applyPark } from './worldgen.js';
 import { PLANTS, PLANT_INDEX } from '../../core/Plants.js';
-import { VEG } from './tables.js';
+import { VEG, SPECIES } from './tables.js';
 import { computeBiodiversity } from './biodiversity.js';
 import { advise } from './advisors.js';
 
@@ -1041,6 +1041,116 @@ console.log('\nWave P4 — tiers, trust, advisors');
     a.sim.setRoomRate('lodge', 250); b.sim.setRoomRate('lodge', 250);
     a.sim.runDays(60); b.sim.runDays(60);
     assert(JSON.stringify(a.sim.getReports(60)) === JSON.stringify(b.sim.getReports(60)), 'tiers: same seed + same rates → byte-identical 60-day reports');
+  }
+}
+
+// ---------------------------------------------------------------- Wave P5: rainfall, locusts, licks
+console.log('\nWave P5 — rainfall stress, locusts, salt licks');
+{
+  // ---- species rainfallFit table + stress ordering + mitigation (pure checks via _rainStress)
+  {
+    const s = makeSim(61);
+    assert(SPECIES.hippo.rainfall === 'high' && SPECIES.ostrich.rainfall === 'drought' && SPECIES.lion.rainfall === 'medium',
+      `rainfall tiers: hippo high / ostrich drought / lion medium (hippo ${SPECIES.hippo.rainfall})`);
+    // ordering by tier at a fixed rain: high stressed before medium before low before drought
+    s.sim.veg.lastRain = 0.15; // deep dry: high ~0.21 < medium ~0.48 < 0.6 < low ~0.72
+    const st = (sp) => s.sim._rainStress(sp, { water: 0 }).h;
+    assert(st('hippo') > 0 && st('zebra') > 0 && st('giraffe') === 0 && st('ostrich') === 0,
+      `stress ordering: hippo ${st('hippo').toFixed(3)} > zebra ${st('zebra').toFixed(3)} > giraffe ${st('giraffe').toFixed(3)} > ostrich 0`);
+    assert(st('hippo') > st('zebra'), 'stress orders high > medium > low at the same rain');
+    // mitigation: water access halves-ish the hit (factor 1 - 0.6 × water)
+    const dry = s.sim._rainStress('hippo', { water: 0 }).h;
+    const wet = s.sim._rainStress('hippo', { water: 0.9 }).h;
+    assert(wet > 0 && wet < dry * 0.5, `water mitigation: hippo stress ${dry.toFixed(3)} → ${wet.toFixed(3)} at waterAccess 0.9`);
+    // wet-season rain stresses nobody
+    s.sim.veg.lastRain = 0.8;
+    assert(s.sim._rainStress('hippo', { water: 0 }).h === 0, 'wet-season rain (0.8) stresses nobody');
+  }
+
+  // ---- locusts: bounded budget, lifetime, spray, firebreak clearing, second swarm own budget
+  {
+    const s = makeSim(62);
+    const hab1 = s.world.habitats.get(1);
+    const g = s.world.grid;
+    const mid = hab1.cells[Math.floor(hab1.cells.length / 2)];
+    const cx = (mid % g.res) * g.cell - s.world.half + g.cell / 2, cz = Math.floor(mid / g.res) * g.cell - s.world.half + g.cell / 2;
+    // budget cap: a swarm with budget 50 never eats more than 50 cells however long it lives
+    const sw = s.sim.injectEvent('locusts', { x: cx, z: cz, radius: 40, days: 25, budget: 50, density: 1 });
+    assert(sw && s.world.locusts.swarms.length === 1, 'locusts: injectEvent creates one bounded swarm');
+    for (let d = 0; d < 25; d++) s.sim.runDays(1);
+    assert(s.world.locusts.swarms.length === 0, 'locusts: the swarm died within its lifetime');
+    assert(s.sim.locusts.eatenTotal <= 50, `locusts: budget respected (ate ${s.sim.locusts.eatenTotal} ≤ 50 cells)`);
+    // lifetime: days cap kills a swarm that would otherwise live on density
+    const t = makeSim(63);
+    t.sim.injectEvent('locusts', { x: cx, z: cz, radius: 40, days: 5, budget: 10000, density: 1 });
+    t.sim.runDays(6);
+    assert(t.world.locusts.swarms.length === 0, 'locusts: the days cap ends the swarm even at full density');
+    // spray: 80% density cut, charged via spend
+    const u = makeSim(64);
+    u.sim.injectEvent('locusts', { x: 0, z: 0, radius: 40, days: 20, budget: 1000, density: 0.8 });
+    const before = u.world.locusts.swarms[0].density;
+    const res = u.sim.sprayLocusts(0, 0, 60);
+    const after = u.world.locusts.swarms[0].density;
+    assert(res.ok && Math.abs(after - before * 0.2) < 1e-9, `locusts: spray cuts density ${before.toFixed(2)} → ${after.toFixed(2)} (80%)`);
+    assert(u.sim.getSpendLog(1).some((l) => l.reason === 'spray'), 'locusts: spray charges spend reason "spray"');
+    // firebreak clearing thins a swarm
+    const f = makeSim(65);
+    f.sim.injectEvent('locusts', { x: 0, z: 0, radius: 40, days: 30, budget: 100000, density: 1 });
+    f.sim.firebreak(-s.world.half, 0, s.world.half, 0, 90); // wide wall through the swarm
+    const d0 = f.world.locusts.swarms[0].density;
+    f.sim.runDays(2);
+    const d1 = f.world.locusts.swarms.length ? f.world.locusts.swarms[0].density : 0;
+    assert(d1 < d0 - 0.1, `locusts: firebreak-cleared ground thins the swarm (${d0.toFixed(2)} → ${d1.toFixed(2)})`);
+    // a second swarm gets its own budget (rule 10)
+    const w2 = makeSim(66);
+    w2.sim.injectEvent('locusts', { x: cx, z: cz, radius: 30, days: 3, budget: 10 });
+    w2.sim.runDays(5);
+    const firstAte = w2.sim.locusts.eatenTotal;
+    w2.sim.injectEvent('locusts', { x: cx, z: cz, radius: 30, days: 3, budget: 10 });
+    w2.sim.runDays(5);
+    const secondAte = w2.sim.locusts.eatenTotal - firstAte;
+    assert(secondAte <= 10 && secondAte > 0, `locusts: a second swarm carries its own budget (ate ${secondAte} ≤ 10)`);
+  }
+
+  // ---- salt licks: habitat refusal, bonus, cost, reset
+  {
+    const s = makeSim(67);
+    const hab1 = s.world.habitats.get(1);
+    const g = s.world.grid;
+    const mid = hab1.cells[Math.floor(hab1.cells.length / 2)];
+    const hx = (mid % g.res) * g.cell - s.world.half + g.cell / 2, hz = Math.floor(mid / g.res) * g.cell - s.world.half + g.cell / 2;
+    const outside = s.sim.placeSaltLick(0, 490); // the gate area — no habitat there
+    assert(outside.ok === false && outside.error === 'not inside a habitat', 'licks: placement outside a habitat refused');
+    const inside = s.sim.placeSaltLick(hx, hz);
+    assert(inside.ok === true && inside.cost === 3500 && s.world.saltLicks.size === 1, `licks: placement inside a habitat ok ($${inside.cost})`);
+    assert(s.sim.getSpendLog(1).some((l) => l.reason === 'saltlick'), 'licks: cost booked under spend reason "saltlick"');
+    assert(s.sim._lickBonus(1, 'zebra') === 0.03 && s.sim._lickBonus(1, 'lion') === 0, 'licks: grazer bonus 0.03, predators 0');
+    s.sim.placeSaltLick(hx + 8, hz + 8);
+    assert(s.sim._lickBonus(1, 'zebra') === 0.06, 'licks: bonus capped at two licks (0.06)');
+    s.sim.placeSaltLick(hx - 8, hz - 8);
+    assert(s.sim._lickBonus(1, 'zebra') === 0.06, 'licks: a third lick adds nothing (cap holds)');
+    assert(s.sim.removeSaltLick(inside.id) === true && s.world.saltLicks.size === 2, 'licks: removeSaltLick removes');
+    // happiness actually moves: a park with a lick keeps grazers happier than one without
+    const a = makeSim(68), b = makeSim(68);
+    a.sim.placeSaltLick(hx, hz);
+    a.sim.runDays(20); b.sim.runDays(20);
+    const ha = a.sim.getReport().happiness.zebra, hb = b.sim.getReport().happiness.zebra;
+    assert(ha > hb, `licks: zebra happiness ${ha.toFixed(3)} with a lick vs ${hb.toFixed(3)} without (20 days)`);
+  }
+
+  // ---- reset restores all three; determinism with locusts + licks in play
+  {
+    const a = makeSim(69), b = makeSim(69);
+    for (const s of [a, b]) {
+      s.sim.injectEvent('locusts', { x: 0, z: 0, radius: 40, days: 10, budget: 60 });
+      s.sim.placeSaltLick(0, 0);
+      s.sim.runDays(30);
+    }
+    assert(JSON.stringify(a.sim.getReports(30)) === JSON.stringify(b.sim.getReports(30)), 'P5: same seed → byte-identical 30-day reports with locusts + licks in play');
+    a.sim.reset(69);
+    assert(a.world.locusts.swarms.length === 0 && a.world.saltLicks.size === 0, 'P5: reset() clears swarms and licks');
+    a.sim.runDays(1); // a fresh report exists only after a day runs
+    assert(JSON.stringify(a.sim.getReport().locusts.swarms) === '[]', 'P5: the post-reset report carries no swarms');
   }
 }
 

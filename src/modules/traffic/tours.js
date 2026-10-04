@@ -69,6 +69,9 @@ function lineOfSight(world, ax, az, ay, bx, bz, by, steps = 6) {
 function checkSighting(ctx, v) {
   const animals = ctx.modules.get('animals');
   if (!animals) return false;
+  // Salt licks no longer change sightings (owner decision 2026-10-04): a lick boost was measured to
+  // make no reliable difference — gathering a roadside herd onto one spot cut sightings as often as it
+  // raised them (docs/requests/p5.md #4). Licks act on happiness and herd placement only.
   const near = animals.nearest(v.x, v.z, SIGHT_RADIUS);
   if (!near || !near.length) return false;
   const a = near[0];

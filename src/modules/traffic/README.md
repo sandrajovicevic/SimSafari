@@ -71,6 +71,17 @@ The `close` and `night` hero trucks are pinned (`_state = 'stopped'`, like `sigh
 * World-state check in the same review: 6 vehicles with plausible in-bounds positions on the live
   graph; `graphBackend()` = `'roads'`.
 
+## Salt licks: no sightings effect (Wave P5; owner decision 2026-10-04)
+
+Licks do **not** change sightings. History, kept short: the spec's emergent route (herd wanders to a
+lick → more sightings) measured as noise (15/15, 19/20, 25/20); the ×1.5 sightline fallback turned out
+to be dead code (the candidate pool was pre-filtered to 60 m, so the raised radius never fired); the
+×2 rework with a widened pool flipped sign by seed (2 vs 17 and 18 vs 5 where the herd started out of
+sight; 16 vs 16, 6 vs 19, 16 vs 22 where it already lined the road — even with the lick moved to
+25–40 m). The reason is structural: a sighting is a stop along the route, and a spread-out roadside
+herd offers more stops than one gathered onto a single spot. The boost was removed; `checkSighting`
+is back to its pre-P5 form (`docs/requests/p5.md` #5). Licks act on happiness and herd placement only.
+
 ## Known gaps (honest)
 
 * **`overview`'s default camera (430 m) makes vehicles nearly invisible** — verification was

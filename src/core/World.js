@@ -52,6 +52,12 @@ export class World {
       fireVersion: 0,                        // bumped on any fire-state change (renderers re-upload)
     };
 
+    // Wave P5 (docs/specs/p5-rainfall-locusts-licks.md). Single writer for BOTH is the simulation
+    // module; everyone else reads. Bump `locusts.version` and emit 'locusts:changed {version}'
+    // after swarm writes; emit 'saltlick:changed {id, removed?}' after lick writes.
+    this.locusts = { swarms: [], version: 0 };
+    this.saltLicks = new Map(); // id → { id, x, z, radius, strength }
+
     this.habitats = new Map();
     this.roads = { nodes: new Map(), edges: new Map(), version: 0 };
     this.buildings = new Map();

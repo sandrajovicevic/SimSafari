@@ -345,6 +345,55 @@ active front, measured). Verified on the real GPU: `tools/shots/nfog-after-fire-
 clusters with bloom halos over the scorched slope at 21.5 h. Gap: 8 pairs sample a 143-cell front,
 so big fires read as scattered clusters rather than a continuous wall of flame.
 
+## Locust swarms (Wave P5, 2026-10-01)
+
+New `locust` particle kind (KIND.locust = 6, next free after firesmoke): a speck in a flying swarm —
+jittery direction changes, holds a low band above the ground (spawn y = ground + 3 m ± 1.5 m, shader
+adds a slow rise that flattens with age), dark sandy (0.42, 0.35, 0.20), not self-lit — a swarm at
+night is a moonlit shadow, which the round-9 ambient floor carries. `updateLocustSwarms(t)` reads
+`world.locusts` (simulation owns writes) and pins up to 4 emitters, one per swarm, roaming the disc on
+a Lissajous so the cloud isn't static. **Density scales with swarm area × density**: live specks
+target `min(1300, max(280, radius² × 0.42 × (0.35 + 0.65·density)))` — a dense 56 m swarm holds
+~1300 specks so it reads at the spec's 150 m; four max swarms × 1300 fit the 5692 dynamic slots left
+after the ambient motes. A one-time 600-speck burst on first positioning means a fresh swarm exists
+immediately instead of after warm-up frames. One emitter per swarm, all drawn by the single
+instanced particle mesh — 1 draw call, no extra draw over ambient.
+
+Two calibration notes. (1) The first version (rate 30 + 110·density from one point, ±5 m jitter)
+put ~220 specks in a 15 m blob inside a 112 m disc — invisible at 90 m in the day screenshot; the
+area-scaled target + per-emitter jitter (radius × 1.7, horizontal only — y jitter stays ±1.5 m) is
+the fix. (2) **Real bug found while verifying**: a staged swarm was invisible even with 600 alive
+particles at the right positions — the 1-float instanced `aKind` attribute's narrow update ranges
+never reached the GPU (pos/vel/info ranged uploads work), so the kind-6 slots kept their
+constructor-time kind 0 and rendered in the ambient branch, wrapped into the camera-follow box.
+`_flush()` now re-uploads the kind buffer full-range (32 KB/frame) — proven by A/B: a full-range
+re-upload of the *unchanged* buffer alone made the swarm appear at its correct positions. Verified
+day (14 h) and night (21.5 h): `tools/shots/p5-swarm-14.png`, `p5-swarm-21_5.png`.
+
+**Night fix (2026-10-04, verifier round):** the shared particle lighting has a forward-scatter
+lobe toward the light — at night that light is the moon (round-9 moon key), so specks seen toward
+the moon lit up ×2.25 and read as "scattered white glowing points, fireflies or stars" (verifier
+report on this PR). The locust kind now takes flat, scatter-free light
+(`ambient × 0.9 + light × 0.3`) — a swarm at night is a moonlit shadow band; re-shot and verified
+(`p5-swarm-21_5.png`, dark silhouettes concentrated in a low band, no glowing points).
+
+**Exact capture recipe** (the verifier's staging differed; `rig.lookAt` takes DEGREES — a call
+without pitch/yaw leaves the camera wherever it was, and `world.locusts` has no `.size` — read
+`world.locusts.swarms.length`):
+
+    node tools/screenshot.mjs --game --tod 21.5 --out p5-swarm-21_5 --timeout 400000 --eval '(async () => {
+      const api = window.__SIM__.app.registry.modules.get("simulation").def.api;
+      const r = api.injectEvent("locusts", { x: -170, z: -90, radius: 56, days: 12, budget: 400, density: 1 });
+      window.__SIM__.lookAt(-170, -90, 130, 25, 20);   // 130 m back, pitch 25°, yaw 20° — DEGREES
+      await new Promise((res) => { let i = 0; const f = () => (++i >= 14 ? res() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+      const L = window.__SIM__.world.locusts;
+      return JSON.stringify({ injected: !!r, swarms: L.swarms.length, d: L.swarms[0] && L.swarms[0].density });
+    })()'
+
+The 14-frame rAF pump lets the emitter burst + rate fill the cloud (a paused world still renders
+and particles spawn on real `dt`); the eval result must read `swarms: 1` — if it does not, the
+swarm never existed and the PNG proves nothing. Day shot identical with `--tod 14`.
+
 ## Known gaps (honest)
 
 * **Effects' own showcase test-yard costs far more draw calls (157-197) than the pipeline it exists to

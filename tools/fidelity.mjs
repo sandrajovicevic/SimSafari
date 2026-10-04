@@ -34,7 +34,7 @@ const URL_BASE = args.url || process.env.SIM_URL || 'http://127.0.0.1:5173';
 const SEED = +(args.seed || 1);
 const DAYS = +(args.days || 30);
 const TIMEOUT = +(args.timeout || 300000); // this machine's SwiftShader needs ~150 s to ready the full game
-const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep', 'plant-aloe', 'remove-prey', 'spread', 'fire-response', 'fire-regrowth', 'biodiversity', 'mission-replay', 'lodging-elasticity', 'layoff-chain']);
+const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep', 'plant-aloe', 'remove-prey', 'spread', 'fire-response', 'fire-regrowth', 'biodiversity', 'mission-replay', 'lodging-elasticity', 'layoff-chain', 'drought-water', 'locusts', 'salt-lick']);
 
 async function launch() {
   const gpuArgs = ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-gpu-sandbox', '--no-sandbox', '--autoplay-policy=no-user-gesture-required'];
@@ -969,6 +969,184 @@ async function scenarioLayoffChain(browser) {
   return result;
 }
 
+/** drought-water (Wave P5): a 30-day injected drought on the demo park, wetland with vs without
+ * its water mitigation (the dry variant strips every pump/waterhole first). Pass: deaths+leavers
+ * greater without water; hippo/buffalo (high-rainfall tier) stressed by the drought. Non-vacuity:
+ * the dry run loses at least one high-rainfall animal or >= 0.1 hippo happiness. */
+async function scenarioDroughtWater(browser) {
+  const run = async (label, dry) => {
+    const { page, errors } = await loadGame(browser, { label });
+    const out = await page.evaluate(async (dry) => {
+      const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+      const world = window.__SIM__.world;
+      sim.markStart();
+      let wet = null;
+      for (const h of world.habitats.values()) if (/wetland|river/i.test(h.name || '')) wet = h;
+      if (dry) { for (const b of [...world.buildings.values()]) if (b.type === 'pump' || b.type === 'waterhole') world.buildings.delete(b.id); }
+      sim.injectEvent('drought', { duration: 30, strength: 1 });
+      const happyHippo = [], happyBuffalo = [];
+      for (let d = 0; d < 30; d++) {
+        sim.runDays(1);
+        const rep = sim.getReports(1)[0];
+        const h2 = (wet && rep.habitats[wet.id]?.species) || {};
+        happyHippo.push(h2.hippo?.happiness ?? null);
+        happyBuffalo.push(h2.buffalo?.happiness ?? null);
+        if (d % 10 === 9) await new Promise((r) => setTimeout(r));
+      }
+      const reps = sim.getReports(30);
+      const last = reps[reps.length - 1];
+      return {
+        deaths: reps.reduce((a, r) => a + r.died, 0), leavers: reps.reduce((a, r) => a + r.left, 0),
+        stressed: last.rainfall?.stressed || [], rain: last.rainfall?.rain,
+        hippoEnd: last.population.hippo ?? 0, buffaloEnd: last.population.buffalo ?? 0,
+        happyHippo, happyBuffalo,
+      };
+    }, dry);
+    await page.close();
+    return { ...out, consoleErrors: errors };
+  };
+  const control = await run('drought-water-ctl', false);
+  const dry = await run('drought-water-dry', true);
+  const hh = control.happyHippo.filter((v) => v != null);
+  const hippoStart = hh.length ? Math.max(...hh) : null;
+  const hippoEndDry = dry.happyHippo[dry.happyHippo.length - 1];
+  const out = {
+    control, dry,
+    dryLosesMore: (dry.deaths + dry.leavers) > (control.deaths + control.leavers),
+    highStressedFirst: dry.stressed.includes('hippo') || dry.stressed.includes('buffalo'),
+    hippoHappinessDry: { start: hippoStart != null ? +hippoStart.toFixed(3) : null, end: hippoEndDry != null ? +hippoEndDry.toFixed(3) : null },
+  };
+  out.pass = out.dryLosesMore && out.highStressedFirst && hippoStart != null
+    && ((dry.hippoEnd + dry.buffaloEnd) < (control.hippoEnd + control.buffaloEnd)
+      || (hippoStart - (hippoEndDry ?? hippoStart)) >= 0.1);
+  const result = { scenario: 'drought-water', result: out, consoleErrors: [...new Set([...control.consoleErrors, ...dry.consoleErrors])] };
+  writeJson('drought-water', result);
+  return result;
+}
+
+/** locusts (Wave P5): a bounded swarm on the demo grassland — unmanaged vs sprayed on day 2 vs a
+ * firebreak pair boxed around the swarm. Pass: grass/shrub cover lost unmanaged >= 3x the sprayed
+ * run (by cells eaten), and the swarm is dead within its days cap in every variant. */
+async function scenarioLocusts(browser) {
+  const { page, errors } = await loadGame(browser, { label: 'locusts' });
+  const out = await page.evaluate(async () => {
+    const sim = window.__SIM__.app.registry.modules.get('simulation').def.api;
+    const world = window.__SIM__.world;
+    const V = world.vegetation, N = V.res * V.res;
+    const TREES = V.types.indexOf('umbrella_thorn'), KNOB = V.types.indexOf('knobthorn'), MAR = V.types.indexOf('marula'), BAO = V.types.indexOf('baobab');
+    const herbCover = () => { let s = 0; for (let t = 0; t < V.types.length; t++) { if (t === TREES || t === KNOB || t === MAR || t === BAO) continue; for (let i = 0; i < N; i++) s += V.cover[t * N + i]; } return s; };
+    const DAYS = 20, SITE = { x: 0, z: -300 };
+    const runVariant = async (variant) => {
+      sim.reset(); sim.replan();
+      const before = herbCover();
+      sim.injectEvent('locusts', { x: SITE.x, z: SITE.z, radius: 56, days: 14, budget: 900, density: 1 });
+      const alive = [];
+      for (let d = 1; d <= DAYS; d++) {
+        if (variant === 'sprayed' && d === 2) sim.sprayLocusts(SITE.x, SITE.z, 80);
+        if (variant === 'firebreak' && d === 1) { const w = world.half; sim.firebreak(-w, SITE.z - 70, w, SITE.z - 70, 40); sim.firebreak(-w, SITE.z + 70, w, SITE.z + 70, 40); }
+        sim.runDays(1);
+        alive.push(world.locusts.swarms.length);
+        if (d % 10 === 9) await new Promise((r) => setTimeout(r));
+      }
+      return { coverLost: +(before - herbCover()).toFixed(2), eaten: sim.locusts.eatenTotal, eatenCover: sim.locusts.eatenCoverTotal, aliveAtEnd: world.locusts.swarms.length, alive };
+    };
+    const unmanaged = await runVariant('none');
+    const sprayed = await runVariant('sprayed');
+    const firebreak = await runVariant('firebreak');
+    return { unmanaged, sprayed, firebreak, days: DAYS, site: SITE };
+  });
+  out.pass = out.unmanaged.eatenCover >= 3 * Math.max(0.01, out.sprayed.eatenCover)
+    && out.unmanaged.aliveAtEnd === 0 && out.sprayed.aliveAtEnd === 0 && out.firebreak.aliveAtEnd === 0
+    && out.unmanaged.eatenCover > 0; // vacuity: the swarm really ate (net coverLost is negative — 20 days of regrowth outrun it in both variants)
+  const result = { scenario: 'locusts', result: out, consoleErrors: errors };
+  writeJson('locusts', result);
+  await page.close();
+  return result;
+}
+
+/** salt-lick (Wave P5, redefined 2026-10-04 — owner decision "drop the sightings claim"): licks raise
+ * happiness for grazer/mixed species in their habitat (+0.03 to the target per lick, cap 0.06) and draw
+ * the herd toward them (animals' wander bias). They do NOT raise tour sightings: measured over seeds,
+ * gathering a roadside herd onto one spot reduced sightings (16 vs 16, 6 vs 19, 16 vs 22) and only
+ * helped where the herd started out of sight (2 vs 17, 18 vs 5) — sightings count stops along the
+ * route, and a spread-out roadside herd offers more of them than a clustered one. So this scenario
+ * gates on what licks do measurably in-game, on the same seed with vs without a lick:
+ *   - gathering: animals within 30 m of the lick spot after a 900 s animals-only settle (unpaused —
+ *     behaviour is pause-gated) — must be higher with the lick (pass);
+ *   - happiness: the habitat's grazer/mixed mean happiness per day for 20 days, reported only — the
+ *     +0.03 target bonus is unit-tested in simulation/test.mjs and is below in-game run-to-run noise.
+ * The habitat is the one holding the most grazer/mixed animals; the lick sits at its centroid (or the
+ * nearest cell inside it). */
+async function scenarioSaltLick(browser) {
+  const run = async (label, withLick) => {
+    const { page, errors } = await loadGame(browser, { label });
+    const out = await page.evaluate(async (withLick) => {
+      const reg = window.__SIM__.app.registry.modules;
+      const sim = reg.get('simulation').def.api;
+      const animals = reg.get('animals').def;
+      const world = window.__SIM__.world;
+      const g = world.grid;
+      const habOf = (a) => a.habitat ?? a.habitatId ?? (g.habitatId[world.cellAt(a.x, a.z).index] || 0);
+      const lickDiet = (s) => { const d = sim.species(s)?.diet; return d === 'grazer' || d === 'mixed'; };
+      // habitat with the most grazer/mixed animals
+      const counts = new Map();
+      for (const a of world.animals.values()) if (lickDiet(a.species)) counts.set(habOf(a), (counts.get(habOf(a)) || 0) + 1);
+      let hid = null, hn = -1;
+      for (const [h, n] of counts) if (h && n > hn) { hid = h; hn = n; }
+      const hab = hid != null ? world.habitats.get(hid) : null;
+      if (!hab) return { error: 'no grazer/mixed habitat' };
+      let sx = 0, sz = 0;
+      for (const idx of hab.cells) { const ix = idx % g.res, iz = (idx - ix) / g.res; const c = world.cellCenter(ix, iz); sx += c.x; sz += c.z; }
+      let px = sx / hab.cells.length, pz = sz / hab.cells.length;
+      if (g.habitatId[world.cellAt(px, pz).index] !== hid) { // centroid outside a concave habitat
+        let bd = Infinity, bx = px, bz = pz;
+        for (const idx of hab.cells) { const ix = idx % g.res, iz = (idx - ix) / g.res; const c = world.cellCenter(ix, iz); const d = (c.x - px) ** 2 + (c.z - pz) ** 2; if (d < bd) { bd = d; bx = c.x; bz = c.z; } }
+        px = bx; pz = bz;
+      }
+      const placed = withLick ? !!sim.placeSaltLick(px, pz)?.ok : false;
+      // settle: 900 s of animals-only game time, then count animals near the lick spot
+      const wasPaused = world.time.paused;
+      world.time.paused = false;
+      const dt = 0.05;
+      for (let i = 0; i < Math.round(900 / dt); i++) { animals.update(dt, i * dt); if (i % 2000 === 0) await new Promise((r) => setTimeout(r)); }
+      world.time.paused = wasPaused;
+      const near = [...world.animals.values()].filter((a) => Math.hypot(a.x - px, a.z - pz) < 30).length;
+      // happiness: 20 game days, then the habitat's grazer/mixed mean (weighted by head count)
+      const daily = [];
+      let hs = 0, hc = 0;
+      for (let d = 1; d <= 20; d++) {
+        sim.runDays(1);
+        const sp = sim.getReport()?.habitats?.[hid]?.species || {};
+        hs = 0; hc = 0;
+        for (const [s, r] of Object.entries(sp)) if (lickDiet(s) && r.n > 0) { hs += r.happiness * r.n; hc += r.n; }
+        daily.push([hc, hc ? +(hs / hc).toFixed(3) : null]);
+      }
+      return { habitat: hab.name, placed, near, happiness: hc ? +(hs / hc).toFixed(4) : null, animals: hc, daily };
+    }, withLick);
+    await page.close();
+    return { ...out, consoleErrors: errors };
+  };
+  const control = await run('saltlick-control', false);
+  const withLick = await run('saltlick-lick', true);
+  const out = {
+    habitat: withLick.habitat,
+    control: { near: control.near, happiness: control.happiness, animals: control.animals, daily: control.daily },
+    withLick: { placed: withLick.placed, near: withLick.near, happiness: withLick.happiness, animals: withLick.animals, daily: withLick.daily },
+  };
+  // happiness: reported, NOT gated. The lick adds +0.03 to the happiness TARGET (unit-tested
+  // deterministically in simulation/test.mjs), but in the full game that is smaller than the
+  // run-to-run noise a lick introduces: seeds 1/2/3 measured +0.022/+0.015/-0.002 mean gain over days
+  // 5–12 and -0.036/+0.018/+0.028 on day 20. Gathering is the robust in-game signal (28→35, 2→24, 9→32).
+  const gainAt = (d) => (withLick.daily?.[d - 1]?.[1] ?? NaN) - (control.daily?.[d - 1]?.[1] ?? NaN);
+  const days = [5, 6, 7, 8, 9, 10, 11, 12];
+  out.happinessGainD5to12 = +(days.reduce((a, d) => a + gainAt(d), 0) / days.length).toFixed(4);
+  out.day20Gain = +gainAt(20).toFixed(4);
+  out.pass = !control.error && !withLick.error && withLick.placed && withLick.near > control.near;
+  const result = { scenario: 'salt-lick', result: out, consoleErrors: [...new Set([...control.consoleErrors, ...withLick.consoleErrors])] };
+  writeJson('salt-lick', result);
+  return result;
+}
+
 function writeJson(name, data) {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const p = path.join(OUT_DIR, `fidelity-${name}.json`);
@@ -1068,6 +1246,23 @@ function writeJson(name, data) {
       results['fire-regrowth'] = await scenarioFireRegrowth(browser);
       const rr = results['fire-regrowth'].result;
       console.log(JSON.stringify({ pass: rr.pass, ...rr }, null, 2));
+    }
+    if (SCENARIOS.includes('drought-water')) {
+      console.log('[drought-water] 30-day drought, wetland with vs without water mitigation');
+      results['drought-water'] = await scenarioDroughtWater(browser);
+      const r = results['drought-water'].result;
+      console.log(JSON.stringify({ pass: r.pass, dryLosesMore: r.dryLosesMore, control: { deaths: r.control.deaths, leavers: r.control.leavers, hippo: r.control.hippoEnd, buffalo: r.control.buffaloEnd }, dry: { deaths: r.dry.deaths, leavers: r.dry.leavers, hippo: r.dry.hippoEnd, buffalo: r.dry.buffaloEnd, stressed: r.dry.stressed }, hippoHappinessDry: r.hippoHappinessDry }, null, 2));
+    }
+    if (SCENARIOS.includes('locusts')) {
+      console.log('[locusts] bounded swarm: unmanaged vs sprayed vs firebreak');
+      results.locusts = await scenarioLocusts(browser);
+      const r = results.locusts.result;
+      console.log(JSON.stringify({ pass: r.pass, unmanaged: r.unmanaged, sprayed: r.sprayed, firebreak: r.firebreak }, null, 2));
+    }
+    if (SCENARIOS.includes('salt-lick')) {
+      console.log('[salt-lick] lick vs no lick: herd gathering (900 s) + grazer/mixed happiness (20 days)');
+      results['salt-lick'] = await scenarioSaltLick(browser);
+      console.log(JSON.stringify(results['salt-lick'].result, null, 2));
     }
     if (SCENARIOS.includes('lodging-elasticity')) {
       console.log('[lodging-elasticity] 3 tiers x 3 rates x 30 days: occupancy monotone + elasticity ordering');

@@ -9,6 +9,9 @@ import { Vegetation, PLANT_COUNT } from './vegetation.js';
 import { MissionRunner } from './missions.js';
 import { computeBiodiversity } from './biodiversity.js';
 import { advise } from './advisors.js';
+import { LocustSwarms } from './locusts.js';
+import { rainfallFit } from '../../core/Plants.js';
+import { STRESS, LOCUSTS as LOC, LICKS } from './tables.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -89,6 +92,7 @@ export class Simulation {
     this._Pt = new Float64Array(PLANT_COUNT);
     this.veg = new Vegetation(world, this.seed);
     this.mission = new MissionRunner(this); // Wave P3: mission state (cleared by _init/reset)
+    this.locusts = new LocustSwarms(this);   // Wave P5: world.locusts swarms (cleared by _init/reset)
     this.seedVegetation();
     this._init();
   }
@@ -156,6 +160,10 @@ export class Simulation {
     this.todayPoachP = 0;       // yesterday's poach probability (report.poachRisk)
     this.adviceState = null;    // advisors' hysteresis/cooldown memo (advise() is pure)
     this.lastAdvice = [];
+    // Wave P5: locust swarms and salt licks reset with the game (world.locusts/saltLicks are ours)
+    this.locusts.reset();
+    if (this.world.saltLicks) this.world.saltLicks.clear();
+    this._stressed = [];
     if (w.visitors) {
       w.visitors.count = 0; w.visitors.inPark = 0;
       if (!(w.visitors.seenSpecies instanceof Map)) w.visitors.seenSpecies = new Map();
@@ -765,6 +773,7 @@ export class Simulation {
     this.lodgeNights = 0;
     this.eventsToday = [];
     this.spendToday = {};
+    this._stressed = [];
   }
 
   /** Attraction index of the park: rarity-weighted species presence (0..1). */
@@ -789,6 +798,12 @@ export class Simulation {
     const vis = this._visitorsEndDay();
     // 2a. vegetation: herd grazing pressure → growth / overgrazing (food web, docs/specs/p1-food-web.md)
     try { this._vegetationStep(); } catch (e) { this._log('vegetation step failed: ' + e.message); }
+    // 2a′. Wave P5 locusts: seeded outbreak roll + one day of swarm life (eats grass/shrub cover,
+    // bounded budgets; the forked 'locust:' stream keeps the main stream untouched)
+    try {
+      this.locusts.maybeOutbreak(day, this._season());
+      this.locusts.step(w.weather?.wind || { x: 1, z: 0 }, this._season());
+    } catch (e) { this._log('locust step failed: ' + e.message); }
     // 2b. habitats → happiness → births/deaths/migration
     const popInfo = this._populationStep(day);
     // 3. staff morale, upkeep efficiency, village prosperity
@@ -812,6 +827,8 @@ export class Simulation {
       vegetation: { ...this.vegToday },
       biodiversity: this.getBiodiversity(),
       lodging: this.lodgingToday || this._lodgingNow(),
+      rainfall: { rain: +this.veg.lastRain.toFixed(3), stressed: [...new Set(this._stressed)] },
+      locusts: this.locusts.stats(),
       villageTrust: +this.trust.toFixed(3),
       poachRisk: +this.todayPoachP.toFixed(4),
       events: this.eventsToday.slice(), activeEvents: this.activeEvents.map((e) => ({ type: e.type, daysLeft: e.until - day, species: e.species })),
@@ -1035,9 +1052,13 @@ export class Simulation {
         const cap = h ? this._capacity(h, s, st) : null;
         r.capacity = cap ? cap.capacity : 1;
         const disease = this._diseaseFor(s);
+        // Wave P5 drought stress: rainfallFit(species tier, vegetation rain) below 0.6 lowers the
+        // happiness target and raises mortality, mitigated by the habitat's water access (pump/river)
+        const stress = this._rainStress(s, st);
+        if (stress.h > 0) this._stressed.push(s);
         // happiness = habitat quality, modulated by keeper care (a well-kept animal in a bad habitat is still unhappy)
         const care = clamp01(keeperCov) * (0.6 + 0.4 * this.morale);
-        let hTarget = Q * (0.7 + 0.3 * care) - 0.10 * disease;
+        let hTarget = Q * (0.7 + 0.3 * care) - 0.10 * disease - stress.h + this._lickBonus(hid, s);
         if (r.n > r.capacity) hTarget -= 0.2 * (r.n / r.capacity - 1);
         hTarget = clamp01(hTarget);
         // blend with the animals module's own happiness if it reports one
@@ -1054,10 +1075,11 @@ export class Simulation {
           const room = clamp01(1 - r.n / r.capacity);
           b = poisson(this.rng, r.n * sp.breed * drive * room * (wet ? 1.3 : 1));
         }
-        // deaths: age + unhappiness + disease + drought (water lovers)
+        // deaths: age + unhappiness + disease + drought (water lovers) + Wave P5 rainfall stress
         let mort = 1 / sp.lifespan + CONST.unhappyMortality * clamp01((0.55 - r.happiness) / 0.55) ** 2;
         if (disease) mort += 0.03 * (1 - 0.5 * Math.min(1, bld.vet)) * (1 - 0.3 * keeperCov);
         if (st && st.drought > 0 && sp.prefs.water > 0.6) mort += 0.004 * st.drought;
+        mort += stress.m;
         let d = Math.min(r.n, poisson(this.rng, r.n * mort));
         // starvation: a predator herd above what its (lagged) prey can feed loses the excess — the direct
         // hunger path; happiness alone can stall at the migration threshold when the animals module's own
@@ -1392,6 +1414,10 @@ export class Simulation {
       this._addEvent(day, { type: 'fire', level: 'error', text: `Fire! About ${r.ha} ha are alight near ${Math.round(spot.x)}, ${Math.round(spot.z)}.` });
       return record();
     }
+    if (type === 'locusts') {
+      const s = this.locusts.inject({ x: opts.x, z: opts.z, radius: opts.radius, days: opts.days, budget: opts.budget, density: opts.density });
+      return s ? this.eventsToday[this.eventsToday.length - 1] || null : null;
+    }
     if (type === 'poachers') {
       const pop = this.population();
       const present = Object.keys(pop);
@@ -1529,6 +1555,72 @@ export class Simulation {
 
   /** Today's advisor messages [{advisor, level, key, text, since}] — pure data from advise(). */
   getAdvice() { return this.lastAdvice; }
+
+  // ------------------------------------------------------------------ Wave P5: rainfall stress, locusts, licks
+
+  /** Drought stress for one species in a habitat (docs/specs/p5-rainfall-locusts-licks.md §2-3):
+   * fit = rainfallFit(species tier, vegetation rain); below 0.6 the happiness target drops by
+   * (0.6 − fit) × s and mortality rises by mort × the same — both × (1 − 0.6 × waterAccess).
+   * Pure arithmetic, no rng. */
+  _rainStress(species, st) {
+    const sp = this.species(species);
+    if (!sp.rainfall) return { h: 0, m: 0, fit: 1 };
+    const fit = rainfallFit(sp.rainfall, this.veg.lastRain);
+    if (fit >= STRESS.fitFloor) return { h: 0, m: 0, fit };
+    const mitigate = 1 - 0.6 * clamp01(st?.water ?? 0);
+    const shortfall = (STRESS.fitFloor - fit) * mitigate;
+    return { h: STRESS.s * shortfall, m: STRESS.mort * shortfall, fit };
+  }
+
+  /** Salt-lick happiness bonus for grazer/mixed species in a habitat: +bonus per lick, capped. */
+  _lickBonus(hid, species) {
+    const sp = this.species(species);
+    if (sp.diet !== 'grazer' && sp.diet !== 'mixed') return 0;
+    let n = 0;
+    for (const l of this.world.saltLicks?.values() || []) {
+      const c = this.world.cellAt(l.x, l.z);
+      if (this.world.grid.habitatId[c.index] === hid) n++;
+    }
+    return Math.min(LICKS.bonusCap, n * LICKS.bonus);
+  }
+
+  /** Place a salt lick (must be inside a habitat). Charges LICKS.cost via spend(…, 'saltlick');
+   * emits saltlick:changed. → { ok, id, cost, error? }. */
+  placeSaltLick(x, z) {
+    const w = this.world;
+    if (!w.saltLicks) return { ok: false, id: null, cost: 0, error: 'world.saltLicks unavailable' };
+    const c = w.cellAt(x, z);
+    const hid = w.grid.habitatId[c.index];
+    if (!hid) { this._notify('warn', 'Salt licks go inside a habitat'); return { ok: false, id: null, cost: 0, error: 'not inside a habitat' }; }
+    const eco = w.economy;
+    if (eco && eco.cash < LICKS.cost) { this._notify('warn', `Cannot afford a salt lick ($${LICKS.cost.toLocaleString()})`); return { ok: false, id: null, cost: LICKS.cost, error: 'unaffordable' }; }
+    const id = w.nextId ? w.nextId('lick') : `lick_${w.saltLicks.size + 1}`;
+    w.saltLicks.set(id, { id, x, z, radius: LICKS.radius, strength: 1 });
+    this.spend(LICKS.cost, 'saltlick');
+    this._emit('saltlick:changed', { id });
+    this._notify('info', 'Salt lick placed — grazers will gather');
+    return { ok: true, id, cost: LICKS.cost };
+  }
+
+  /** Remove a salt lick (no refund). → boolean. */
+  removeSaltLick(id) {
+    const w = this.world;
+    if (!w.saltLicks?.delete(id)) return false;
+    this._emit('saltlick:changed', { id, removed: true });
+    return true;
+  }
+
+  /** Salt licks the sim owns (ui/tools read; the world Map is the render source). */
+  listSaltLicks() { return [...(this.world.saltLicks?.values() || [])]; }
+
+  /** Insecticide spray over a disc: every swarm centred inside loses 80% density. Charges
+   * LOC.sprayCost × ha via spend(…, 'spray'). → { ok, swarms, ha, cost }. */
+  sprayLocusts(x, z, radius = 48) {
+    const r = this.locusts.spray(x, z, radius);
+    const cost = +(r.ha * LOC.sprayCost).toFixed(2);
+    if (r.swarms) this.spend(cost, 'spray');
+    return { ok: r.swarms > 0, ...r, cost };
+  }
 
   /**
    * Food report for a habitat: per species present (and every herbivore the habitat's plants attract)
