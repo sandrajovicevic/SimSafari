@@ -432,12 +432,11 @@ same bar, and every swarm dies within its `days` in all variants.
 radius 10 m; grazers and mixed feeders in that habitat gain a happiness bonus of 0.03 per lick,
 capped at 0.06 (predators nothing); `reset()` clears them. Animals get a wander bias toward a lick
 in their habitat (60 % of retargets, ±2 m scatter, animals module — it never touches the ledger).
-The spec asked for an emergent sightings effect first; three designs measured too weak to separate
-from tour noise (with/without lick: 15/15, 19/20, 25/20 sightings per tour-hour), so the traffic
-sightline fallback shipped — ×2 at a lick since 2026-10-02 (the ×1.5 was dead code; the predation
-branch proved it and re-measured: **22 vs 17 over 8 staggered kopje tours**, see the
-Predator–prey stability section and `docs/requests/p5.md` #4) —
-control > 0 (non-vacuity), effect in the expected direction. Measurement gotcha
+**No sightings effect** (owner decision 2026-10-04): the emergent route, the ×1.5 traffic fallback
+(dead code) and a ×2 rework were measured and the effect flipped sign by seed — gathering a roadside
+herd onto one spot removes sighting stops along the route. The traffic boost was removed; the
+`salt-lick` scenario now gates on herd gathering at the lick and grazer/mixed happiness, with vs
+without (`docs/requests/p5.md` #5). Measurement gotcha
 (the harness now encodes it): `animals.update` is pause-gated, so at `?speed=0` the settling phase
 must pump the clock or herds never move toward anything.
 
@@ -496,17 +495,16 @@ every day, start lions ≥ 3 as non-vacuity): PASS — `tools/shots/fidelity-pre
 Tests 254/254 (6 new: refuge, hunger-bites, 730-day coexistence min lions ≥ 2 / min impala ≥ 1,
 same-seed determinism, prey-removal starvation).
 
-**Cross-wave interaction (resolved 2026-10-02):** the healthier herds this fix produces exposed
-that P5's `salt-lick` bar had been riding single-tour noise — and that the P5 sightline boost was
-dead code (the sighting roll pre-filtered candidates to the base 60 m, so the raised radius never
-fired). With the owner's OK the boost became ×2 on a widened candidate pool (traffic — P5's code,
-one branch), and the scenario was repaired to what the spec actually says (count the lick
-habitat's species, anchor the lick to the tour's road, stagger 8 tours). Measured **22 vs 17** in
-the kopje — the habitat where the predation fix's larger impala herd makes gathering additive;
-Plains measured 0/0 (herd never road-visible) and Wetland 12/8 (gathering drains the roadside).
-Full table and the two bug post-mortems: `docs/requests/p5.md` #4.
+**Cross-wave interaction (resolved 2026-10-04):** the healthier herds this fix produces exposed that
+P5's `salt-lick` sightings bar had been riding single-tour noise, and that the P5 sightline boost was
+dead code. A ×2 rework then flipped sign by seed, so the owner dropped the sightings claim: the boost
+is removed and `salt-lick` gates on herd gathering at the lick (`docs/requests/p5.md` #4–#5).
 
 ## Known gaps (honest)
+
+* **Salt-lick happiness bonus is not measurable in a single full-game run**: the +0.03 target bonus is
+  unit-tested, but over 20 days it sits below the run-to-run noise a lick introduces (seeds 1/2/3: mean
+  gain days 5–12 +0.022/+0.015/−0.002). Gathering at the lick is robust. Licks make no sightings claim.
 
 * **Wave P3:**
   * **`reset()` is a ledger reset, not a whole-game restart.** In the headless Node game it is a

@@ -123,6 +123,13 @@ void main() {
   float fwd = pow(max(dot(viewDir, uSunDir), 0.0), 6.0);
   vec3 light = uAmbient + uSunColor * (0.45 + 1.8 * fwd);
   if (selfLit > 0.5) light = vec3(1.0); // flames emit their own light
+  else if (aKind > 5.5) {
+    // locust (P5): flat, scatter-free light. The shared forward-scatter lobe is driven by the
+    // moon at night (round-9 moon key light), and specks seen toward the moon lit up ×2.25 —
+    // the verifier read the night swarm as "scattered white glowing points, fireflies or
+    // stars". A swarm at night is a moonlit shadow: ambient + a third of the light, no lobe.
+    light = uAmbient * 0.9 + uSunColor * 0.3;
+  }
   else if (selfLit < -0.5) {
     // fire smoke: flat-lit (ambient + a third of the sun) plus a fire-lit underside for the first metres
     float t2 = clamp(age / max(life, 0.001), 0.0, 1.0);

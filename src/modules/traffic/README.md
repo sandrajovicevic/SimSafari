@@ -71,24 +71,16 @@ The `close` and `night` hero trucks are pinned (`_state = 'stopped'`, like `sigh
 * World-state check in the same review: 6 vehicles with plausible in-bounds positions on the live
   graph; `graphBackend()` = `'roads'`.
 
-## Salt-lick sightline bonus (Wave P5, 2026-10-01; raised to ×2 2026-10-02)
+## Salt licks: no sightings effect (Wave P5; owner decision 2026-10-04)
 
-The P5 spec asked for an *emergent* sightings effect first (animals wander toward a lick → more
-sightings on a route past it). Three measured attempts could not separate it from tour-to-tour
-noise at the demo park's herd sizes (sightings per tour-hour, control vs with-lick: **15/15,
-19/20, 25/20**), so the spec's sanctioned fallback shipped: an animal inside a lick's radius gets
-`SIGHT_RADIUS × 1.5` for sighting rolls. Reads `world.saltLicks` only; no writes, no new events.
-
-**2026-10-02 (predation-stability branch, owner's OK): the ×1.5 was dead code.** The roll
-pre-filtered its candidate pool with `animals.nearest(v, SIGHT_RADIUS)` (60 m) and only then raised
-the pass radius — `dist ≤ 60` always, so the raised radius never mattered; every P5 salt-lick
-"effect" was tour noise. Fixes: the candidate pool now reaches the boosted radius (no-lick rolls
-provably unchanged: a wider pool only adds candidates that then fail the unchanged 60 m test), and
-the boost is **×2** — 120 m ≈ 208 m of visible road for a herd at the spec's 60 m geometry, vs ×1.5's
-≈ 134 m which measured at exact parity. With staggered 8-tour sampling and counting only the lick
-habitat's species (see `docs/requests/p5.md` #4 for the full habitat table: Plains 0/0, Wetland
-12/8 — gathering drains the roadside — Kopje works), the demo park measures **22 with-lick vs 17
-control** (`tools/shots/fidelity-salt-lick.json`, deterministic per seed).
+Licks do **not** change sightings. History, kept short: the spec's emergent route (herd wanders to a
+lick → more sightings) measured as noise (15/15, 19/20, 25/20); the ×1.5 sightline fallback turned out
+to be dead code (the candidate pool was pre-filtered to 60 m, so the raised radius never fired); the
+×2 rework with a widened pool flipped sign by seed (2 vs 17 and 18 vs 5 where the herd started out of
+sight; 16 vs 16, 6 vs 19, 16 vs 22 where it already lined the road — even with the lick moved to
+25–40 m). The reason is structural: a sighting is a stop along the route, and a spread-out roadside
+herd offers more stops than one gathered onto a single spot. The boost was removed; `checkSighting`
+is back to its pre-P5 form (`docs/requests/p5.md` #5). Licks act on happiness and herd placement only.
 
 ## Known gaps (honest)
 

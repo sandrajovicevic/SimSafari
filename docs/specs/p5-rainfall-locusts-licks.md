@@ -20,16 +20,16 @@ results here (full tables: the module READMEs' "Wave P5" sections).
   pair passes the same bar; every swarm dies within `days` in all variants.
 * **Salt licks** — habitat-gated placement ($3,500, radius 10 m), grazer/mixed happiness bonus
   0.03 per lick capped 0.06, wander bias in animals (0.6 of retargets, same-habitat, +60 m leash).
-  The spec's emergent sightings route was tried three ways and measured too weak (15/15, 19/20,
-  25/20 with/without), so the sanctioned fallback shipped: traffic sightline **×2** at a lick
-  (raised from ×1.5 on 2026-10-02 with the owner's OK — the ×1.5 turned out to be dead code; see
-  `docs/requests/p5.md` #4). Harness `salt-lick` PASS: **22 vs 17 sightings over 8 staggered
-  tours** in the kopje (the only habitat where the effect is positive; the count follows the
-  spec's "lick species" wording), control > 0.
+  **No sightings effect** (owner decision 2026-10-04): the emergent route, the ×1.5 fallback (dead
+  code) and a ×2 rework were all measured; the effect flipped sign by seed because gathering a
+  roadside herd onto one spot removes sighting stops along the route. The traffic boost was removed
+  (`docs/requests/p5.md` #5). Harness `salt-lick` now gates on what licks do measurably in-game: herd
+  gathering at the lick, with vs without (happiness reported; the bonus is unit-tested).
 * **Visuals** — swarm cloud density scales with area × density (~1300 specks at radius 56 m,
   readable at the spec's 150 m; 1 draw call — the shared instanced particle mesh), day + night
   verified (`tools/shots/p5-swarm-14.png`, `p5-swarm-21_5.png`); salt lick readable at 55 m in ≤ 2
-  draw calls (`props-saltlick-auto.png`). Fixing the day shot surfaced a real particle-system bug:
+  draw calls (`props-saltlick-auto.png`; the preset placed no lick until 2026-10-04 — the props
+  showcase has no simulation; it now stages the lick into `world.saltLicks` directly). Fixing the day shot surfaced a real particle-system bug:
   narrow ranged GPU updates of the 1-float instanced kind attribute never arrived, so staged
   swarms rendered as invisible ambient motes — `_flush()` now re-uploads that buffer full-range
   (see the effects README).
@@ -103,9 +103,11 @@ as a locust-clearing verb. Separable: each of the three parts may ship alone. Re
   loses at least one high-rainfall animal or ≥ 0.1 happiness.
 - `locusts` — bounded swarm on grassland: unmanaged vs sprayed on day 2 (and a firebreak variant):
   grass cover lost unmanaged ≥ 3× sprayed; swarm dead within `days` in every variant (pass).
-- `salt-lick` — one tour route past a habitat; lick 60 m from the road vs no lick, 1800
-  vehicle-seconds pumped as in `sightings`: sightings of the lick species per tour-hour higher with
-  the lick (pass), non-vacuity: > 0 sightings in the control.
+- `salt-lick` — (redefined 2026-10-04, owner decision: licks make no sightings claim) same seed with
+  vs without a lick at the centroid of the habitat holding the most grazer/mixed animals: more animals
+  within 30 m of the lick after a 900 s animals-only settle (pass; seeds 1/2/3: 28→35, 2→24, 9→32).
+  The habitat's grazer/mixed happiness is reported per day but not gated: the +0.03 target bonus is
+  unit-tested and sits below in-game run-to-run noise (`docs/requests/p5.md` #5).
 
 ## Unit tests
 
