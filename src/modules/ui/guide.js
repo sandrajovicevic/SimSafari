@@ -26,16 +26,27 @@ export function createGuide(root, s) {
   }
   function plantEntries() { return PLANT_GUIDE_IDS.map(plantGuideEntry).filter(Boolean); }
 
-  /** The live block: today's report only — count, mean happiness, best habitat quality. */
+  /** Live population/happiness: the day's report, or — before the first day has been reported (a
+   * fresh game: getReport() is null) — the simulation's current state, which carries the same counts.
+   * The guide showed "none" for every species on day 1 without this (verifier, 2026-10-04). */
+  function livePop() {
+    const api = simApi();
+    const r = api?.getReport?.();
+    if (r?.population) return { population: r.population, happiness: r.happiness || {}, report: r };
+    const st = api?.getState?.();
+    return st?.population ? { population: st.population, happiness: st.happiness || {}, report: null } : null;
+  }
+  /** The live block: count and mean happiness (report, else current state) and best habitat quality
+   * (report only — it is computed at the end of each day, so day 1 shows "—"). */
   function liveStats(speciesId) {
-    const r = simApi()?.getReport?.();
-    if (!r) return null;
+    const L = livePop();
+    if (!L) return null;
     let bestQ = null;
-    for (const h of Object.values(r.habitats || {})) {
+    for (const h of Object.values(L.report?.habitats || {})) {
       const q = h.species?.[speciesId]?.quality;
       if (typeof q === 'number' && (bestQ === null || q > bestQ)) bestQ = q;
     }
-    return { count: r.population?.[speciesId] ?? 0, happy: r.happiness?.[speciesId] ?? null, bestQ };
+    return { count: L.population[speciesId] ?? 0, happy: L.happiness[speciesId] ?? null, bestQ };
   }
 
   const kv = (k, v, cls) => el('div.kv' + (cls ? '.' + cls : ''), null, el('span.muted', { text: k }), el('b', { text: v }));
@@ -45,7 +56,7 @@ export function createGuide(root, s) {
   // ---------- pages ----------
   function speciesListBody() {
     const entries = speciesEntries();
-    const live = simApi()?.getReport?.();
+    const live = livePop();
     const wrap = el('div.g-list');
     if (!entries.length) wrap.appendChild(el('div.ev', null, icon('info'), el('span', { text: 'The animals module is not running — species pages live there. Plant pages and the quiz still work.' })));
     for (const e of entries) {

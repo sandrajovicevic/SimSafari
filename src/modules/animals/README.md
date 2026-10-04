@@ -262,7 +262,7 @@ one per species in the simulation table, **leopard none** (not in the park). Eve
 the contract's content rule forbids copying or close paraphrase from the original game's guide,
 Wikipedia or any published source, and no page carries numbers that contradict the simulation:
 `herd`, `lifespanYears` and `diet` are repeated in the data and cross-checked against
-`simulation/tables.js` by `guide.test.mjs`, which also proves the prey/predator lists mirror
+`simulation/tables.js` by `tools/guide-animals.test.mjs`, which also proves the prey/predator lists mirror
 `DIET` in **both** directions (lion/cheetah menus, and every prey species' hunters). Attractors
 (`attracts`) are computed live from `core/Plants.js`, never duplicated. Summaries all landed in
 the 60–120-word band on the first pass; 124 checks green. The ui reads this only through the api

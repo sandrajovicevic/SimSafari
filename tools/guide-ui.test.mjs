@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // Field-guide ui tests (Wave P6, docs/specs/p6-field-guide.md §Tests): plant entries + quiz.
-//   node src/modules/ui/guide.test.mjs
+//   node tools/guide-ui.test.mjs
 // The quiz checker re-derives every answer key from the same guide data the generator used — a
-// hand-typed wrong key cannot pass, and neither can a generator bug. Imports across module folders
-// are fine in tests (not runtime code).
-import { buildQuiz, DIET_LABEL, RAIN_LABEL, FORM_LABEL } from './quiz.js';
-import { PLANT_GUIDE, plantGuideEntry, PLANT_GUIDE_IDS } from './guideData.js';
-import { PLANTS, PLANT_INDEX } from '../../core/Plants.js';
-import { guideEntry, GUIDE_IDS } from '../animals/guide.js';
+// hand-typed wrong key cannot pass. It imports ui and animals, so it lives in tools/ (tools/lint.mjs
+// forbids cross-module imports inside src/modules/, tests included).
+import { buildQuiz, DIET_LABEL, RAIN_LABEL, FORM_LABEL } from '../src/modules/ui/quiz.js';
+import { PLANT_GUIDE, plantGuideEntry, PLANT_GUIDE_IDS } from '../src/modules/ui/guideData.js';
+import { PLANTS, PLANT_INDEX } from '../src/core/Plants.js';
+import { guideEntry, GUIDE_IDS } from '../src/modules/animals/guide.js';
 
 const failures = [], passes = [];
 const assert = (cond, msg) => { (cond ? passes : failures).push(msg); console.log(`${cond ? '  ok  ' : '  FAIL'} ${msg}`); };
@@ -34,9 +34,9 @@ const species = GUIDE_IDS.map(guideEntry);
 const plants = PLANT_GUIDE_IDS.map(plantGuideEntry);
 const nameOf = (id) => species.find((x) => x.id === id)?.name || id;
 
-function checkKey(q) {
+/** Is option `a` a correct answer to q, derived from the data? Defaults to the keyed option. */
+function checkKey(q, a = q.options[q.answer]) {
   const text = q.q;
-  const a = q.options[q.answer];
   if (!a) return false;
   switch (q.kind) {
     case 'diet': case 'latin': case 'attracts': {
@@ -76,8 +76,20 @@ for (const seed of [1, 7, 42, 99]) {
   assert(quiz.questions.length === 10, `seed ${seed}: 10 questions`);
   assert(quiz.questions.every((q) => q.options.length >= 3 && q.options.length <= 4 && new Set(q.options).size === q.options.length),
     `seed ${seed}: every question has 3–4 distinct options`);
-  assert(quiz.questions.every(checkKey), `seed ${seed}: every answer key re-derives correctly from the data`);
+  assert(quiz.questions.every((q) => checkKey(q)), `seed ${seed}: every answer key re-derives correctly from the data`);
   assert(JSON.stringify(buildQuiz(species, plants, seed)) === JSON.stringify(quiz), `seed ${seed}: same seed → identical quiz`);
+}
+// exactly ONE option is correct — a distractor that is also true makes the quiz mark a right answer
+// wrong (verifier 2026-10-04: 'which plant feeds the Warthog?' offered Marula as a wrong option)
+{
+  const bad = [];
+  for (let seed = 1; seed <= 500; seed++) {
+    for (const q of buildQuiz(species, plants, seed).questions) {
+      const nCorrect = q.options.filter((o) => checkKey(q, o)).length;
+      if (nCorrect !== 1) bad.push(`seed ${seed} [${q.kind}] ${q.q} → ${nCorrect} correct`);
+    }
+  }
+  assert(bad.length === 0, `seeds 1–500: every question has exactly one correct option${bad.length ? ` (${bad.length} bad, e.g. ${bad[0]})` : ''}`);
 }
 const a1 = JSON.stringify(buildQuiz(species, plants, 1)), a2 = JSON.stringify(buildQuiz(species, plants, 2));
 assert(a1 !== a2, 'different seeds deal different quizzes');

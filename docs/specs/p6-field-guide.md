@@ -10,7 +10,7 @@ before opening the panel, 378 open, 378 closed.
   original 60–120-word summary (all landed in-band first pass), 3–5 facts, latin binomial, social
   note, and prey/predator lists that mirror `DIET` in `simulation/tables.js` **both directions**
   (a test cross-checks lion/cheetah prey lists and every prey species' hunters). Attractors come
-  live from `core/Plants.js`. 124 node checks green (`animals/guide.test.mjs`).
+  live from `core/Plants.js`. 124 node checks green (`tools/guide-animals.test.mjs`).
 * **ui** — `guide.js` panel (top-bar button, **B** key, and a Guide action on any animal's side
   panel): Species | Plants | Quiz tabs, two-pane layout. The live block reads only existing sim
   APIs (count, mean happiness, best habitat quality from the day's report). Plant text lives in
@@ -18,7 +18,7 @@ before opening the panel, 378 open, 378 closed.
   from a forked `Rng('quiz:<seed>')`, **answer keys derived from the data at build time** (a test
   re-derives every key across 4 seeds); same seed → identical quiz; no park effect. Degradation:
   without the animals module (ui's own showcase) the quiz deals plant-only questions — documented,
-  tested. 60 node checks green (`ui/guide.test.mjs`).
+  tested. 61 node checks green (`tools/guide-ui.test.mjs`, incl. exactly-one-correct-option over 500 seeds — added after the verifier found a quiz grading bug).
 * **Portraits**: not shipped (optional per the contract — text + icons carry the pages).
 * Screenshots, all verified: `p6-guide-animal-dom.png` (lion page, live block populated, Hunts
   chips), `p6-guide-plant-dom.png` (marula/*Sclerocarya birrea*), `p6-guide-quiz-dom.png`

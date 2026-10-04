@@ -1,7 +1,8 @@
 // Quiz generator (Wave P6 field guide) — pure data in, quiz out. Same seed → byte-identical quiz
 // (forked Rng('quiz:<seed>'), no Math.random — the lint enforces that everywhere). Questions and
-// answer keys are DERIVED from the guide entries passed in; nothing is hand-typed, so a wrong
-// entry can only make a hard quiz, never a wrong one. quiz.test.mjs re-derives every key.
+// answer keys are DERIVED from the guide entries passed in; nothing is hand-typed. Distractors must
+// exclude every true answer, not just the keyed one: tools/guide-ui.test.mjs re-derives every key and
+// checks that exactly one option is correct across 500 seeds.
 import { Rng } from '../../core/Rng.js';
 
 export const DIET_LABEL = { grazer: 'grass, grazed', browser: 'bush and browse, picked', mixed: 'a mixed diet of grass and browse', predator: 'live prey, hunted' };
@@ -76,7 +77,9 @@ export function buildQuiz(species, plants, seed) {
     () => { // a plant that attracts a species
       const e = rng.pick(sp.filter((x) => x.attracts.length)); if (!e) return null;
       const correct = rng.pick(e.attracts);
-      const others = distinctOthers(plNames, correct, 3, rng);
+      // exclude EVERY plant that feeds it, not just the keyed one — otherwise a true answer can sit
+      // among the 'wrong' options (verifier 2026-10-04: Marula offered as wrong for the Warthog)
+      const others = distinctOthers(plNames, e.attracts, 3, rng);
       return mcq(rng, `Which plant is listed as food for the ${e.name}?`, correct, others, 'attracts');
     },
     () => { // which animal a plant feeds

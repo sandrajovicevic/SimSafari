@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // Field-guide data tests (Wave P6, docs/specs/p6-field-guide.md §Tests). Plain node, no deps.
-//   node src/modules/animals/guide.test.mjs
-// Cross-checks guide.js against simulation/tables.js and core/Plants.js. A test importing another
-// module's file is fine — tests are not runtime module code (the runtime path is ui → animals api).
-import { GUIDE, GUIDE_IDS, guideEntry } from './guide.js';
-import { SPECIES, SPECIES_ORDER, DIET } from '../simulation/tables.js';
-import { PLANTS } from '../../core/Plants.js';
+//   node tools/guide-animals.test.mjs
+// Cross-checks animals/guide.js against simulation/tables.js and core/Plants.js. It spans modules, so it
+// lives in tools/ (tools/lint.mjs forbids cross-module imports inside src/modules/, tests included).
+import { GUIDE, GUIDE_IDS, guideEntry } from '../src/modules/animals/guide.js';
+import { SPECIES, SPECIES_ORDER, DIET } from '../src/modules/simulation/tables.js';
+import { PLANTS } from '../src/core/Plants.js';
 
 const failures = [], passes = [];
 const assert = (cond, msg) => { (cond ? passes : failures).push(msg); console.log(`${cond ? '  ok  ' : '  FAIL'} ${msg}`); };
