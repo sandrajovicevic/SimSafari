@@ -55,7 +55,9 @@ export class SaltLickRenderer {
     // true colours (the sRGB pipeline is fixed — no compensation): sun-bleached trampled earth
     // against a dark rust-ochre block — the pairing is the contrast that makes a lick readable
     // at distance (first pass: 0x9d8f78/0xb08954, too close in tone at 55 m per the verifier)
-    this.discMat = new THREE.MeshStandardMaterial({ color: 0xc7b79e, roughness: 1.0, metalness: 0.0 });
+    // polygon offset + an 8 cm lift: the disc sat 1 cm over uneven terrain, which poked through its
+    // middle (a crescent at 55 m)
+    this.discMat = new THREE.MeshStandardMaterial({ color: 0xc7b79e, roughness: 1.0, metalness: 0.0, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
     this.blockMat = new THREE.MeshStandardMaterial({ color: 0x96662f, roughness: 0.8, metalness: 0.0 });
     this.discGeo = discGeometry();
     this.blockGeo = blockGeometry();
@@ -82,7 +84,7 @@ export class SaltLickRenderer {
     for (let i = 0; i < n; i++) {
       const l = licks[i];
       const y = this.world.getHeight ? this.world.getHeight(l.x, l.z) : 0;
-      this._v.set(l.x, y - 0.02, l.z);
+      this._v.set(l.x, y + 0.08, l.z);
       this._q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (l.x * 12.9898 + l.z * 78.233) % (Math.PI * 2));
       this._s.set(l.radius ?? 10, 1, l.radius ?? 10);
       this._m.compose(this._v, this._q, this._s);
