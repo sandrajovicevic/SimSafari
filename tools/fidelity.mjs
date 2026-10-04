@@ -1064,7 +1064,7 @@ async function scenarioLocusts(browser) {
   return result;
 }
 
-/** salt-lick (Wave P5): tours past the plains habitat, lick ~60 m off the nearest road point vs no
+/** salt-lick (Wave P5): tours past the plains habitat, lick 25–40 m off the nearest route point vs no
  * lick. A 900-second animals-only settle first (the lick's gathering effect is a game-hours
  * phenomenon — and traffic must NOT run then or the tours burn their stops before counting);
  * animals' behaviour is unpause-gated (?speed=0 pauses it), so the settle and the 1800-second
@@ -1099,7 +1099,7 @@ async function scenarioSaltLick(browser) {
       let gate = null, plainsNode = null;
       for (const node of roadsApi.nodes().values()) if (!gate || node.z > gate.z) gate = node;
       for (const node of roadsApi.nodes().values()) if (!plainsNode || Math.hypot(node.x - cx, node.z - cz) < Math.hypot(plainsNode.x - cx, plainsNode.z - cz)) plainsNode = node;
-      // the lick sits ~60 m off the road the TOURS DRIVE (edges incident to the plains stop node),
+      // the lick sits 25–40 m off the road the TOURS DRIVE (edges incident to the plains stop node),
       // not the globally nearest road edge — the old placement could pick an edge the route never
       // uses, making the boost untestable. Count only the plains habitat's species: the spec's bar
       // is "sightings of the lick species", and the raw count is dominated by wetland buffalo/rhino/
@@ -1116,17 +1116,18 @@ async function scenarioSaltLick(browser) {
         const ah = a.habitat ?? a.habitatId ?? (world.grid.habitatId[world.cellAt(a.x, a.z).index] || 0);
         return ah === plains.id;
       }).map((a) => a.species));
-      // the lick sits ~60 m off the nearest road point, walked toward the habitat centroid until it
-      // lands inside the habitat
-      // walk from the road point toward — and past — the habitat centroid until ≥ 55 m out AND
-      // inside the chosen habitat (the wetland straddles its road: the centroid itself is closer
-      // than 55 m, and a mere "any habitat" test landed in the neighbour)
+      // the lick sits 25–40 m off the nearest route point: sweep angles around the bearing to the
+      // habitat centroid and take the first spot inside the chosen habitat (a mere "any habitat"
+      // test landed in the neighbour). No spot found → no lick → the scenario fails honestly.
       let lickAt = null;
       if (withLick && best) {
         const base = Math.atan2(cz - best.z, cx - best.x);
         outer: for (const off of [0, 15, -15, 30, -30, 45, -45, 60, -60, 75, -75, 90, -90]) {
           const ang = base + (off * Math.PI) / 180;
-          for (let d = 55; d <= 130; d += 5) {
+          // 25–40 m off the route (owner decision 2026-10-04): at >= 55 m the lick pulled a roadside
+          // herd OUT of the 60 m sightline (seed 2: 16 vs 16 here, 6 vs 19 on #33) and only helped
+          // when the herd started far away. Inside the base sightline the gathering itself is visible.
+          for (let d = 25; d <= 40; d += 5) {
             const lx = best.x + Math.cos(ang) * d, lz = best.z + Math.sin(ang) * d;
             const c = world.cellAt(lx, lz);
             if (world.grid.habitatId[c.index] === plains.id) { sim.placeSaltLick(lx, lz); lickAt = { x: lx, z: lz }; break outer; }
@@ -1168,7 +1169,10 @@ async function scenarioSaltLick(browser) {
     control: { sightings: control.sightings, tours: control.tours },
     withLick: { sightings: withLick.sightings, tours: withLick.tours, lick: withLick.lick, herdNearLick: withLick.herdNearLick },
   };
-  out.pass = control.sightings > 0 && withLick.sightings > control.sightings;
+  // margin, not a bare ">" (verifier, 2026-10-03): the same seed measured 22 vs 17 and 18 vs 5 on two
+  // machines, so a one-sighting lead is noise. Pass needs >= 25 % more AND >= 4 more sightings.
+  out.margin = { need: Math.max(Math.ceil(control.sightings * 1.25), control.sightings + 4), got: withLick.sightings };
+  out.pass = control.sightings > 0 && withLick.sightings >= out.margin.need;
   const result = { scenario: 'salt-lick', result: out, consoleErrors: [...new Set([...control.consoleErrors, ...withLick.consoleErrors])] };
   writeJson('salt-lick', result);
   return result;

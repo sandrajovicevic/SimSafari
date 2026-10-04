@@ -103,9 +103,12 @@ as a locust-clearing verb. Separable: each of the three parts may ship alone. Re
   loses at least one high-rainfall animal or ≥ 0.1 happiness.
 - `locusts` — bounded swarm on grassland: unmanaged vs sprayed on day 2 (and a firebreak variant):
   grass cover lost unmanaged ≥ 3× sprayed; swarm dead within `days` in every variant (pass).
-- `salt-lick` — one tour route past a habitat; lick 60 m from the road vs no lick, 1800
+- `salt-lick` — one tour route past a habitat; lick 25–40 m from the road (inside the 60 m base
+  sightline — changed from 60 m on 2026-10-04, owner decision: at 60 m the lick drew a roadside herd
+  out of sight and the result flipped sign by seed) vs no lick, 1800
   vehicle-seconds pumped as in `sightings`: sightings of the lick species per tour-hour higher with
-  the lick (pass), non-vacuity: > 0 sightings in the control.
+  the lick by >= 25 % and >= 4 sightings on each of seeds 1-3 (pass), non-vacuity: > 0 sightings in
+  the control.
 
 ## Unit tests
 
