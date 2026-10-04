@@ -24,6 +24,12 @@ export class CameraRig {
     this.panSpeed = 1;
     this.enabled = true;
     this.presets = new Map();
+    // Wave V1 TAA (docs/requests/effects.md #1): the previous frame's view-projection for temporal
+    // reprojection — one writer (the rig, at the end of update), effects reads it. `jitter` is the
+    // TAA sub-pixel offset in NDC units, set by effects before update; null when TAA is off.
+    this.prevViewProjection = new THREE.Matrix4();
+    this._vp = new THREE.Matrix4();
+    this.jitter = null;
     this._drag = null;
     this._keys = new Set();
     this._bind();
@@ -186,5 +192,16 @@ export class CameraRig {
     if (py < ground + 1.7) py = ground + 1.7;
     this.camera.position.set(px, py, pz);
     this.camera.lookAt(this.target);
+    // Wave V1 TAA: apply the sub-pixel jitter to the projection's NDC xy offsets (elements 12/13
+    // in column-major order — they add jitter*w to clip x/y, a direct NDC shift; 8/9 would scale
+    // with z), then capture this frame's view-projection for next frame's reprojection. When
+    // jitter is null (TAA off) the only cost is one matrix multiply per frame.
+    this.camera.updateMatrixWorld();
+    if (this.jitter) {
+      this.camera.projectionMatrix.elements[12] += this.jitter[0];
+      this.camera.projectionMatrix.elements[13] += this.jitter[1];
+    }
+    this._vp.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    this.prevViewProjection.copy(this._vp);
   }
 }
