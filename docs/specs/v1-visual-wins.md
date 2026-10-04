@@ -26,42 +26,65 @@ diff is ~4 lines in `src/core/CameraRig.js`; effects files the request, integrat
 separate "integrator change" commit (wave-rules §14 applies to rig state, not `world.*`, but the
 same one-writer rule: rig owns it, effects reads).
 
-## 1. TAA — temporal anti-aliasing (effects)
+## 1. TAA — temporal anti-aliasing (effects) — SHIPPED (part 1)
 
-**What**: at `quality=high` replace FXAA with a temporal pass after GradePass, before OutputPass:
+**What shipped** (design as measured; two deviations from the plan below): at `quality=high` a
+temporal pass after GradePass, before OutputPass:
 
-* projection jittered by a fixed **Halton(2,3) 8-sample** sequence (seeded constant — no
-  `Math.random`, lint enforces);
-* **camera-only reprojection** (world → clip with `prevViewProjection`, inverse current): the park
-  is static and the rig is a slow orbit, so per-object motion vectors are out of scope;
-* **rejection**: depth mismatch beyond an epsilon OR normal-parity flip → accept current frame
-  (blend weight → 1). Fast movers (animals, particles) live on rejection, not projection — brief
-  edge softness on a galloping herd is acceptable, smeared ghosts are not;
-* **neighbourhood clamp**: 3×3 min/max of the current frame around the reprojected sample clamps
-  the history (kills ghost trails);
-* history in a HalfFloat target at sceneRT resolution (+1 target, +1–2 draws total);
-* first frame after build/camera-cut/resize accepts the current frame outright (no accumulation
-  from a stale buffer).
+* projection jittered by a fixed **Halton(2,3) 8-sample** sequence, centred (`-0.5`), ~±0.375 px
+  amplitude — deterministic, no `Math.random`;
+* **camera-only reprojection** (depth → world via inverse current VP, → previous uv via
+  `rig.prevViewProjection`); off-screen previous-uv rejects (blend → current); sky depth caps the
+  blend at 0.8. Per-object motion vectors stay out of scope (static park, slow orbit rig) — moving
+  things live on the clamp;
+* **variance clipping** (Salvi): history clamped to μ ± 2.5σ of the current 3×3 neighbourhood
+  (+0.002 HDR slack). *Deviation 1* — the planned min/max 3×3 clamp shipped first and was measured
+  broken: an aliased single-phase min/max box cannot bound the accumulated supersample, so the
+  recursion's fixed point pinned back to the raw frame (mean edge energy 8.42 vs FXAA 6.58,
+  blend-insensitive at convergence);
+* history blend **0.98** per frame, two HalfFloat history targets ping-ponged at sceneRT
+  resolution (+1 target, **+1 draw** measured). *Deviation 2* — the plan's ~3-frame convergence
+  was wrong: 0.98 has a ~50-frame constant (0.9 never accumulated at all);
+* first frame after build/camera-cut/resize accepts the current frame outright (reset path).
 
-**Verification — a temporal effect cannot be read off one still** (the heat-haze precedent,
-effects README Known gaps). Three checks, all scripted:
+Two integrator bugs were caught by the measurement loop and fixed in `CameraRig.update` (see
+`docs/requests/effects.md` #1 for the post-mortem): `prevViewProjection` was captured at the *end*
+of update (making it ≡ current VP — identity reprojection), and the jitter was applied with `+=`
+to a never-reset projection matrix (cumulative random walk). Both are now: capture prevVP *first*,
+assign the NDC offset slot.
 
-1. **Aliasing-energy metric** (extend `measure.mjs`, `--aliasing` mode): render the game overview
-   at 8 sub-pixel camera offsets (+0, +½ px in x/y combinations), compute mean edge-gradient
-   energy (Sobel on luma, top-decile edges) per frame, then the **variance across offsets**.
-   Aliased content varies strongly with sub-pixel shifts; TAA-smoothed content does not. Pass:
-   variance ≥ **30 % below** the same metric on the FXAA path (one-line toggle to A/B).
-2. **Ghosting check**: script a 45° yaw sweep, settle 6 rendered frames, capture — grass/tree
-   edges must show no double edges or trails (read the PNG; the sweep pattern is reproducible).
-3. **Exposure neutrality**: the existing grey-card series within ±2 % of the FXAA baseline
-   (round-6 methodology, unchanged).
+**Verification — a temporal effect cannot be read off one still.** The planned "variance of edge
+energy across 8 sub-pixel offsets ≥30 % below FXAA" gate was **retired with evidence** after
+implementation: the sweep measures (a) a content-energy ramp across the offset grid shared by both
+arms, and (b) the jitter limit-cycle orbit that only the jittered arm has — an un-jittered spatial
+filter wins both by construction (measured: TAA/FXAA ratio 1.1–3.7 across blend/clamp configs;
+even a pure-accumulation probe with the clamp disabled could not win it). The retired metric stays
+in the report as a diagnostic. The gates that matter to a player, all in
+`measure.mjs --aliasing` (real GPU, frozen module time so only the AA differs):
 
-**Capture-path note**: `screenshot.mjs` renders only 4 real frames after settle — with
-first-frame acceptance the history converges in ~3 frames, so captures are valid; verify once by
-comparing `--renderFrames 4` vs `--renderFrames 12` (must be visually identical).
+| gate | bar | measured |
+|---|---|---|
+| sharpness non-inferiority — mean thresholded second-difference edge energy over 8 sub-pixel offsets, converged (120 frames each) | taa/fxaa ≤ 1.05 | **0.803** (5.31 vs 6.62 — TAA 20 % smoother) |
+| temporal stability at rest — per-frame churn (mean |Δ|, 3 frame pairs, scene frozen) | ratio ≤ 0.70 | **0.635** (0.060 vs 0.094) |
+| exposure neutrality — grey card, grain off | ratio 0.99–1.01 | **0.9969** (grain on: 0.9888 — grain averaged in HDR pre-tonemap biases by Jensen ≈1 %, a grade-grain interplay, not exposure) |
+| draw budget | ≤ +3 | **+1** |
 
-**Quality tiers**: high = TAA (FXAA pass skipped); medium/low = FXAA unchanged; a
-`setPipelineFlag('aa', 'fxaa'|'taa')` escape hatch for A/B and regression hunting.
+Plus, scripted in the verify harness (`tmp/taa_verify.mjs` recipe, recorded in the effects README):
+
+* **animation integration** (the pass's headline value): with live wind/particles (no freeze),
+  per-frame churn 0.956 (FXAA) → 0.381 (TAA) — **2.5× more stable** under animation;
+* **ghosting**: 45° yaw sweep + settle, structural vision read of the capture — single edges, no
+  double images or smear trails, at the shipped 0.98/2.5 config;
+* **SwiftShader**: zero page errors through the whole battery (compat gate);
+* **A/B non-vacuity**: toggling `setAA` changes 20.8 % of pixels (the toggle provably does
+  something).
+
+**Capture-path caveat**: `screenshot.mjs` renders only 4 real frames after settle — at blend 0.98
+that is ~8 % converged; captures are *valid but pre-convergence-smoothed* (they under-represent
+TAA's smoothing, never over-represent it). The measurement harness warms 120 frames per phase.
+
+**Quality tiers**: high = TAA; medium/low = FXAA unchanged; `setAA('fxaa')` escape hatch for A/B
+and regression hunting; `setAATuning({ blend, slack, gamma })` maintenance hook.
 
 ## 2. Terrain detail normals (terrain)
 

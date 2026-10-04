@@ -20,7 +20,7 @@ import { GLSL_NOISE } from '../../core/Textures.js';
 import { HAZE_GLSL } from './heatHaze.js';
 
 export const TIERS = {
-  high: { msaa: 4, ao: true, aoSamples: 16, aoScale: 1.0, bloom: true, haze: true, aa: 'fxaa' },
+  high: { msaa: 4, ao: true, aoSamples: 16, aoScale: 1.0, bloom: true, haze: true, aa: 'taa' },   // Wave V1: TAA at high; setAA('fxaa') is the A/B + fallback escape
   medium: { msaa: 2, ao: true, aoSamples: 8, aoScale: 0.5, bloom: true, haze: true, aa: 'fxaa' },
   low: { msaa: 0, ao: false, aoSamples: 0, aoScale: 0.5, bloom: false, haze: false, aa: 'fxaa' },
 };
@@ -142,6 +142,140 @@ class ParticlesPass extends Pass {
     this.particles.renderInto(renderer, this.camera, this.sceneRT.depthTexture, this.sceneRT.width, this.sceneRT.height);
     renderer.autoClear = oc;
   }
+}
+
+/** Wave V1 TAA: camera-only temporal anti-aliasing (docs/specs/v1-visual-wins.md §1). The scene
+ * renders with a per-frame Halton sub-pixel projection jitter (rig.jitter, set by Pipeline.render);
+ * this pass reprojects each pixel through its depth into the PREVIOUS frame's view-projection
+ * (rig.prevViewProjection) to sample the accumulated history, clamps it into the current frame's
+ * 3×3 colour box (kills ghost trails), and blends — 90 % history when valid, 0 % on rejection
+ * (reprojected uv off-screen; sky capped at 80 %). The blended result is written into the next
+ * history slot AND copied to the composer buffer: 2 draws. Fast movers (animals, particles) are
+ * not per-object reprojected — they live on the neighbourhood clamp, per the spec. */
+const HALTON8 = (() => {
+  // Halton(2,3), 8 samples, centred (−0.5..0.5). Frozen deterministic table — no per-frame cost,
+  // and the sequence is stable if the tier's sample count is ever tuned.
+  const h = (i, b) => { let f = 1, r = 0, n = i; while (n > 0) { f /= b; r += f * (n % b); n = Math.floor(n / b); } return r; };
+  return Array.from({ length: 8 }, (_, i) => [h(i + 1, 2) - 0.5, h(i + 1, 3) - 0.5]);
+})();
+
+class TAAPass extends Pass {
+  constructor(camera, rig, sceneRT, w, h) {
+    super();
+    this.camera = camera; this.rig = rig; this.sceneRT = sceneRT;
+    this.needsSwap = true;
+    this._h = 0;              // history ping-pong index
+    this._reset = true;       // first frame after build/resize: accept current, no history
+    this._vp = new THREE.Matrix4();
+    const mkRT = () => new THREE.WebGLRenderTarget(w, h, {
+      type: THREE.HalfFloatType, depthBuffer: false, stencilBuffer: false,
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false,
+    });
+    this.hist = [mkRT(), mkRT()];
+    this.uniforms = {
+      uCurr: { value: null }, uHist: { value: null }, uDepth: { value: null },
+      uCurrInvVP: { value: new THREE.Matrix4() }, uPrevVP: { value: new THREE.Matrix4() },
+      // blend 0.98 / gamma 2.5 (measured, V1 §1): the fixed point of the recursion needs the deep
+      // blend to hold the accumulated supersample against the clamp (0.9 pinned it back to the raw
+      // frame — mean edge energy 8.42 vs fxaa 6.58; the deep blend converges to ~6.3 with ~27-60%
+      // lower per-frame churn depending on scene animation). gamma 2.5 (variance-clip radius) is the
+      // widest that stayed ghost-free in the sweep test.
+      uTexel: { value: new THREE.Vector2(1 / w, 1 / h) }, uBlend: { value: 0.98 }, uSlack: { value: 0.002 }, uGamma: { value: 2.5 }, uDebug: { value: 0 },
+    };
+    this.material = new THREE.ShaderMaterial({
+      uniforms: this.uniforms, vertexShader: VERT,
+      fragmentShader: /* glsl */ `
+uniform sampler2D uCurr;
+uniform sampler2D uHist;
+uniform sampler2D uDepth;
+uniform mat4 uCurrInvVP;
+uniform mat4 uPrevVP;
+uniform vec2 uTexel;
+uniform float uBlend;
+uniform float uSlack;
+uniform float uGamma;
+uniform float uDebug;
+varying vec2 vUv;
+void main() {
+  vec3 curr = texture2D(uCurr, vUv).rgb;
+  float d = texture2D(uDepth, vUv).x;
+  // depth → world → previous frame's uv (camera-only reprojection; the park is static)
+  vec4 clip = vec4(vUv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+  vec4 wpos = uCurrInvVP * clip;
+  vec4 pclip = uPrevVP * (wpos / wpos.w);
+  vec2 puv = pclip.xy / pclip.w * 0.5 + 0.5;
+  bool inside = puv.x > 0.001 && puv.x < 0.999 && puv.y > 0.001 && puv.y < 0.999;
+  float w = inside ? uBlend : 0.0;
+  if (d > 0.99999) w = min(w, 0.8);                 // far plane (sky): keep some history, weaker
+  // shader introspection (setAATuning({ debug })): 1 puv · 2 depth · 3 blend weight · 4 inside mask ·
+  // 5 history at vUv (no reprojection) · 6 current at vUv (passthrough view)
+  if (uDebug > 0.5) {
+    if (uDebug < 1.5) { gl_FragColor = vec4(puv, 0.0, 1.0); return; }
+    else if (uDebug < 2.5) { gl_FragColor = vec4(vec3(d), 1.0); return; }
+    else if (uDebug < 3.5) { gl_FragColor = vec4(vec3(w), 1.0); return; }
+    else if (uDebug < 4.5) { gl_FragColor = vec4(vec3(inside ? 1.0 : 0.0), 1.0); return; }
+    else if (uDebug < 5.5) { gl_FragColor = vec4(texture2D(uHist, vUv).rgb, 1.0); return; }
+    else { gl_FragColor = vec4(texture2D(uCurr, vUv).rgb, 1.0); return; }
+  }
+  vec3 hist = texture2D(uHist, clamp(puv, 0.0, 1.0)).rgb;
+  // variance clipping (Salvi): clamp history to mu ± gamma*sigma of the 3×3 neighbourhood, not its
+  // min/max — a min/max box pins the fixed point to the current frame's samples and the jitter never
+  // integrates (measured: mean edge energy == raw, blend-insensitive). mu/gamma*sigma stays tight on
+  // flats (ghost protection) and opens up on edges + shading noise (accumulation).
+  vec3 m1 = vec3(0.0), m2 = vec3(0.0);
+  for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
+    vec3 c = texture2D(uCurr, vUv + vec2(float(dx), float(dy)) * uTexel).rgb;
+    m1 += c; m2 += c * c;
+  }
+  vec3 mu = m1 / 9.0;
+  vec3 sigma = sqrt(max(m2 / 9.0 - mu * mu, vec3(0.0)));
+  hist = clamp(hist, mu - vec3(uGamma) * sigma - vec3(uSlack), mu + vec3(uGamma) * sigma + vec3(uSlack));
+  gl_FragColor = vec4(mix(curr, hist, w), 1.0);
+}`,
+      depthTest: false, depthWrite: false, blending: THREE.NoBlending,
+    });
+    this.fsQuad = new FullScreenQuad(this.material);
+    this.copyMat = new THREE.ShaderMaterial({
+      uniforms: { tMap: { value: null } }, vertexShader: VERT,
+      fragmentShader: 'uniform sampler2D tMap; varying vec2 vUv; void main() { gl_FragColor = texture2D(tMap, vUv); }',
+      depthTest: false, depthWrite: false, blending: THREE.NoBlending,
+    });
+    this.copyQuad = new FullScreenQuad(this.copyMat);
+  }
+  render(renderer, writeBuffer, readBuffer) {
+    const u = this.uniforms;
+    if (!this.rig || !this.rig.prevViewProjection) { this._blit(renderer, readBuffer.texture, writeBuffer); return; }
+    // current frame's jittered view-projection (the rig captured prevViewProjection with the same
+    // convention at the end of its update, so current/previous clip spaces match)
+    this._vp.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    u.uCurrInvVP.value.copy(this._vp).invert();
+    u.uPrevVP.value.copy(this.rig.prevViewProjection);
+    if (this._reset) {
+      this._reset = false;
+      this._blit(renderer, readBuffer.texture, this.hist[this._h]);
+      this._blit(renderer, readBuffer.texture, writeBuffer);
+      return;
+    }
+    u.uCurr.value = readBuffer.texture;
+    u.uDepth.value = this.sceneRT.depthTexture;
+    const next = 1 - this._h;
+    u.uHist.value = this.hist[next].texture;   // blend READS the other slot, WRITES into this one
+    renderer.setRenderTarget(this.hist[this._h]);
+    this.fsQuad.render(renderer);
+    this._h = next;
+    this._blit(renderer, this.hist[1 - this._h].texture, writeBuffer);
+  }
+  _blit(renderer, tex, target) {
+    this.copyMat.uniforms.tMap.value = tex;
+    renderer.setRenderTarget(target);
+    this.copyQuad.render(renderer);
+  }
+  setSize(w, h) {
+    this.hist[0].setSize(w, h); this.hist[1].setSize(w, h);
+    this.uniforms.uTexel.value.set(1 / w, 1 / h);
+    this._reset = true;                        // history no longer matches the resolution
+  }
+  dispose() { this.fsQuad.dispose(); this.copyQuad.dispose(); this.material.dispose(); this.copyMat.dispose(); this.hist[0].dispose(); this.hist[1].dispose(); }
 }
 
 /** Lean bloom: soft-knee threshold + Karis-weighted 13-tap prefilter into a 4-level mip chain (13-tap
@@ -394,10 +528,12 @@ export class Pipeline {
     this.gradePass = new GradePass(this.bloomPass ? this.bloomPass.texture : this._white, this.aoPass ? this.aoPass.gtaoMap : this._white);
     c.addPass(this.gradePass);
     const aa = this.aaMode || tier.aa;
-    this.aaPass = null;
-    if (aa === 'smaa') this.aaPass = this._pass('smaa', () => new SMAAPass());
+    this.aaPass = null; this.taaPass = null;
+    if (aa === 'taa') this.aaPass = this.taaPass = this._pass('taa', () => new TAAPass(this.camera, this.ctx.rig, this.sceneRT, W, H));
+    else if (aa === 'smaa') this.aaPass = this._pass('smaa', () => new SMAAPass());
     else if (aa === 'fxaa') this.aaPass = this._pass('fxaa', () => new FXAAPass());
     if (this.aaPass) c.addPass(this.aaPass);
+    this._jIdx = 0; this._devW = W; this._devH = H;
     this.outputPass = new OutputPass();
     c.addPass(this.outputPass);
     this.msaaSamples = samples;
@@ -488,6 +624,8 @@ export class Pipeline {
 
   resize(width, height) {
     this._composer.setSize(width, height);
+    const pr = this.renderer.getPixelRatio();
+    this.taaPass?.setSize(Math.max(2, Math.floor(width * pr)), Math.max(2, Math.floor(height * pr)));
   }
 
   render(scene, camera, dt) {
@@ -498,6 +636,12 @@ export class Pipeline {
       return;
     }
     this.time += dt;
+    if (this.taaPass && this.enabled.aa) {
+      const j = HALTON8[this._jIdx & 7]; this._jIdx++;
+      // ~0.75 px amplitude in NDC (2/W spans one pixel), centred (Halton spans (0,1), so -0.5 makes
+      // the phase grid symmetric). Set before the NEXT rig.update — deterministic.
+      if (this.ctx.rig) this.ctx.rig.jitter = [(j[0] - 0.5) * 1.5 / this._devW, (j[1] - 0.5) * 1.5 / this._devH];
+    } else if (this.ctx.rig) this.ctx.rig.jitter = null;
     this.gradePass.uniforms.uPivot.value = 0.18 / Math.max(1e-4, r.toneMappingExposure);
     this.resolvePass.uniforms.uTime.value = this.time;
     this.gradePass.uniforms.uTime.value = this.time;
