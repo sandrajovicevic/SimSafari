@@ -1037,8 +1037,16 @@ export class Simulation {
       let prey = 0;
       for (const [s, r] of m) if (r.n > 0 && this.species(s).diet !== 'predator' && (untabled || inDiet.has(s))) prey += r.n;
       if (!predators) prey = prey0;
-      // predation: each predator takes CONST.predationRate prey per day, spread over the prey species in its diet by count
-      const kills = predators > 0 && prey > 0 ? poisson(this.rng, Math.min(prey, predators * CONST.predationRate)) : 0;
+      // predation: type-III saturating response (predator–prey stability, 2026-10-02). Per-predator
+      // kill rate = predationRate × r²/(1+r²) with r = prey / (predators × preyPerPredatorHalf): half
+      // speed at prey = P×10 prey/predator, collapsing as r² below — a scarce prey herd becomes hard to
+      // find, so a habitat's predators cannot hunt their base to zero. The old flat rate killed at full
+      // speed until the last prey (verifier-measured on the demo kopje: 3 lions ate 14 impala to 0 by
+      // day 270 then starved; every predator habitat was unstable by construction). Hunger still bites
+      // through the unchanged lagged-biomass path: remove the prey and the lions starve on schedule.
+      const ratio = prey / (predators * CONST.preyPerPredatorHalf);
+      const killRate = CONST.predationRate * (ratio * ratio) / (1 + ratio * ratio);
+      const kills = predators > 0 && prey > 0 ? poisson(this.rng, Math.min(prey, predators * killRate)) : 0;
       let killsLeft = kills;
       const info = { id: hid, name: h?.name || String(hid), species: {} };
       const order = SPECIES_ORDER.filter((k) => m.has(k)).concat([...m.keys()].filter((k) => !SPECIES[k]).sort());
