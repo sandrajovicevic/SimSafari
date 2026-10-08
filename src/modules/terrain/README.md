@@ -199,6 +199,34 @@ suitability from it). The apron and the splat's 80 m border fade use the same fo
 `savannah/overview`, 0 errors. Still open: the patch albedo reads mauve-brown from altitude rather
 than laterite red.
 
+## Close-range detail normals (Wave V1 §2, 2026-10-08)
+
+Two GPU-generated tileables (`buildDetailNormals`, textures.js — 512² hardware / 256² software GL,
+cached keys `terrain:detailRock` / `terrain:detailGrass`) layered over the composed splat normal in
+material.js at tilings the 1024² layer arrays don't carry: **1.4 m fractured rock** (tridged facets
+at two scales, worley cross-cracks, grain) weighted by the rock splat weight `b[3]`, and **0.55 m
+ground micro-bump** (hummocks, tuft lattice, blade grain) over grass + dry-grass + 0.35·dirt. Both
+perturb the same world tangent frame the layer normals use, and go **triplanar on slopes** through
+the existing `bw` axis blend — the round-2 critic's flat-shading tell lived on kopje/cliff faces.
+Faded out **80→220 m** (`uDetail` scales it, 0 kills it; the branch is skipped entirely beyond the
+fade so distant pixels never sample). Zero new draws — fragment cost only inside the fade ring; a
+1×1 flat normal binds if generation ever fails, with `uDetail` forced 0. Program cache key v11.
+
+Measured (real GPU, quality=medium for a deterministic FXAA chain, both per-frame clocks frozen):
+A/B mean-abs diff close@8.5 **0.199**, close@14 **0.120**, kopje@17 **0.062** (the fade is already
+≈⅔ down at 175 m), overview@1150 m **byte-identical** (the fade provably holds); draws 31–36
+unchanged; SwiftShader 0 errors. Vision A/B (neutral prompts): kopje OFF "fairly smooth and
+somewhat flat-shaded… like a continuous skin", ON "a collection of angled facets and plates…
+articulated pile of stone slabs"; grass OFF "reads more as a painted texture", ON "tufts and clumps
+catch the grazing light with distinct micro-shadows". Numbers and method in
+`docs/specs/v1-visual-wins.md` §2.
+
+**Verification recipe gotcha**: to prove "unchanged pixels are byte-identical", freeze BOTH
+per-frame clocks — `registry.update` (module dt) *and* `materials.update` (the shared core `uTime`
+that animates the water runs from `materials.update(dt)` inside `_simulate`, not through the
+registry; freezing only the registry leaves ~0.001/frame of river shimmer). And use quality=medium:
+the high tier's TAA wobbles ~0.06/frame at rest, the same order as the kopje effect itself.
+
 ## Known gaps (honest)
 
 * **World-border seam fixed (2026-09-28).** A ruler-straight line crossed the game's default overview at

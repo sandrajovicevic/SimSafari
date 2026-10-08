@@ -86,21 +86,37 @@ TAA's smoothing, never over-represent it). The measurement harness warms 120 fra
 **Quality tiers**: high = TAA; medium/low = FXAA unchanged; `setAA('fxaa')` escape hatch for A/B
 and regression hunting; `setAATuning({ blend, slack, gamma })` maintenance hook.
 
-## 2. Terrain detail normals (terrain)
+## 2. Terrain detail normals (terrain) — SHIPPED (part 2)
 
-**What**: two tiled **GPU-generated** detail normals (fractured rock; grass-ground micro-bump),
-generated once via `ctx.textures.gpu` alongside the existing splat sources. In `material.js`'s
-fragment shader, blend each by its biome splat weight, sample with the existing world-UV tiling,
-fade to zero between **80 m and 220 m** (beyond that the macro noise already carries). No new
-draws, no new geometry passes; fragment cost only.
+**What shipped**: two GPU-generated tileable detail normals (`buildDetailNormals` in
+`textures.js`, 512², cached keys, 256² on software GL) layered over the composed splat normal in
+`material.js`: **1.4 m fractured rock** (tridged facets ×2 scales, worley cross-cracks, grain)
+weighted by the rock splat, and **0.55 m ground micro-bump** (hummocks, tuft lattice, blade grain)
+over grass + dry-grass + 0.35·dirt — both perturbing the same world tangent frame the layer
+normals use, **triplanar on slopes** via the existing `bw` blend (the flat-shading tell lives on
+boulder/cliff faces). Faded **80→220 m**; the whole branch is skipped beyond that. Zero new draws
+(fragment-only); a 1×1 flat fallback binds when textures are missing; `uDetail` uniform is the A/B
+hook. Program cache key v11.
 
-**Why this one first**: the close preset at raking light (tod 8–9) shows flat shading on rock
-faces — the single biggest "programmer art" tell at close camera angles, per the round-2 critic
-screens.
+**Verification** (`tmp/detail_verify.mjs` recipe, real GPU D3D11, quality=medium so the FXAA chain
+gives deterministic frames, both per-frame clocks frozen — see the README note):
 
-**Verify**: `terrain` close preset at tod 8.5 and 14 before/after, read both; overview capture
-diff must show changes **confined to the near field** (the fade holds); grey-card neutral;
-SwiftShader renders it (harness compatibility — the generator runs on the same GLSL path).
+| check | result |
+|---|---|
+| close preset tod 8.5 (raking light) A/B mean-abs diff | **0.199** — detail visibly engaged |
+| close preset tod 14 (noon) | **0.120** |
+| kopje preset (175 m, evening — the critic's tell) | **0.062** (fade ≈ 32% strength there) |
+| overview (1150 m) | **byte-identical** — the fade provably holds, distant pixels untouched |
+| draw calls per preset | 31–36, unchanged |
+| page errors | **0** real GPU, **0** SwiftShader (generation + compile on software GL) |
+
+Structural vision reads (neutral describe-first): close OFF — grass "reads more as a painted
+texture", mud plates flat; ON — "individual grass tufts and clumps catch the grazing light with
+distinct micro-shadows… no longer reads as a painted texture", mud plates "aren't perfectly flat".
+Kopje OFF — boulders "fairly smooth and somewhat flat-shaded… like a continuous skin rather than a
+collection of facets"; ON — "a collection of angled facets and plates… fracture edges catch light
+and shadow contrasts… an articulated pile of stone slabs". Exactly the round-2 critic tell,
+addressed.
 
 ## 3. Octahedral impostor bake (props)
 
