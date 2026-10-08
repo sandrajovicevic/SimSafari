@@ -129,8 +129,9 @@ function addSpur(ctx, roads, rng, from, to, kind = 'dirt') {
  * painted habitat def to its real flood-filled region (the disc can fragment; see buildPark step 5).
  * `claimed` holds region ids already owned by another def: regions are connectivity-based, so a def
  * must never resolve to — or rename — another def's region. `largestWithin` > 0 instead takes the
- * LARGEST unclaimed region with a sampled cell inside that radius (the grown kopje disc can be cut by
- * the loop road; nearest-first picked a 24 k m² piece over a 38 k m² one on seed 2). */
+ * LARGEST unclaimed region with >= 80 % of its sampled cells inside that radius (the grown kopje disc
+ * can be cut by the loop road: nearest-first picked a 24 k m² piece over a 38 k m² one on seed 2;
+ * the 80 % rule keeps a not-yet-claimed neighbour's region out — seed 7 took the wetland's without it). */
 function regionNear(zoning, world, x, z, maxDist, claimed, largestWithin = 0) {
   const gres = world.grid.res, gcell = world.grid.cell, half = world.half;
   let best = null, bestD = maxDist, big = null;
@@ -138,15 +139,15 @@ function regionNear(zoning, world, x, z, maxDist, claimed, largestWithin = 0) {
     if (claimed?.has(h.id)) continue;
     const cells = h.cells || [];
     const step = Math.max(1, Math.floor(cells.length / 32));
-    let hd = Infinity;
+    let inside = 0, sampled = 0;
     for (let i = 0; i < cells.length; i += step) {
       const idx = cells[i], ix = idx % gres, iz = (idx - ix) / gres;
       const cx = (ix + 0.5) * gcell - half, cz = (iz + 0.5) * gcell - half;
       const d = dist(x, z, cx, cz);
       if (d < bestD) { bestD = d; best = h; }
-      if (d < hd) hd = d;
+      sampled++; if (d < largestWithin) inside++;
     }
-    if (largestWithin > 0 && hd < largestWithin && (!big || cells.length > (big.cells?.length ?? 0))) big = h;
+    if (largestWithin > 0 && sampled && inside >= 0.8 * sampled && (!big || cells.length > (big.cells?.length ?? 0))) big = h;
   }
   return big || best;
 }
@@ -277,14 +278,25 @@ export async function buildPark(ctx, opts = {}) {
   // over seeds 1–8) for a pride of 3. At or over capacity the sim's birth room term is 0: the pride
   // could never breed and only shrank (age, poachers) — seeds 2, 6 and 7 fell below 2 lions inside
   // 730 days, seed 6 to 0 (verifier, 2026-10-08). KOPJE_AREA is the ring's area outside the rock,
-  // ~6 lions' worth. The disc stops 12 m short of every other habitat's disc (touching discs merge
-  // into one flood-filled region — measured: an unclamped disc fused with the woodland on seeds 4
-  // and 6 and left the wetland a 2 k m² scrap) and never shrinks below the base ring.
+  // ~6 lions' worth. Every def paints a second 0.65 r disc up to 0.35 r off-centre (step 5), so a
+  // def's paint reaches ~1.15 r; the grown disc keeps that footprint 12 m clear of every other
+  // habitat's (touching paints flood-fill into one region — measured: an unclamped disc fused with
+  // the woodland on seeds 4 and 6). Where a neighbour is close the disc centre may slide off the
+  // rock's centre (up to one rock radius, rock kept wholly inside) toward the open side. Pure
+  // geometry, no rng draw; never smaller than the base ring.
   if (kopje) {
-    const KOPJE_AREA = 60000;
-    let r = Math.sqrt(KOPJE_AREA / Math.PI + kopje.r * kopje.r);
-    for (const o of [plainsAnchor, browsersAnchor, wetlandAnchor]) if (o) r = Math.min(r, dist(kopje.x, kopje.z, o.x, o.z) - (o.r ?? 85) - 12);
-    predatorsAnchor.r = Math.max(predatorsAnchor.r, Math.round(r));
+    const KOPJE_AREA = 60000, SPILL = 1.15;
+    const others = [plainsAnchor, browsersAnchor, wetlandAnchor].filter(Boolean);
+    const want = Math.sqrt(KOPJE_AREA / Math.PI + kopje.r * kopje.r);
+    const room = (cx, cz) => others.reduce((r, o) => Math.min(r, (dist(cx, cz, o.x, o.z) - SPILL * (o.r ?? 85) - 12) / SPILL), want);
+    let best = null;
+    for (const f of [0, 0.5, 1]) for (let k = 0; k < (f ? 16 : 1); k++) {
+      const off = f * kopje.r, a = (k / 16) * Math.PI * 2;
+      const cx = kopje.x + Math.cos(a) * off, cz = kopje.z + Math.sin(a) * off;
+      const r = room(cx, cz);
+      if (r >= off + kopje.r && (!best || r > best.r + 0.5)) best = { x: cx, z: cz, r };
+    }
+    if (best && best.r > predatorsAnchor.r) Object.assign(predatorsAnchor, { x: best.x, z: best.z, r: Math.round(best.r) });
   }
 
   /** Where a habitat's access spur should end: the disc rim facing the road, never the centre. */
