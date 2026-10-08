@@ -200,8 +200,15 @@ export async function buildPark(ctx, opts = {}) {
 
   let plainsIdx = 0, browsersIdx = 1, predIdx = 2, wetIdx = 3;
   const kopje = biggestKopje(features);
+  // The kopje disc is sized by the pride's space need, not a fixed rim: tables.space gives a lion
+  // 9 000 m², and the rock centre is unpaintable, so a "rock + 42 m" ring left 16–36 k m² (lion
+  // capacity 1–4 across seeds 1–8) for a pride of 3. At or over capacity the sim's birth room term
+  // is 0, so the pride could never breed and only shrank (age, poachers): seeds 2, 6 and 7 lost it
+  // below 2 inside 730 days (seed 6 to 0) (verifier, 2026-10-08). KOPJE_AREA is the ring's area outside the rock,
+  // ~6 lions' worth so the pride has room to breed; road clipping and rock-edge loss come out of it.
+  const KOPJE_AREA = 60000;
   const predatorsAnchor = kopje
-    ? { x: kopje.x, z: kopje.z, r: kopje.r + 42 }
+    ? { x: kopje.x, z: kopje.z, r: Math.round(Math.sqrt(KOPJE_AREA / Math.PI + kopje.r * kopje.r)) }
     : { x: (loop.verts[predIdx]?.x ?? half * 0.2) + 60, z: (loop.verts[predIdx]?.z ?? -half * 0.2) + 40, r: 70 };
 
   if (loop.verts.length === 6) {
