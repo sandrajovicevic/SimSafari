@@ -128,22 +128,27 @@ function addSpur(ctx, roads, rng, from, to, kind = 'dirt') {
 /** The habitat region whose sampled cells lie nearest to (x,z), within maxDist — used to resolve a
  * painted habitat def to its real flood-filled region (the disc can fragment; see buildPark step 5).
  * `claimed` holds region ids already owned by another def: regions are connectivity-based, so a def
- * must never resolve to — or rename — another def's region. */
-function regionNear(zoning, world, x, z, maxDist, claimed) {
+ * must never resolve to — or rename — another def's region. `largestWithin` > 0 instead takes the
+ * LARGEST unclaimed region with a sampled cell inside that radius (the grown kopje disc can be cut by
+ * the loop road; nearest-first picked a 24 k m² piece over a 38 k m² one on seed 2). */
+function regionNear(zoning, world, x, z, maxDist, claimed, largestWithin = 0) {
   const gres = world.grid.res, gcell = world.grid.cell, half = world.half;
-  let best = null, bestD = maxDist;
+  let best = null, bestD = maxDist, big = null;
   for (const h of zoning.listHabitats()) {
     if (claimed?.has(h.id)) continue;
     const cells = h.cells || [];
     const step = Math.max(1, Math.floor(cells.length / 32));
+    let hd = Infinity;
     for (let i = 0; i < cells.length; i += step) {
       const idx = cells[i], ix = idx % gres, iz = (idx - ix) / gres;
       const cx = (ix + 0.5) * gcell - half, cz = (iz + 0.5) * gcell - half;
       const d = dist(x, z, cx, cz);
       if (d < bestD) { bestD = d; best = h; }
+      if (d < hd) hd = d;
     }
+    if (largestWithin > 0 && hd < largestWithin && (!big || cells.length > (big.cells?.length ?? 0))) big = h;
   }
-  return best;
+  return big || best;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -200,15 +205,10 @@ export async function buildPark(ctx, opts = {}) {
 
   let plainsIdx = 0, browsersIdx = 1, predIdx = 2, wetIdx = 3;
   const kopje = biggestKopje(features);
-  // The kopje disc is sized by the pride's space need, not a fixed rim: tables.space gives a lion
-  // 9 000 m², and the rock centre is unpaintable, so a "rock + 42 m" ring left 16–36 k m² (lion
-  // capacity 1–4 across seeds 1–8) for a pride of 3. At or over capacity the sim's birth room term
-  // is 0, so the pride could never breed and only shrank (age, poachers): seeds 2, 6 and 7 lost it
-  // below 2 inside 730 days (seed 6 to 0) (verifier, 2026-10-08). KOPJE_AREA is the ring's area outside the rock,
-  // ~6 lions' worth so the pride has room to breed; road clipping and rock-edge loss come out of it.
-  const KOPJE_AREA = 60000;
+  // siting runs on the kopje's base disc (rock + 42 m); the disc is grown to its area target only
+  // after every other anchor is fixed (below), so plains/woodland/wetland siting is unchanged
   const predatorsAnchor = kopje
-    ? { x: kopje.x, z: kopje.z, r: Math.round(Math.sqrt(KOPJE_AREA / Math.PI + kopje.r * kopje.r)) }
+    ? { x: kopje.x, z: kopje.z, r: kopje.r + 42 }
     : { x: (loop.verts[predIdx]?.x ?? half * 0.2) + 60, z: (loop.verts[predIdx]?.z ?? -half * 0.2) + 40, r: 70 };
 
   if (loop.verts.length === 6) {
@@ -272,6 +272,21 @@ export async function buildPark(ctx, opts = {}) {
     wetlandAnchor = { x: wetlandAnchor.x + (dx / d) * 30, z: wetlandAnchor.z + (dz / d) * 30, r: 110 };
   }
 
+  // Grow the kopje disc to the pride's space need. tables.space gives a lion 9 000 m² and the rock
+  // centre is unpaintable, so the old fixed "rock + 42 m" ring left 16–36 k m² (lion capacity 1–4
+  // over seeds 1–8) for a pride of 3. At or over capacity the sim's birth room term is 0: the pride
+  // could never breed and only shrank (age, poachers) — seeds 2, 6 and 7 fell below 2 lions inside
+  // 730 days, seed 6 to 0 (verifier, 2026-10-08). KOPJE_AREA is the ring's area outside the rock,
+  // ~6 lions' worth. The disc stops 12 m short of every other habitat's disc (touching discs merge
+  // into one flood-filled region — measured: an unclamped disc fused with the woodland on seeds 4
+  // and 6 and left the wetland a 2 k m² scrap) and never shrinks below the base ring.
+  if (kopje) {
+    const KOPJE_AREA = 60000;
+    let r = Math.sqrt(KOPJE_AREA / Math.PI + kopje.r * kopje.r);
+    for (const o of [plainsAnchor, browsersAnchor, wetlandAnchor]) if (o) r = Math.min(r, dist(kopje.x, kopje.z, o.x, o.z) - (o.r ?? 85) - 12);
+    predatorsAnchor.r = Math.max(predatorsAnchor.r, Math.round(r));
+  }
+
   /** Where a habitat's access spur should end: the disc rim facing the road, never the centre. */
   const rimPoint = (from, anchor) => {
     const dx = anchor.x - from.x, dz = anchor.z - from.z, d = Math.hypot(dx, dz) || 1;
@@ -322,7 +337,7 @@ export async function buildPark(ctx, opts = {}) {
       // fragments around rock/water/road, and the anchor cell itself may be unpaintable (the kopje's
       // centre is rock), so habitatAt(anchor) can miss entirely. Nearest UNCLAIMED region within 1.3×
       // the disc; a merge with an earlier def's disc leaves this def nothing, and the warning says so.
-      const region = regionNear(zoning, world, h.anchor.x, h.anchor.z, r * 1.3, claimedRegions);
+      const region = regionNear(zoning, world, h.anchor.x, h.anchor.z, r * 1.3, claimedRegions, h.key === 'predators' ? r : 0);
       if (region) { zoning.renameHabitat(region.id, h.name); h.habitatId = region.id; h.region = region; claimedRegions.add(region.id); }
       else report.warnings.push(`habitat "${h.name}": no zoned region of its own near its anchor (disc merged with another habitat?); animals not released`);
     }
@@ -392,7 +407,7 @@ export async function buildPark(ctx, opts = {}) {
     const claimed = new Set();
     for (const h of habitatDefs) {
       const r = h.anchor.r ?? 85;
-      const region = regionNear(zoning, world, h.anchor.x, h.anchor.z, r * 1.3, claimed);
+      const region = regionNear(zoning, world, h.anchor.x, h.anchor.z, r * 1.3, claimed, h.key === 'predators' ? r : 0);
       if (region) { if (region.id !== h.habitatId) zoning.renameHabitat(region.id, h.name); h.habitatId = region.id; h.region = region; claimed.add(region.id); }
       else if (h.habitatId != null) { h.habitatId = null; h.region = null; report.warnings.push(`habitat "${h.name}": its region vanished after later edits; animals not released`); }
     }
