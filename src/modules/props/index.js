@@ -272,9 +272,10 @@ function buildMaterials() {
 
 /** An instanced draw group: several parts (bark + leaf, stem + foliage …) sharing one instance matrix set. */
 class InstGroup {
-  constructor(parts, cap, { castShadow = true, receiveShadow = true, name = 'props' } = {}) {
+  constructor(parts, cap, { castShadow = true, receiveShadow = true, name = 'props', yaw = false } = {}) {
     this.cap = Math.max(1, cap);
     this.count = 0;
+    this.hasYaw = yaw;
     this.meshes = parts.filter((p) => p && p.geo).map((p) => {
       const m = new THREE.InstancedMesh(p.geo, p.mat, this.cap);
       m.name = name;
@@ -284,18 +285,28 @@ class InstGroup {
       m.count = 0;
       return m;
     });
+    if (yaw) {
+      // V1 §3: per-instance yaw drives the imposter's azimuth-ring view pick (each geometry is
+      // owned by one variant, so the attribute can live directly on it)
+      const attr = new THREE.InstancedBufferAttribute(new Float32Array(this.cap), 1);
+      attr.setUsage(THREE.DynamicDrawUsage);
+      for (const p of parts) if (p?.geo) p.geo.setAttribute('aYaw', attr);
+      this.yawAttr = attr;
+    }
   }
   addTo(group) { for (const m of this.meshes) group.add(m); return this; }
   reset() { this.count = 0; }
-  write(mtx) {
+  write(mtx, yaw = 0) {
     if (this.count >= this.cap) return false;
     const o = this.count * 16;
     for (const m of this.meshes) m.instanceMatrix.array.set(mtx.elements, o);
+    if (this.hasYaw) this.yawAttr.array[this.count] = yaw;
     this.count++;
     return true;
   }
   finish() {
     for (const m of this.meshes) { m.count = this.count; m.instanceMatrix.needsUpdate = true; }
+    if (this.hasYaw) this.yawAttr.needsUpdate = true;
   }
   dispose() {
     scorchTex?.dispose(); scorchTex = null; scorchVersionSeen = -1; SCORCH_UNIFORMS.uScorchOn.value = 0; for (const m of this.meshes) { m.removeFromParent(); m.dispose?.(); } this.meshes.length = 0; }
@@ -384,7 +395,6 @@ function buildSpecies() {
  * identical cut-out, which read as a hedge along the horizon.
  */
 function buildImposters() {
-  S.imposterGeo = imposterGeometry();
   for (const kind of TREE_KINDS) {
     const sp = S.species.get(kind);
     if (!sp) continue;
@@ -395,7 +405,13 @@ function buildImposters() {
       try { baked = bakeImposter(S.ctx, meshes, { size: S.ctx.quality === 'low' ? 128 : 256 }); }
       catch (err) { S.ctx.log.warn(`[props] imposter bake failed for ${kind} v${vi}: ${err?.message || err}`); }
       if (!baked) continue;
-      v.imposter = { ...baked, mat: withScorch(imposterMaterial(S.ctx, baked.texture, kind + vi, baked.top, baked.topExtent, baked.crownY, baked.width, baked.sideN, baked.topN), 'imp'), geo: S.imposterGeo, refHeight: v.height };
+      // geometry is per-VARIANT now: it carries the aYaw instanced attribute this variant's group writes
+      v.imposter = {
+        ...baked,
+        mat: withScorch(imposterMaterial(S.ctx, baked.texture, kind + vi, baked.top, baked.topExtent, baked.crownY, baked.width, baked.sideN, baked.topN, baked), 'imp'),
+        geo: imposterGeometry(),
+        refHeight: v.height,
+      };
     }
     sp.hasImposter = sp.variants.some((v) => !!v.imposter);
   }
@@ -673,7 +689,7 @@ function ensureGroups() {
       // floated on the plain with no ground shadow at overview range
       const depthMat = variant.imposter.mat.userData.depthMaterial || null;
       variant.imposterGroup = new InstGroup([{ geo: variant.imposter.geo, mat: variant.imposter.mat }], need, {
-        castShadow: !!depthMat, receiveShadow: true, name: `props-${sp.kind}-v${v}-imposter`,
+        castShadow: !!depthMat, receiveShadow: true, name: `props-${sp.kind}-v${v}-imposter`, yaw: true,
       }).addTo(S.group);
       if (depthMat) for (const m of variant.imposterGroup.meshes) m.customDepthMaterial = depthMat;
     }
@@ -707,10 +723,12 @@ function pack(cx, cz) {
         const s = it.scale;
         _pos.set(it.x, it.y, it.z);
         _quat.identity();
-        // negative x scale mirrors the billboard (the vertex patch reads the signed column), so a
-        // row of distant trees is not the same cut-out repeated
-        _scl.set(variant.imposter.width * s * (it.mirror ? -1 : 1), variant.imposter.height * s, 1);
+        // V1 §3: the tree's own rotY reaches the billboard through the aYaw attribute — the ring
+        // shader picks the baked view for it (mirroring is handled by the view selection now, so the
+        // width scale stays positive)
+        _scl.set(variant.imposter.width * s, variant.imposter.height * s, 1);
         _mtx.compose(_pos, _quat, _scl);
+        group.write(_mtx, it.rotY);
       } else {
         _pos.set(it.x, it.y, it.z);
         _euler.set(it.tiltX, it.rotY, it.tiltZ, 'YXZ');
@@ -1252,6 +1270,8 @@ export default {
         v.imposter.top?.userData?.renderTarget?.dispose();
         v.imposter.sideN?.userData?.renderTarget?.dispose();
         v.imposter.topN?.userData?.renderTarget?.dispose();
+        v.imposter.ring?.dispose(); v.imposter.ringN?.dispose();
+        v.imposter.geo?.dispose();
         v.imposter.mat.userData.depthMaterial?.dispose();
         S.ctx.materials.untrack(v.imposter.mat); v.imposter.mat.dispose();
       }
@@ -1260,7 +1280,6 @@ export default {
     S.ctx?.textures.dispose('props:bark:acacia'); S.ctx?.textures.dispose('props:bark:fever');
     S.ctx?.textures.dispose('props:bark:baobab'); S.ctx?.textures.dispose('props:bark:dead');
     S.ctx?.textures.dispose('props:granite'); S.ctx?.textures.dispose('props:clay');
-    S.imposterGeo?.dispose(); S.imposterGeo = null;
     S.species.clear(); S.items.clear(); S.byKind.clear();
     S.mats = {}; S.cover = null; S.graze = null; S.grazed.clear(); S.macro = null;
     S.vegRatio = null; S.vegGrass = null; S.vegSums = null; S.vegNoBase = null; S.vegDirty = false; S.vegStats.applies = 0;

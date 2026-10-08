@@ -356,16 +356,44 @@ particularly on first load or after a large camera jump (e.g. a showcase preset 
   instead of a flat disc. Empty texels clear to an encoded +Y normal so mips don't drift toward 0.
   Same geometry, same draw calls; +2 small render targets per tree variant (9 variants).
 * **Imposters are per-variant.** Each tree species bakes one billboard imposter per geometry
-  variant (not one per species) and packs distant instances with a signed x-scale that mirrors
-  ~half of them, so the LOD2 ring along a horizon does not repeat the same cut-out at regular
-  intervals.
+  variant (not one per species). Since V1 §3 (below) each distant instance also carries its own
+  `rotY` into the shader, which selects one of four baked azimuth views per tree — the horizon
+  ring no longer repeats the same cut-out. (The older signed-x-scale mirroring trick is retired;
+  view selection owns mirroring now.)
+
+## Yaw-aware impostor azimuth ring (Wave V1 §3, 2026-10-08)
+
+The horizon-ring repetition tell ("every distant tree is the same cut-out") traced to `pack()`:
+the billboard group wrote an identity rotation, discarding each tree's actual random `rotY` — 9
+variants × mirror was the entire distant-silhouette set. `bakeImposter` now also renders a
+**4-view azimuth ring** (0/45/90/135°, albedo + normal each) into a strip atlas with an 8 px
+edge-extended gutter (read back once → DataTextures, so mip chains never bleed across tiles), and
+the imposter materials pick the view per instance: `aYaw` (new instanced attribute; geometry is
+per-variant now since attributes live on geometry) + the camera's bearing to the tree select the
+tile; azimuths past 180° map onto the same views with a mirrored U. The crown card rotates its
+top-bake image by the same yaw (exactly valid for a top view: image right = +x, up = −z), and the
+baked world-space crown normal rotates with it. The shadow depth twin runs the identical selection
+through `twoViewVertex` — the one place the selection lives, so colour and depth cannot diverge;
+in the shadow pass the "view" is the sun, as before.
+
+Measured (real GPU + SwiftShader): draws **byte-identical** across overview 14 h/17 h, a 330 m mid
+view and night (379/381/464/381 before and after); ready-time deltas within load noise (8 extra
+small renders per variant); zero page errors on both backends. Vision A/B, neutral prompts:
+BEFORE "exact clones… 8-10 identical copies of the same 2-3 tree shapes… 'clone stamp' effect" →
+AFTER "no single 'stamp' silhouette… crowns rotated at differing angles… individuals within a
+species rather than clones"; 330 m "no smearing, doubling, clipping, or color fringing"; night
+"correctly dark… no emissive halos". Full reasoning for the scoped-down design (why a ring + yaw
+beats a full 8×2 octahedral grid) in `docs/specs/v1-visual-wins.md` §3.
 
 ## Known gaps (honest)
 
-* **Imposters have one silhouette per view.** The overview crowns shade as volumes and now cast a shadow
+* **Imposters have one silhouette per view → fixed per-tree (V1 §3, 2026-10-08).** The overview crowns shade as volumes and cast a shadow
   (a depth-material twin, see "Imposter shadows" below — verified at 14 h; the critic could not see it at
-  17 h, round 5), but the crown card is one top-down bake, so every tree of a variant has the same outline
-  from above (mirroring halves the repetition). An octahedral multi-view bake would fix the silhouette. Not done.
+  17 h, round 5). The old gap — "every tree of a variant has the same outline from above" — is
+  addressed by the azimuth ring + per-tree yaw (see the V1 §3 section): four baked side views
+  selected by each tree's own rotation, and the crown card rotated per tree. Four views × yaw is
+  not a full octahedral bake; a tree can still show the nearest-of-4 view at up to ~22° azimuth
+  error, which is imperceptible at billboard range.
   (This bullet used to say imposters cast no shadow; that stopped being true on 2026-09-28.)
 * **Vegetation grid gaps.** (1) Dead trees, boulders, termite mounds and logs never react — a fire
   leaves them standing (by design, per the task; P2 may want charred dead trees). (2) The terrain's

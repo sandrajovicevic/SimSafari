@@ -118,22 +118,39 @@ collection of facets"; ON — "a collection of angled facets and plates… fract
 and shadow contrasts… an articulated pile of stone slabs". Exactly the round-2 critic tell,
 addressed.
 
-## 3. Octahedral impostor bake (props)
+## 3. Octahedral impostor bake (props) — SHIPPED (part 3, scoped to a yaw-aware azimuth ring)
 
-**What**: replace the per-variant two-view billboard (side card + top crown card, the README's
-documented gap: "every tree of a variant has the same outline from above") with one **octahedral
-atlas** — 8×2 views around the equator plus pole fill — per geometry variant, keeping the existing
-normal/AO bake idea (repacked into the same atlas set). LOD2 instanced quads sample the atlas by
-view direction; the signed-x mirroring trick is kept per face-pair.
+**What shipped** — a deliberate scope reduction from the planned 8×2+pole octahedral atlas, with
+the reasoning on record: measurement found the ring repetition's root cause in `pack()` — the
+billboard wrote an **identity rotation**, discarding every tree's actual random `rotY` (9 variants
+× mirror = 18 distinct distant silhouettes, however many views are baked), and a full octahedral
+grid's second elevation row would mostly duplicate the existing side/crown pitch crossfade. So the
+shipped design is the part of the octahedron that carries information:
 
-**Constraints**: same instanced-quad draw structure (draw calls unchanged); bake adds **≤ 1 s** to
-`quality=high` load (measure — today's per-variant bakes set the baseline); atlas memory per
-variant within ~2× today's cards (9 variants).
+* a **4-view azimuth ring** per variant (bakes at 0/45/90/135°, the far half mapped by mirrored U)
+  packed into one strip atlas with an 8 px edge-extended gutter so mip levels never bleed across
+  tiles (read back once, uploaded as DataTextures — the terrain layers' pattern);
+* **yaw-aware selection**: each instance's `rotY` reaches the shader through an `aYaw` instanced
+  attribute (geometry now per-variant, `InstGroup` writes it); the vertex hook picks the baked view
+  at azimuth (camera bearing − tree yaw), so every distant tree shows *its own* rotation;
+* the **crown card rotates by yaw** (exactly valid for a top view: image right = +x, up = −z ⇒ a
+  yawed tree is the same image rotated CCW), and its world-space normal card rotates with it;
+* the shadow depth twin runs the same selection (in the shadow pass the "view" is the sun, as
+  before); the old negative-scale mirror trick is retired (selection handles mirroring).
 
-**Verify**: overview 14 h + 17 h and a 330 m mid view before/after, read — the horizon ring of
-repeated cut-out silhouettes must break up; per-variant draw calls byte-identical; night preset
-(rule 17: the atlas must sample the same normal/AO data — no emissive surprises at ×12 night
-exposure).
+**Constraints held**: same instanced-quad draw structure — **draws byte-identical** across four
+presets (379/381/464/381 before and after); bake cost invisible in ready-time (deltas ±0.3 s,
+within load noise — 8 extra small renders per variant); memory ~net-zero (the ring replaces the
+single side card + its normal card; ~0.9 MB of new atlas vs ~0.9 MB freed).
+
+**Verification** (real GPU + SwiftShader): before/after captures at overview 14 h + 17 h, a 330 m
+mid view and night 21.5 — **zero page errors on both backends**. Vision reads (neutral
+describe-first): BEFORE — "exact clones of one another… 8-10 distinct locations show recognizable
+identical copies of the same 2-3 tree shapes… 'clone stamp' effect"; AFTER — "no single 'stamp'
+silhouette… crowns rotated at differing angles… read as individuals within a species rather than
+clones", 330 m "no smearing, doubling, rectangular clipping, or color fringing", night "correctly
+dark and shaded… no glowing outlines, emissive halos, or wrong colors". The round-2 critic's
+horizon-ring tell is directly addressed.
 
 ## 4. Close-range density spend (props grass + animals LOD0)
 

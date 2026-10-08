@@ -69,9 +69,12 @@ function normalBakeMaterial(src, leafBox) {
 
 /**
  * Render meshes into an imposter texture.
- * @returns { texture, width, height, aspect } — width/height in metres of the captured box.
+ * @returns { texture, top, sideN, topN, ring, ringN, ... } — side/top as before, plus the V1 §3
+ * azimuth ring: VIEWS renders around the equator (0..π, the far half is the mirror), packed into
+ * one strip atlas with a pixel gutter that is edge-extended on the CPU so mip levels never bleed
+ * across tiles (read back once, uploaded as a DataTexture — the terrain layers' pattern).
  */
-export function bakeImposter(ctx, meshes, { size = 256, pad = 1.04 } = {}) {
+export function bakeImposter(ctx, meshes, { size = 256, pad = 1.04, views = 4 } = {}) {
   const scene = new THREE.Scene();
   const swapped = [];
   _box.makeEmpty();
@@ -103,10 +106,23 @@ export function bakeImposter(ctx, meshes, { size = 256, pad = 1.04 } = {}) {
   const texW = Math.round(size * Math.min(2, Math.max(0.5, aspect)));
   const texH = size;
 
+  const r = ctx.renderer;
+  const prevRT = r.getRenderTarget();
+  const prevClear = r.getClearColor(new THREE.Color());
+  const prevAlpha = r.getClearAlpha();
+  const prevAuto = r.autoClear;
+  const renderTo = (target, camera) => {
+    r.setRenderTarget(target);
+    r.setClearColor(0x000000, 0);
+    r.autoClear = true;
+    r.clear(true, true, false);
+    r.render(scene, camera);
+  };
+
+  // SIDE view (azimuth 0): camera on +Z looking at the tree
   const cam = new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 400);
   cam.position.set(0, _box.min.y + h / 2, 160);
   cam.lookAt(0, _box.min.y + h / 2, 0);
-
   const rt = new THREE.WebGLRenderTarget(texW, texH, {
     format: THREE.RGBAFormat, type: THREE.UnsignedByteType,
     minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter,
@@ -115,20 +131,7 @@ export function bakeImposter(ctx, meshes, { size = 256, pad = 1.04 } = {}) {
   });
   rt.texture.wrapS = rt.texture.wrapT = THREE.ClampToEdgeWrapping;
   rt.texture.anisotropy = Math.min(4, ctx.textures.maxAnisotropy);
-
-  const r = ctx.renderer;
-  const prevRT = r.getRenderTarget();
-  const prevClear = r.getClearColor(new THREE.Color());
-  const prevAlpha = r.getClearAlpha();
-  const prevAuto = r.autoClear;
-  r.setRenderTarget(rt);
-  r.setClearColor(0x000000, 0);
-  r.autoClear = true;
-  r.clear(true, true, false);
-  r.render(scene, cam);
-  r.setRenderTarget(prevRT);
-  r.setClearColor(prevClear, prevAlpha);
-  r.autoClear = prevAuto;
+  renderTo(rt, cam);
 
   // TOP view (2026-09-24): from a high camera the side card foreshortens into a line — every distant
   // acacia read as a black dash across the overview. A second, top-down bake drives a horizontal
@@ -146,16 +149,9 @@ export function bakeImposter(ctx, meshes, { size = 256, pad = 1.04 } = {}) {
     generateMipmaps: true, depthBuffer: true, stencilBuffer: false, colorSpace: THREE.LinearSRGBColorSpace,
   });
   rtT.texture.wrapS = rtT.texture.wrapT = THREE.ClampToEdgeWrapping;
-  r.setRenderTarget(rtT);
-  r.setClearColor(0x000000, 0);
-  r.autoClear = true;
-  r.clear(true, true, false);
-  r.render(scene, camT);
-  r.setRenderTarget(prevRT);
-  r.setClearColor(prevClear, prevAlpha);
-  r.autoClear = prevAuto;
+  renderTo(rtT, camT);
 
-  // NORMAL + OCCLUSION pass, same two cameras. Empty texels clear to an encoded +Y normal with no
+  // NORMAL + OCCLUSION pass, same cameras. Empty texels clear to an encoded +Y normal with no
   // occlusion, so mip levels that blend foliage with background drift toward "up", not toward 0.
   const leafBox = new THREE.Box3();
   for (const m of meshes) {
@@ -180,19 +176,70 @@ export function bakeImposter(ctx, meshes, { size = 256, pad = 1.04 } = {}) {
     r.clear(true, true, false);
     r.render(scene, camera);
   };
-  const rtN = new THREE.WebGLRenderTarget(texW, texH, {
+  const mkRt = (tw, th, space) => new THREE.WebGLRenderTarget(tw, th, {
     format: THREE.RGBAFormat, type: THREE.UnsignedByteType,
-    minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter,
-    generateMipmaps: true, depthBuffer: true, stencilBuffer: false, colorSpace: THREE.NoColorSpace,
+    minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false,
+    depthBuffer: true, stencilBuffer: false, colorSpace: space,
   });
-  const rtTN = new THREE.WebGLRenderTarget(topSize, topSize, {
-    format: THREE.RGBAFormat, type: THREE.UnsignedByteType,
-    minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter,
-    generateMipmaps: true, depthBuffer: true, stencilBuffer: false, colorSpace: THREE.NoColorSpace,
-  });
+  const rtN = mkRt(texW, texH, THREE.NoColorSpace);
+  const rtTN = mkRt(topSize, topSize, THREE.NoColorSpace);
   rtN.texture.wrapS = rtN.texture.wrapT = rtTN.texture.wrapS = rtTN.texture.wrapT = THREE.ClampToEdgeWrapping;
   renderNormals(cam, rtN, _dirSide);
   renderNormals(camT, rtTN, _dirTop);
+
+  // V1 §3 azimuth ring: VIEWS equator bakes (camera at azimuth a_k = k·π/VIEWS on the unit circle,
+  // d_k = (sin a, 0, cos a) — view 0 is the side camera). Albedo and normal each render into a
+  // scratch RT, are read back, and land in one strip atlas whose tiles are separated by a gutter
+  // of edge-extended pixels — mip chains then blend tile edge into tile edge, never across views.
+  const ringSize = Math.max(64, Math.round(size * 0.5));
+  const gutter = 8;
+  const stride = ringSize + 2 * gutter;
+  const atlasW = stride * views, atlasH = ringSize + 2 * gutter;
+  const alb = new Uint8Array(atlasW * atlasH * 4);
+  const nrm = new Uint8Array(atlasW * atlasH * 4);
+  const scratchA = mkRt(ringSize, ringSize, THREE.LinearSRGBColorSpace);
+  const scratchN = mkRt(ringSize, ringSize, THREE.NoColorSpace);
+  const bufA = new Uint8Array(ringSize * ringSize * 4);
+  const bufN = new Uint8Array(ringSize * ringSize * 4);
+  const camR = new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 400);
+  for (let k = 0; k < views; k++) {
+    const a = (k * Math.PI) / views;
+    const d = new THREE.Vector3(Math.sin(a), 0, Math.cos(a));
+    camR.up.set(0, 1, 0);
+    camR.position.set(d.x * 160, _box.min.y + h / 2, d.z * 160);
+    camR.lookAt(0, _box.min.y + h / 2, 0);
+    // albedo: swap the normal materials back to the basic ones for this pass
+    for (let i = 0; i < scene.children.length; i++) scene.children[i].material = swapped[i];
+    renderTo(scratchA, camR);
+    for (const nm of nMats) {
+      nm.uniforms.uDir.value.copy(d);
+      nm.uniforms.uRange.value.set(dirMin(leafBox, d), dirMin(leafBox, d) + dirExtent(leafBox, d));
+    }
+    for (let i = 0; i < scene.children.length; i++) scene.children[i].material = nMats[i];
+    r.setRenderTarget(scratchN);
+    r.setClearColor(_clearN, 1);
+    r.autoClear = true;
+    r.clear(true, true, false);
+    r.render(scene, camR);
+    r.readRenderTargetPixels(scratchA, 0, 0, ringSize, ringSize, bufA);
+    r.readRenderTargetPixels(scratchN, 0, 0, ringSize, ringSize, bufN);
+    blitTile(alb, bufA, k, views, ringSize, gutter, stride, atlasH);
+    blitTile(nrm, bufN, k, views, ringSize, gutter, stride, atlasH);
+  }
+  scratchA.dispose(); scratchN.dispose();
+  const mkAtlas = (data, name, space) => {
+    const t = new THREE.DataTexture(data, atlasW, atlasH, THREE.RGBAFormat, THREE.UnsignedByteType);
+    t.name = name;
+    t.colorSpace = space;
+    t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
+    t.generateMipmaps = true;
+    t.anisotropy = Math.min(4, ctx.textures.maxAnisotropy);
+    t.needsUpdate = true;
+    return t;
+  };
+  const ring = mkAtlas(alb, 'imposter-ring', THREE.LinearSRGBColorSpace);
+  const ringN = mkAtlas(nrm, 'imposter-ring-n', THREE.NoColorSpace);
   r.setRenderTarget(prevRT);
   r.setClearColor(prevClear, prevAlpha);
   r.autoClear = prevAuto;
@@ -209,22 +256,73 @@ export function bakeImposter(ctx, meshes, { size = 256, pad = 1.04 } = {}) {
   const topN = rtTN.texture; topN.userData.renderTarget = rtTN;
   // crown card height as a fraction of the side card (top of the crown, a little down into it)
   const crownY = Math.min(0.98, Math.max(0.3, (_box.max.y - _box.min.y) * 0.9 / Math.max(1e-3, h)));
-  return { texture: tex, top, sideN, topN, topExtent: ext, crownY, width: w, height: h, baseY: _box.min.y };
+  return {
+    texture: tex, top, sideN, topN, ring, ringN,
+    ringViews: views, ringSize, ringGutter: gutter, ringStride: stride, atlasW, atlasH,
+    topExtent: ext, crownY, width: w, height: h, baseY: _box.min.y,
+  };
+}
+
+/** Copy one view tile into the strip atlas and edge-extend `gutter` px around it (mip bleed guard). */
+function blitTile(atlas, tile, k, views, s, g, stride, atlasH) {
+  const x0 = k * stride + g, y0 = g;
+  for (let y = 0; y < s; y++) {
+    const aRow = ((atlasH - 1 - (y0 + y)) * stride * views + x0) * 4; // readback is bottom-up; DataTexture rows top-down
+    const tRow = y * s * 4;
+    for (let x = 0; x < s * 4; x++) atlas[aRow + x] = tile[tRow + x];
+  }
+  const px = (x, y) => {
+    const cx = Math.min(s - 1, Math.max(0, x)), cy = Math.min(s - 1, Math.max(0, y));
+    return ((atlasH - 1 - (y0 + cy)) * stride * views + x0 + cx) * 4;
+  };
+  for (let y = -g; y < s + g; y++) {
+    for (let x = -g; x < s + g; x++) {
+      if (x >= 0 && x < s && y >= 0 && y < s) continue;
+      const dst = ((atlasH - 1 - (y0 + y)) * stride * views + x0 + x) * 4;
+      const src = px(x, y);
+      atlas[dst] = atlas[src]; atlas[dst + 1] = atlas[src + 1]; atlas[dst + 2] = atlas[src + 2]; atlas[dst + 3] = atlas[src + 3];
+    }
+  }
 }
 
 // Shared vertex hooks: the colour material and its shadow-depth twin must place the quads identically.
-function twoViewVertex(shader) {
+// ringInfo = { ringViews, ringSize, ringGutter, ringStride, atlasW, atlasH } from bakeImposter.
+function twoViewVertex(shader, ringInfo) {
   // aKind = 1 marks the horizontal crown card. Weights cross-fade on the view's downward pitch
   // (|forward.y|): side card below ~25°, crown card above ~45°, dithered so no sorting. In the shadow
   // pass the "view" is the sun, so a high sun casts the crown card and a low sun the side silhouette.
   shader.vertexShader = shader.vertexShader
-    .replace('#include <common>', '#include <common>\nattribute float aKind; uniform float uTopExt; uniform float uCrownY; uniform float uW; varying float vKind; varying float vW; varying vec2 vTopUv; varying vec3 vRightW; varying float vMir;')
-    .replace('#include <uv_vertex>', `#include <uv_vertex>
+    .replace('#include <common>', /* glsl */ `#include <common>
+attribute float aKind;
+attribute float aYaw;
+uniform float uTopExt; uniform float uCrownY; uniform float uW;
+uniform float uStride; uniform float uTile; uniform float uGut; uniform float uAW; uniform float uAH; uniform float uViews;
+varying float vKind; varying float vW; varying vec2 vTopUv; varying vec3 vRightW; varying float vMir; varying vec2 vRingUv;
+varying float vYawC; varying float vYawS;
+#define IMP_PI 3.141592653589793`)
+    .replace('#include <uv_vertex>', /* glsl */ `#include <uv_vertex>
   vKind = aKind;
   float camDown = abs( viewMatrix[1][2] ); // world-up component of the camera's view axis
   float wTop = smoothstep( 0.42, 0.72, camDown );
   vW = aKind > 0.5 ? wTop : 1.0 - smoothstep( 0.55, 0.85, camDown );
-  vTopUv = vec2( position.x + 0.5, 0.5 - position.z );`);
+  // V1 §3 yaw-aware azimuth ring: pick the baked view by the camera's bearing to THIS instance
+  // minus the tree's own rotY, so every distant tree shows its own rotation instead of one shared
+  // cut-out (the horizon-ring repetition tell). Bakes cover azimuth 0..π; the far half maps onto
+  // the same views with a mirrored U. a = π/2 − θ turns a camera bearing θ into the bake azimuth
+  // (view 0 sits on +Z), and a yawed tree presents its (a − rotY) face.
+  vec3 iwp = vec3( instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2] );
+  float theta = atan( cameraPosition.z - iwp.z, cameraPosition.x - iwp.x );
+  float mAz = mod( (IMP_PI * 0.5 - theta) - aYaw, 2.0 * IMP_PI );
+  vMir = mAz > IMP_PI ? -1.0 : 1.0;
+  if ( mAz > IMP_PI ) mAz = 2.0 * IMP_PI - mAz;
+  float kV = min( floor( mAz * uViews / IMP_PI ), uViews - 1.0 );
+  float uu = vMir < 0.0 ? 1.0 - uv.x : uv.x;
+  vRingUv = vec2( (kV * uStride + uGut + uu * uTile) / uAW, (uGut + uv.y * uTile) / uAH );
+  // crown card rotated by the instance yaw: the top bake's image right = +x, image up = -z, so a
+  // tree yawed by rotY is exactly the same image rotated CCW by rotY — crowns stay per-tree too
+  vec2 pc = vec2( position.x + 0.5, 0.5 - position.z ) - 0.5;
+  vYawC = cos( aYaw ); vYawS = sin( aYaw );
+  vTopUv = vec2( vYawC * pc.x - vYawS * pc.y, vYawS * pc.x + vYawC * pc.y ) + 0.5;`);
 }
 
 function billboardVertex(shader) {
@@ -242,7 +340,7 @@ vec3 transformed = vec3( position );
   vec3 camRightW = normalize( vec3( viewMatrix[0][0], 0.0, viewMatrix[2][0] ) + vec3( 1e-5, 0.0, 0.0 ) );
   transformed = vec3( camRightW.x * position.x, position.y, camRightW.z * position.x * iSX );
   #ifdef IMPOSTER_2VIEW
-  vRightW = camRightW; vMir = iSX < 0.0 ? -1.0 : 1.0;
+  vRightW = camRightW;
   #endif
   #ifdef IMPOSTER_2VIEW
   if ( aKind > 0.5 ) {
@@ -260,33 +358,44 @@ vec3 transformed = vec3( position );
  * Material for imposter quads: camera-facing, normal forced to +Y, alpha tested.
  * The unit quad geometry spans x ∈ [-0.5, 0.5], y ∈ [0, 1]; the instance matrix carries
  * world position (translation) and metre size (scale.x = width, scale.y = height).
+ * `baked` is bakeImposter's result — the side card now samples the azimuth RING (baked.ring /
+ * baked.ringN) selected per instance in the vertex hook; `texture`/`sideN` remain for the legacy
+ * single-view path (unused by the ring shader, kept so old bakes still bind).
  */
-export function imposterMaterial(ctx, texture, key, top = null, topExtent = 1, crownY = 0.8, bakedW = 1, sideN = null, topN = null) {
+export function imposterMaterial(ctx, texture, key, top = null, topExtent = 1, crownY = 0.8, bakedW = 1, sideN = null, topN = null, baked = null) {
+  const ring = baked && baked.ring ? baked : null;
+  const map = ring ? ring.ring : texture;
+  const nSide = ring ? ring.ringN : sideN;
   const mat = ctx.materials.standard({
-    map: texture, alphaTest: 0.42, roughness: 1.0, metalness: 0,
+    map, alphaTest: 0.42, roughness: 1.0, metalness: 0,
     side: THREE.DoubleSide, transparent: false,
   });
   mat.userData.cacheKeyExtra = 'imposter:' + key;
-  const lit = !!(top && sideN && topN);
-  mat.customProgramCacheKey = () => (top ? (lit ? 'imposter-2view-lit' : 'imposter-2view') : 'imposter');
+  const lit = !!(top && nSide && topN);
+  mat.customProgramCacheKey = () => (top ? (lit ? (ring ? 'imposter-ring-lit' : 'imposter-2view-lit') : 'imposter-2view') : 'imposter');
   if (top) mat.defines = { ...(mat.defines || {}), IMPOSTER_2VIEW: '' };
   if (lit) mat.defines.IMPOSTER_LIT = '';
   const uTop = { value: top }, uTopExt = { value: topExtent }, uCrownY = { value: crownY }, uW = { value: bakedW };
-  const uSideN = { value: sideN }, uTopN = { value: topN };
+  const uSideN = { value: nSide }, uTopN = { value: topN };
+  const ringU = {
+    uStride: { value: ring ? ring.ringStride : 1 }, uTile: { value: ring ? ring.ringSize : 1 },
+    uGut: { value: ring ? ring.ringGutter : 0 }, uAW: { value: ring ? ring.atlasW : 1 }, uAH: { value: ring ? ring.atlasH : 1 },
+    uViews: { value: ring ? ring.ringViews : 1 },
+  };
   mat.onBeforeCompile = (shader) => {
     if (top) {
       shader.uniforms.uTop = uTop; shader.uniforms.uTopExt = uTopExt; shader.uniforms.uCrownY = uCrownY; shader.uniforms.uW = uW;
       shader.uniforms.uSideN = uSideN; shader.uniforms.uTopN = uTopN;
-      // aKind = 1 marks the horizontal crown card. Weights cross-fade on the camera's downward
-      // pitch (|forward.y|): side card below ~25°, crown card above ~45°, dithered so no sorting.
-      twoViewVertex(shader);
+      if (ring) Object.assign(shader.uniforms, ringU);
+      twoViewVertex(shader, ring);
+      const sideUv = ring ? 'vRingUv' : 'vMapUv';
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform sampler2D uTop; uniform sampler2D uSideN; uniform sampler2D uTopN; varying float vKind; varying float vW; varying vec2 vTopUv; varying vec3 vRightW; varying float vMir;')
+        .replace('#include <common>', `#include <common>\nuniform sampler2D uTop; uniform sampler2D uSideN; uniform sampler2D uTopN; varying float vKind; varying float vW; varying vec2 vTopUv; varying vec3 vRightW; varying float vMir; varying vec2 vRingUv; varying float vYawC; varying float vYawS;`)
         .replace('#include <map_fragment>', `
-  vec4 sampledDiffuseColor = vKind > 0.5 ? texture2D( uTop, vTopUv ) : texture2D( map, vMapUv );
+  vec4 sampledDiffuseColor = vKind > 0.5 ? texture2D( uTop, vTopUv ) : texture2D( map, ${sideUv} );
   diffuseColor *= sampledDiffuseColor;
 #ifdef IMPOSTER_LIT
-  vec4 impN = vKind > 0.5 ? texture2D( uTopN, vTopUv ) : texture2D( uSideN, vMapUv );
+  vec4 impN = vKind > 0.5 ? texture2D( uTopN, vTopUv ) : texture2D( uSideN, ${sideUv} );
   diffuseColor.rgb *= impN.a;   // baked self-occlusion: gaps and underside darker
 #endif
   // dithered fade: interleaved-gradient noise against the view weight
@@ -294,13 +403,18 @@ export function imposterMaterial(ctx, texture, key, top = null, topExtent = 1, c
   if ( ign > vW ) diffuseColor.a = 0.0;`);
       if (lit) {
         // baked normal → world → view. Side card: bake space x = camera right, z = toward camera
-        // (cylindrical), mirrored with the instance's signed width. Crown card: baked in world space.
+        // (cylindrical), mirrored with the ring's mirror flag. Crown card: baked in world space,
+        // rotated by the instance yaw like the card itself.
         shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   {
     vec3 nb = impN.rgb * 2.0 - 1.0;
     nb.x *= vMir;
     vec3 nW;
-    if ( vKind > 0.5 ) nW = nb;
+    if ( vKind > 0.5 ) {
+      // world-space bake of the unrotated tree; yaw rotation in xz (R_y: x' = x c + z s, z' = -x s + z c)
+      vec2 rot = vec2( dot( nb.xz, vec2( vYawC, vYawS ) ), dot( nb.xz, vec2( -vYawS, vYawC ) ) );
+      nW = vec3( rot.x, nb.y, rot.y );
+    }
     else nW = nb.x * vRightW + vec3( 0.0, nb.y, 0.0 ) + nb.z * vec3( -vRightW.z, 0.0, vRightW.x );
     normal = normalize( ( viewMatrix * vec4( normalize( nW + vec3( 0.0, 1e-3, 0.0 ) ), 0.0 ) ).xyz );
   }`);
@@ -313,17 +427,19 @@ export function imposterMaterial(ctx, texture, key, top = null, topExtent = 1, c
   // round 8 issue 2). Three's default depth material would draw the raw, un-billboarded quad, so this
   // twin runs the same vertex hooks and the same card/alpha choice; the caller sets it as the mesh's
   // customDepthMaterial and turns castShadow on.
-  const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: texture, alphaTest: 0.42, side: THREE.DoubleSide });
+  const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map, alphaTest: 0.42, side: THREE.DoubleSide });
   if (top) depth.defines = { IMPOSTER_2VIEW: '' };
-  depth.customProgramCacheKey = () => (top ? 'imposter-depth-2view' : 'imposter-depth');
+  depth.customProgramCacheKey = () => (top ? (ring ? 'imposter-depth-ring' : 'imposter-depth-2view') : 'imposter-depth');
   depth.onBeforeCompile = (shader) => {
     if (top) {
       shader.uniforms.uTop = uTop; shader.uniforms.uTopExt = uTopExt; shader.uniforms.uCrownY = uCrownY; shader.uniforms.uW = uW;
-      twoViewVertex(shader);
+      if (ring) Object.assign(shader.uniforms, ringU);
+      twoViewVertex(shader, ring);
+      const sideUv = ring ? 'vRingUv' : 'vMapUv';
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform sampler2D uTop; varying float vKind; varying float vW; varying vec2 vTopUv;')
+        .replace('#include <common>', `#include <common>\nuniform sampler2D uTop; varying float vKind; varying float vW; varying vec2 vTopUv; varying vec2 vRingUv;`)
         .replace('#include <map_fragment>', `
-  vec4 sampledDiffuseColor = vKind > 0.5 ? texture2D( uTop, vTopUv ) : texture2D( map, vMapUv );
+  vec4 sampledDiffuseColor = vKind > 0.5 ? texture2D( uTop, vTopUv ) : texture2D( map, ${sideUv} );
   diffuseColor *= sampledDiffuseColor;
   float ign = fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) );
   if ( ign > vW ) diffuseColor.a = 0.0;`);
