@@ -115,6 +115,8 @@ table), `environment` (weather readout), `terrain` (minimap sampling).
 | `objectives` | 15 | objectives panel mid-mission: progress, days left, biodiversity strip (Wave P3) |
 | `objectives-won` | 15 | objectives panel on a won mission: stars, result rows, toast (Wave P3) |
 | `night` | 22 | HUD legibility on the night grade |
+| `guide` | 15 | field guide on a plant page (Wave P6 — plants tab is fully ui-owned, so the preset works without the animals module) |
+| `guide-quiz` | 15 | field-guide quiz mid-way (Wave P6): question 3 of 10, one option picked |
 
 Use `node tools/screenshot.mjs --module ui --preset <p> --dom` — the DOM surfaces only appear in
 full-page (`--dom`) captures.
@@ -157,7 +159,39 @@ here): `tools`/`roads` throw while `building.place` is the active tool (`toolbar
   absent — `environment`'s real model converges too slowly (a per-tick lerp) to move visibly across a
   showcase capture's few settle frames, so the readout sat near its startup default regardless of tod.
 
+## Field guide (Wave P6, 2026-10-03)
+
+`guide.js` — the guide panel (docs/specs/p6-field-guide.md): top-bar book button, **B** key, and a
+Guide action on any animal's side panel. Tabs Species | Plants | Quiz in a two-pane modal
+(`p6-guide-animal-dom.png` / `-plant-` / `-quiz-`). Data flows strictly through module boundaries:
+species text via the animals api `guideEntry` (ui never imports across modules), plant text in
+ui's own `guideData.js` over core/Plants.js data, live numbers from the simulation's existing
+`getReport()` (count, mean happiness, best habitat quality), falling back to `getState()` for count
+and happiness before the first day has been reported — on a fresh game the report is null and the
+guide used to show "none" for every species (verifier, 2026-10-04). No sim changes.
+**Zero render cost, measured in-page**: 378 draws before opening / open / closed (DOM only, the
+closed panel costs nothing by construction). Quiz (`quiz.js`): 10 questions from a forked
+`Rng('quiz:<seed>')`; **options and keys are derived from the guide data at build time** — the test
+suite re-derives every key across four seeds and checks that **exactly one** option is correct
+across 500 seeds. (The first version only checked the keyed option and missed a real bug: "which plant
+feeds X?" drew distractors from every plant but the keyed one, so a second true answer — e.g. Marula
+for the Warthog — was marked wrong in 255 of 500 seeds. Fixed; tests moved to `tools/` because they
+span modules and the lint forbids cross-module imports inside `src/modules/`.) Same park seed deals the same hand; nothing about the park changes. Without the animals
+module (ui's own showcase) the quiz degrades to plant-only questions — documented and tested.
+
+Verification honesty note: the panel's first "visual check" was a hallucinated confirmation — the
+capture eval had thrown (`__SIM__.api` is not the ui api) yet a leading prompt got a full
+"description" of the never-opened panel. Re-verified with DOM-side assertions (`.guide` present,
+latin read back from the DOM) plus neutral describe-first image prompts; the quiz/animal pages
+were re-shot that way. Lesson recorded for future waves: assert the staging worked before asking
+a vision model what it sees.
+
 ## Known gaps (honest)
+
+* **Field guide (P6)**: plant pages have no live "in your park" block (species pages do); the open
+  panel does not refresh as days pass (close and reopen); best habitat quality reads "—" on day 1
+  (it is computed at the end of each day); the `guide-quiz` showcase preset may end with no option
+  picked despite its description.
 
 * **An empty dark notification panel can appear top-right** in the game view (empty stack container
   is not hidden when it has no children) — known minor from the wave-1 review, not yet fixed.

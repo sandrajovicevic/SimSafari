@@ -394,6 +394,19 @@ species rather than clones"; 330 m "no smearing, doubling, clipping, or color fr
 "correctly dark… no emissive halos". Full reasoning for the scoped-down design (why a ring + yaw
 beats a full 8×2 octahedral grid) in `docs/specs/v1-visual-wins.md` §3.
 
+## Salt-lick meshes (Wave P5, 2026-10-01)
+
+`SaltLickRenderer` (`saltlick.js`) reads `world.saltLicks` (simulation owns the writes) and draws
+every lick in exactly **two instanced draw calls**: one trampled disc — a ring of low hummocks
+around a packed bare-earth centre, tinted paler than the surrounding grass — and one weathered
+mineral block lashed to a stake (block + stake merged into one BufferGeometry by hand, so no extra
+draw per lick). `rebuild()` runs on `saltlick:changed {id, removed?}` only; nothing per-frame.
+Procedural geometry, seeded per-lick so two licks don't read as clones. Showcase preset `saltlick`
+(camera 55 m, verified `tools/shots/props-saltlick-auto.png`: pale disc distinct against savannah
+grass, block reads as a weathered man-made block rather than a rock, no z-fighting/float/seams,
+0 console errors, 165 draws / 3.89 M tris for the whole staged frame). Spec bar was "readable at
+30–80 m, ≤ 2 draw calls" — met.
+
 ## Known gaps (honest)
 
 * **Imposters have one silhouette per view → fixed per-tree (V1 §3, 2026-10-08).** The overview crowns shade as volumes and cast a shadow

@@ -106,6 +106,7 @@ export function createSidePanel(root, s) {
 
     body.appendChild(el('div.actions', null,
       el('button.btn.primary', { 'data-tip': 'Move the camera to this animal', onclick: () => focusAt(a.x, a.z, 32, 18) }, icon('focus'), 'Follow'),
+      el('button.btn', { 'data-tip': 'Open the field guide on this species', onclick: () => s.api.openPanel('guide', { species: a.species }) }, icon('book'), 'Guide'),
       el('button.btn', { 'data-tip': 'Move to another habitat', onclick: () => s.requestTool('animal.move', { id }, { name: 'Move ' + f.name, icon: 'paw' }) }, icon('pin'), 'Relocate'),
       el('button.btn.danger', { 'data-tip': 'Sell to another park for ' + fmtMoney(Math.round(f.cost * 0.6)), onclick: () => s.ctx.events.emit('tool:request', { tool: 'animal.sell', options: { id } }) }, icon('coin'), 'Sell')));
     return true;

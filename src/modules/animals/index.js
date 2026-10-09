@@ -4,6 +4,7 @@
 // animal of a species is drawn in ONE draw call (+1 shadow pass for the near mesh).
 import * as THREE from 'three';
 import { SPECIES, SPECIES_IDS, speciesInfo } from './species.js';
+import { GUIDE_IDS, guideEntry } from './guide.js';
 import { buildAnimal } from './builder.js';
 import { bakePositionMaps } from './geom.js';
 import { bakeSkin, makeMaterials, skinSize } from './skin.js';
@@ -392,6 +393,10 @@ const api = {
   get: (id) => S.byId.get(id) || null,
   count(species) { if (!species) return S.animals.length; let n = 0; for (const a of S.animals) if (a.species === species) n++; return n; },
   speciesInfo,
+  // Wave P6 field guide: static entry per species (pure data from guide.js — text, facts, prey/
+  // predators, the plants that attract it). Leopard has no entry (not in the park).
+  guideEntry,
+  guideIds: () => GUIDE_IDS.slice(),
   allSpecies: () => SPECIES_IDS.slice(),
   // Returns null (not 0) for an id this module has never spawned, so callers with their own
   // fallback data (e.g. ui's showcase mock, which writes straight into world.animals to avoid

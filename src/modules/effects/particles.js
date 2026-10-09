@@ -5,13 +5,14 @@
 // depth test (uSoft = 0).
 import * as THREE from 'three';
 
-export const KIND = Object.freeze({ ambient: 0, dust: 1, smoke: 2, splash: 3, fire: 4, firesmoke: 5 });
+export const KIND = Object.freeze({ ambient: 0, dust: 1, smoke: 2, splash: 3, fire: 4, firesmoke: 5, locust: 6 }); // locust = Wave P5
 const KIND_DEFAULTS = {
   dust: { rate: 12, speed: 1.2, spread: 0.8, size: 0.45, sizeJitter: 0.5, life: 2.2, lifeJitter: 0.4 },
   smoke: { rate: 8, speed: 0.6, spread: 0.25, size: 0.55, sizeJitter: 0.4, life: 5.0, lifeJitter: 0.5 },
   splash: { rate: 40, speed: 3.2, spread: 0.5, size: 0.12, sizeJitter: 0.5, life: 0.9, lifeJitter: 0.4 },
   fire: { rate: 22, speed: 1.6, spread: 0.45, size: 1.0, sizeJitter: 0.55, life: 0.5, lifeJitter: 0.4 },
   firesmoke: { rate: 10, speed: 0.4, spread: 0.2, size: 3.0, sizeJitter: 0.4, life: 12.0, lifeJitter: 0.3 },
+  locust: { rate: 90, speed: 1.5, spread: 1.15, size: 0.42, sizeJitter: 0.4, life: 2.4, lifeJitter: 0.5 },
 };
 const MAX_EMITTERS = 64;
 const MAX_SPAWN_PER_FRAME = 400;
@@ -80,7 +81,7 @@ void main() {
       radius = size;
       alpha = (1.0 - t * t) * 0.9;
       albedo = vec3(0.9, 0.95, 1.05);
-    } else if (aKind > 4.5) {
+    } else if (aKind > 4.5 && aKind < 5.5) {
       // wildfire smoke (Wave P2): a dense column — strong buoyant rise that slows with height, little
       // wind drift (the generic smoke leaned into a horizontal streak and read as a comet), wide
       // late growth. Dark grey-brown, lit flat (no forward-scatter lobe), warm from below near the base.
@@ -91,6 +92,17 @@ void main() {
       alpha = smoothstep(0.0, 0.08, t) * (1.0 - t) * 0.62;
       albedo = mix(vec3(0.26, 0.23, 0.20), vec3(0.34, 0.33, 0.33), t);
       selfLit = -1.0;
+    } else if (aKind > 5.5) {
+      // locust (Wave P5): a speck in a flying swarm — jittery direction changes, holds a low band
+      // above the ground, dark sandy against the sky. Not self-lit (a swarm at night is a shadow).
+      p = aPos + aVel * age + uWind * age * 0.5 + vec3(
+        sin(age * 9.0 + seed * 37.0) * 0.5,
+        0.35 * sin(age * 5.0 + seed * 11.0) + 0.25 * age * (1.0 - t),
+        cos(age * 8.0 + seed * 23.0) * 0.5);
+      radius = size * (1.0 - 0.3 * t);
+      alpha = smoothstep(0.0, 0.05, t) * (1.0 - t) * 0.95;
+      albedo = vec3(0.42, 0.35, 0.20);
+      rot += age * 7.0;
     } else {
       // flame (Wave P2): fast rise, flicker, shrink; self-lit hot colour (bloom catches it at night)
       float flick = 0.75 + 0.5 * sin(age * 34.0 + seed * 61.0);
@@ -111,6 +123,13 @@ void main() {
   float fwd = pow(max(dot(viewDir, uSunDir), 0.0), 6.0);
   vec3 light = uAmbient + uSunColor * (0.45 + 1.8 * fwd);
   if (selfLit > 0.5) light = vec3(1.0); // flames emit their own light
+  else if (aKind > 5.5) {
+    // locust (P5): flat, scatter-free light. The shared forward-scatter lobe is driven by the
+    // moon at night (round-9 moon key light), and specks seen toward the moon lit up ×2.25 —
+    // the verifier read the night swarm as "scattered white glowing points, fireflies or
+    // stars". A swarm at night is a moonlit shadow: ambient + a third of the light, no lobe.
+    light = uAmbient * 0.9 + uSunColor * 0.3;
+  }
   else if (selfLit < -0.5) {
     // fire smoke: flat-lit (ambient + a third of the sun) plus a fire-lit underside for the first metres
     float t2 = clamp(age / max(life, 0.001), 0.0, 1.0);
@@ -163,7 +182,7 @@ class Emitter {
     this.active = false; this.kind = KIND.dust;
     this.position = new THREE.Vector3(); this.dir = new THREE.Vector3(0, 1, 0);
     this.rate = 0; this.speed = 1; this.spread = 0.5; this.size = 0.5; this.sizeJitter = 0.5;
-    this.life = 2; this.lifeJitter = 0.4; this.acc = 0;
+    this.life = 2; this.lifeJitter = 0.4; this.acc = 0; this.jitter = undefined;
   }
   /** opts: {x,y,z, dir:[x,y,z]|Vector3, rate, speed, spread, size, sizeJitter, life, lifeJitter} */
   set(opts = {}) {
@@ -171,7 +190,7 @@ class Emitter {
     if (opts.y !== undefined) this.position.y = opts.y;
     if (opts.z !== undefined) this.position.z = opts.z;
     if (opts.dir) { const d = opts.dir; if (d.isVector3) this.dir.copy(d); else this.dir.set(d[0], d[1], d[2]); this.dir.normalize(); }
-    for (const k of ['rate', 'speed', 'spread', 'size', 'sizeJitter', 'life', 'lifeJitter']) if (opts[k] !== undefined) this[k] = opts[k];
+    for (const k of ['rate', 'speed', 'spread', 'size', 'sizeJitter', 'life', 'lifeJitter', 'jitter']) if (opts[k] !== undefined) this[k] = opts[k];
     return this;
   }
   setPosition(x, y, z) { this.position.set(x, y, z); return this; }
@@ -304,7 +323,7 @@ vec4 shade(vec2 uv){
   /** Generic emitter. kind: 'dust'|'smoke'|'splash'. Returns an Emitter handle or null if the pool is exhausted. */
   emitter(kind = 'dust', opts = {}) {
     const e = this.emitters.find((m) => !m.active);
-    if (!e) return null;
+    if (!e) { console.warn('[effects] particle emitter pool exhausted (64); kind', kind); return null; }
     const k = typeof kind === 'number' ? kind : (KIND[kind] ?? KIND.dust);
     const d = KIND_DEFAULTS[typeof kind === 'string' ? kind : 'dust'] || KIND_DEFAULTS.dust;
     e.active = true; e.kind = k; e.acc = 0;
@@ -324,8 +343,10 @@ vec4 shade(vec2 uv){
       const size = e.size * (1 + (r.float() - 0.5) * 2 * e.sizeJitter);
       // fire: one emitter stands for a burning 16 m cell, so flames spawn along the cell (a flame line),
       // not stacked on one point (that read as a single glowing orb)
-      const j = e.kind === KIND.fire ? 9.0 : e.kind === KIND.firesmoke ? 4.0 : e.kind === KIND.smoke ? 0.25 : 0.15;
-      this.spawn(e.kind, e.position.x + (r.float() - 0.5) * j, e.position.y + (r.float() - 0.5) * j, e.position.z + (r.float() - 0.5) * j,
+      const j = e.kind === KIND.fire ? 9.0 : e.kind === KIND.firesmoke ? 4.0 : e.kind === KIND.locust ? (e.jitter ?? 10.0) : e.kind === KIND.smoke ? 0.25 : 0.15;
+      // locusts: spread horizontally over the swarm disc but hold a low flight band (±1.5 m), never underground
+      const jy = e.kind === KIND.locust ? 3.0 : j;
+      this.spawn(e.kind, e.position.x + (r.float() - 0.5) * j, e.position.y + (r.float() - 0.5) * jy, e.position.z + (r.float() - 0.5) * j,
         t.x * sp, t.y * sp, t.z * sp, Math.max(0.1, life), Math.max(0.02, size), r.float());
     }
   }
@@ -376,7 +397,12 @@ vec4 shade(vec2 uv){
     for (let k = 0; k < this._attrs.length; k++) {
       const attr = this._attrs[k][0], n = this._attrs[k][1];
       attr.clearUpdateRanges();
-      attr.addUpdateRange(lo * n, (hi - lo + 1) * n);
+      // the 1-float instanced kind attribute: a narrow update range never reached the GPU
+      // (measured: a swarm's kind-6 slots stayed stale on the GPU while pos/vel/info uploaded
+      // fine, so the specks rendered in the ambient branch wrapped around the camera — invisible;
+      // re-uploading the whole kind buffer made them appear at the right positions). 32 KB/frame.
+      if (n === 1) attr.addUpdateRange(0, this.capacity);
+      else attr.addUpdateRange(lo * n, (hi - lo + 1) * n);
       attr.needsUpdate = true;
     }
     this._dirtyLo = Infinity; this._dirtyHi = -1; this._wrapped = false;

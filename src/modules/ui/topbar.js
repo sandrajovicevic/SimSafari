@@ -63,7 +63,8 @@ export function createTopbar(root, s) {
   const btnCamp = el('button.btn.icon', { 'data-tip': 'Camp & advisors', 'data-key': 'C', 'data-tip-pos': 'below', onclick: () => s.api.openPanel('camp') }, icon('lodge'));
   const btnReport = el('button.btn.icon', { 'data-tip': 'Daily report', 'data-key': 'J', 'data-tip-pos': 'below', onclick: () => s.api.openPanel('report') }, icon('report'));
   const btnSettings = el('button.btn.icon', { 'data-tip': 'Settings', 'data-key': 'O', 'data-tip-pos': 'below', onclick: () => s.api.openPanel('settings') }, icon('gear'));
-  const btns = el('div.tb-seg.end.tb-btns', null, btnCamp, btnObjectives, btnReport, btnSettings);
+  const btnGuide = el('button.btn.icon', { 'data-tip': 'Field guide — species, plants, quiz', 'data-key': 'B', 'data-tip-pos': 'below', onclick: () => s.api.openPanel('guide') }, icon('book'));
+  const btns = el('div.tb-seg.end.tb-btns', null, btnCamp, btnGuide, btnObjectives, btnReport, btnSettings);
 
   const node = el('div.topbar.pe', null, park, cash, visitors, reputation, clock, weather, btns);
   root.appendChild(node);

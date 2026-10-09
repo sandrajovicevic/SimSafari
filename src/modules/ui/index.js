@@ -13,6 +13,7 @@ import { createObjectives } from './objectives.js';
 import { createCamp } from './camp.js';
 import { createMinimap } from './minimap.js';
 import { createSettings } from './settings.js';
+import { createGuide } from './guide.js';
 import { icon } from './icons.js';
 
 const BASE_SPEED = 0.05;            // game-hours per real second at 1× (a game day ≈ 8 min)
@@ -27,12 +28,13 @@ const api = {
   /** Toast: level 'info'|'warn'|'error'|'good'; opts {title, sub, x, z, ttl(seconds, -1 sticky)}. */
   notify(level, text, opts) { if (parts) parts.notifications.push(level, text, opts); },
   /** 'report' | 'settings' | 'objectives' | 'camp' | 'selection' | a toolbar category id ('terrain','roads','zones','buildings','animals','view'). */
-  openPanel(name) {
+  openPanel(name, opts) {
     if (!parts) return false;
     if (name === 'report') { parts.settings.hide(); parts.objectives.hide(); parts.camp.hide(); parts.report.show(currentReport()); return true; }
     if (name === 'settings') { parts.report.hide(); parts.objectives.hide(); parts.camp.hide(); parts.settings.show(); return true; }
     if (name === 'objectives') { parts.report.hide(); parts.settings.hide(); parts.camp.hide(); parts.objectives.show(); return true; }
     if (name === 'camp') { parts.report.hide(); parts.settings.hide(); parts.objectives.hide(); parts.camp.show(); return true; }
+    if (name === 'guide') { parts.report.hide(); parts.settings.hide(); parts.objectives.hide(); parts.camp.hide(); parts.guide.show(opts); return true; }
     if (name === 'selection') { const sel = s.world.selection; return sel?.kind ? parts.sidepanel.show(sel.kind, sel.id) : false; }
     parts.toolbar.openCategory(name);
     return parts.toolbar.getOpen() === name;
@@ -44,6 +46,7 @@ const api = {
     if (parts.settings.isOpen()) { parts.settings.hide(); return true; }
     if (parts.objectives.isOpen()) { parts.objectives.hide(); return true; }
     if (parts.camp.isOpen()) { parts.camp.hide(); return true; }
+    if (parts.guide.isOpen()) { parts.guide.hide(); return true; }
     if (parts.toolbar.getOpen()) { parts.toolbar.openCategory(null); return true; }
     if (parts.sidepanel.isOpen()) { parts.sidepanel.hide(); return true; }
     return false;
@@ -97,7 +100,7 @@ function onKey(e) {
   const w = s.world;
   switch (e.code) {
     case 'Escape':
-      if (parts.report.isOpen() || parts.settings.isOpen() || parts.objectives.isOpen() || parts.camp.isOpen()) { parts.report.hide(); parts.settings.hide(); parts.objectives.hide(); parts.camp.hide(); }
+      if (parts.report.isOpen() || parts.settings.isOpen() || parts.objectives.isOpen() || parts.camp.isOpen() || parts.guide.isOpen()) { parts.report.hide(); parts.settings.hide(); parts.objectives.hide(); parts.camp.hide(); parts.guide.hide(); }
       else if (s.activeTool) requestTool(null, null, null);
       else if (parts.toolbar.getOpen()) parts.toolbar.openCategory(null);
       else if (parts.sidepanel.isOpen()) { ctx.events.emit('selection:clear', {}); if (!ctx.modules.get('tools')) { w.selection.kind = null; w.selection.id = null; } parts.sidepanel.hide(); }
@@ -109,6 +112,7 @@ function onKey(e) {
     case 'KeyO': parts.settings.isOpen() ? parts.settings.hide() : api.openPanel('settings'); break;
     case 'KeyG': parts.objectives.isOpen() ? parts.objectives.hide() : api.openPanel('objectives'); break;
     case 'KeyC': parts.camp.isOpen() ? parts.camp.hide() : api.openPanel('camp'); break;
+    case 'KeyB': parts.guide.isOpen() ? parts.guide.hide() : api.openPanel('guide'); break;
     case 'KeyM': parts.minimap.el.hidden = !parts.minimap.el.hidden; break;
     case 'KeyH': api.setVisible(!api.isVisible()); break;
     default: {
@@ -155,10 +159,11 @@ export default {
       const camp = createCamp(root, s);
       const minimap = createMinimap(root, s);
       const settings = createSettings(root, s);
+      const guide = createGuide(root, s);
       const fps = el('div.fps.panel.mono', { hidden: true }, el('b', { text: '— fps' }), ' · ', el('span', { text: '— ms' }), ' · ', el('span', { text: '— draws' }));
       root.appendChild(fps);
       root.appendChild(tooltip.el); // keep the tooltip on top
-      parts = { tooltip, notifications, topbar, toolbar, sidepanel, report, objectives, camp, minimap, settings, fps };
+      parts = { tooltip, notifications, topbar, toolbar, sidepanel, report, objectives, camp, minimap, settings, guide, fps };
       globalThis.__SIMSAFARI_UI__ = handle;
 
       // speed: reflect whatever core/showcase set

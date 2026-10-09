@@ -11,6 +11,8 @@ export const presets = {
   objectives: { camera: { target: [0, 40], distance: 420, pitch: 40, yaw: 35 }, tod: 15, description: 'Objectives panel mid-mission (Wave P3): progress bar, days left, star brackets, biodiversity strip' },
   'objectives-won': { camera: { target: [0, 40], distance: 420, pitch: 40, yaw: 35 }, tod: 15, description: 'Objectives panel on a completed mission (Wave P3): stars awarded, result rows, completion toast' },
   camp: { camera: { target: [0, 40], distance: 420, pitch: 40, yaw: 35 }, tod: 15, description: 'Camp & advisors panel (Wave P4): per-tier rate sliders + occupancy, the three advisor personas with their briefing' },
+  guide: { camera: { target: [0, 40], distance: 420, pitch: 40, yaw: 35 }, tod: 15, description: 'Field guide (Wave P6): plant page open — name, latin, chips, summary, facts, the species it feeds' },
+  'guide-quiz': { camera: { target: [0, 40], distance: 420, pitch: 40, yaw: 35 }, tod: 15, description: 'Field guide quiz (Wave P6): question 3 of 10 mid-way, one option picked' },
   night:    { camera: { target: [60, 300], distance: 140, pitch: 25, yaw: 120 }, tod: 21.5, description: 'HUD at night: moon glyph, lodge selected, poacher warning toast' },
 };
 
@@ -31,6 +33,19 @@ export async function stage(ctx, presetName, ui) {
   const sel = (kind, id) => { ctx.world.selection.kind = kind; ctx.world.selection.id = id; H.parts.sidepanel.show(kind, id); };
 
   switch (presetName) {
+    case 'guide':
+      // plants tab is fully ui-owned data — the preset works without the animals module
+      api.openPanel('guide', { plant: 'marula' });
+      break;
+    case 'guide-quiz': {
+      api.openPanel('guide', { tab: 'quiz' });
+      H.parts.guide.show({ tab: 'quiz' });
+      // deal and answer two so the shot is mid-way
+      const gRoot = H.parts.guide;
+      const startBtn = gRoot && document.querySelector('.sf .g-quiz-intro .btn.primary');
+      if (startBtn) { startBtn.click(); const opt = document.querySelector('.sf .g-opt'); if (opt) opt.click(); const opt2 = document.querySelector('.sf .g-opt'); if (opt2) opt2.click(); }
+      break;
+    }
     case 'report':
       api.showReport(s.lastReport);
       break;
