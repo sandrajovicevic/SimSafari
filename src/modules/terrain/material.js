@@ -209,11 +209,23 @@ export function createTerrainMaterial(ctx, layers, control) {
       .replace('#include <map_fragment>', splatGLSL())
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = roughness * tRough;')
       .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(tNormalW, 0.0)).xyz);')
-      // steep faces get a bounce term (2026-10-09): a cliff in the sun's shadow sees half the sky and
-      // the sunlit plain below, but the hemisphere light gives a vertical face only its weak mean, so
-      // the escarpment read near-black from the overview. Scaling indirect (not adding a colour) keeps
-      // night and dusk proportionally dark.
-      .replace('#include <aomap_fragment>', 'float steepB = smoothstep(0.35, 0.80, 1.0 - vWNormal.y); reflectedLight.indirectDiffuse *= tAo * (1.0 + 1.3 * steepB); reflectedLight.directDiffuse *= mix(1.0, tAo, 0.35);');
+      // steep faces get sun bounce off the plain (2026-10-09): a cliff in its own shadow still sees the
+      // sunlit ground below, but the hemisphere light gives a vertical face only the weak sky/ground
+      // mean, so the escarpment read near-black from the overview. Bounce irradiance ≈ ½ × ground
+      // albedo (~0.3) × the ground's direct irradiance, from each directional light's elevation — so it
+      // fades out with the sun (a flat ×2 on indirect made the faces glow pale at dusk; measured).
+      .replace('#include <aomap_fragment>', `reflectedLight.indirectDiffuse *= tAo; reflectedLight.directDiffuse *= mix(1.0, tAo, 0.35);
+#if NUM_DIR_LIGHTS > 0
+{
+  float steepB = smoothstep(0.35, 0.80, 1.0 - vWNormal.y);
+  if (steepB > 0.0) {
+    vec3 upV = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+    vec3 bounceE = vec3(0.0);
+    for (int i = 0; i < NUM_DIR_LIGHTS; i++) bounceE += directionalLights[i].color * max(dot(directionalLights[i].direction, upV), 0.0);
+    reflectedLight.indirectDiffuse += steepB * 0.15 * bounceE * BRDF_Lambert(diffuseColor.rgb) * tAo;
+  }
+}
+#endif`);
   };
   m.customProgramCacheKey = () => 'terrain-splat-v11';
   return m;
