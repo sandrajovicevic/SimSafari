@@ -797,7 +797,13 @@ async function scenarioMissionReplay(browser) {
     // the cheetah is released into the lions' kopje (prey-rich, 3.6 ha — the only habitat with room
     // for it): a buy's optional third element is the ANCHOR species whose habitat receives the buy,
     // because habitatOf('cheetah') finds nothing before the first cheetah exists
-    'balanced-range': [{ day: 1, buy: ['cheetah', 1, 'lion'] }, { day: 1, plant: ['sour_plum', 0, -300, 135, 0.45] }, { day: 1, plant: ['knobthorn', 250, 300, 200, 0.3] }, { day: 1, plant: ['marula', -300, 250, 205, 0.25] }],
+    // + 2 rhino (plains) and 3 giraffe (woodland), $48k (verifier, 2026-10-09): the pride-sized kopje
+    // (park, 2026-10-09) gives its impala twice the room, kopje impala 23 → 46 by day 240, and the
+    // evenness drop pushed the old 4-step script below 92 by day 60 (★0, index 90.04 at the deadline).
+    // It was already marginal on the old park: index under 92 from ~day 110, won only because the
+    // hold window opened on day 1. Rare-species buys lift evenness: measured 94.43 at day 60, ≥ 92.84
+    // to day 240. Idle still fails (88.11).
+    'balanced-range': [{ day: 1, buy: ['cheetah', 1, 'lion'] }, { day: 1, buy: ['rhino', 2] }, { day: 1, buy: ['giraffe', 3] }, { day: 1, plant: ['sour_plum', 0, -300, 135, 0.45] }, { day: 1, plant: ['knobthorn', 250, 300, 200, 0.3] }, { day: 1, plant: ['marula', -300, 250, 205, 0.25] }],
     // recalibrated for the P4 economy (idle nets $1.19M/yr now): trim the redundant ranger AND
     // push the room rates the market still pays — lodge 92%-occupied at $180 takes $240, the
     // always-full tents take $80. Measured: idle $1,192,829 < $1.3M < trim+rates $1,524,060
