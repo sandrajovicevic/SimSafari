@@ -209,21 +209,25 @@ export function createTerrainMaterial(ctx, layers, control) {
       .replace('#include <map_fragment>', splatGLSL())
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = roughness * tRough;')
       .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(tNormalW, 0.0)).xyz);')
-      // steep faces get sun bounce off the plain (2026-10-09): a cliff in its own shadow still sees the
-      // sunlit ground below, but the hemisphere light gives a vertical face only the weak sky/ground
-      // mean, so the escarpment read near-black from the overview. The bounce is k × each directional
-      // light's irradiance on flat ground (its elevation), so it fades out with the sun — a flat ×2.3
-      // on indirect made the faces glow pale at dusk (measured). k = 0.45 tuned by eye at 14 h: 0.15
-      // (½ × ground albedo, the textbook bound) left the faces almost unchanged.
+      // steep faces get bounce light off the sunlit plain (2026-10-09): a cliff in its own shadow
+      // still sees the bright ground below, but the hemisphere light gives a vertical face only the
+      // weak sky/ground mean, so the escarpment read near-black from the overview. Indirect on steep
+      // faces is lifted up to ×2.3, gated by the brightest directional light's elevation so the lift
+      // fades out at dusk — ungated, the faces glowed pale against the unlit plain at 18 h (measured);
+      // an additive physically-scaled bounce (k × the ground's direct irradiance) stayed too weak to
+      // see at 14 h even at k = 0.45. Tuned by eye at 14 h / 18 h / 21.5 h.
       .replace('#include <aomap_fragment>', `reflectedLight.indirectDiffuse *= tAo; reflectedLight.directDiffuse *= mix(1.0, tAo, 0.35);
 #if NUM_DIR_LIGHTS > 0
 {
   float steepB = smoothstep(0.35, 0.80, 1.0 - vWNormal.y);
   if (steepB > 0.0) {
     vec3 upV = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
-    vec3 bounceE = vec3(0.0);
-    for (int i = 0; i < NUM_DIR_LIGHTS; i++) bounceE += directionalLights[i].color * max(dot(directionalLights[i].direction, upV), 0.0);
-    reflectedLight.indirectDiffuse += steepB * 0.45 * bounceE * BRDF_Lambert(diffuseColor.rgb) * tAo;
+    float bestL = -1.0, elev = 0.0;
+    for (int i = 0; i < NUM_DIR_LIGHTS; i++) {
+      float L = dot(directionalLights[i].color, vec3(0.2126, 0.7152, 0.0722));
+      if (L > bestL) { bestL = L; elev = dot(directionalLights[i].direction, upV); }
+    }
+    reflectedLight.indirectDiffuse *= 1.0 + 1.3 * steepB * smoothstep(0.08, 0.35, elev);
   }
 }
 #endif`);
