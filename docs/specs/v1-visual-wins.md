@@ -184,14 +184,22 @@ planned frame-ms spot check (`perf.frameMs` is a partial-frame EMA and misleads;
 are the honest metric), the herd-preset vision reads stand in for close/macro, and the ≤5 M cap is
 measured at overview. SwiftShader zero errors.
 
-## Harness (additive, one scenario) — as amended by §1's findings
+## Harness (additive, one scenario) — SHIPPED
 
 `visual-quality` — one page load at `quality=high`: the TAA/FXAA A/B **in-page** with the amended
 gate (NOT the variance form above — §1 retired it with evidence): edge-energy sharpness ratio
-≤ 1.05, per-frame churn ratio ≤ 0.70, pixel-diff non-vacuity > 0 (a dead toggle reads zero).
-`pass = sharp ≤ 1.05 && churn ≤ 0.70 && diff > 0`; JSON in `tools/shots`. Terrain/props/animals
-parts are screenshot-verified only — no new scenarios (their effect is not stateful). Top-level
-async function, default list + dispatcher branch, `tools/check-harness.mjs` green (rules 4–6).
+≤ 1.05 (the term that catches a broken TAA — the passthrough mode reads ~1.28), churn at rest,
+pixel-diff non-vacuity. One refinement found by running it: the churn **ratio** degenerates on the
+harness's frozen SwiftShader scene (FXAA churn collapses to ~0.005, so any TAA wobble explodes the
+ratio — healthy TAA read 6.7× while both absolutes are sub-perceptual); the gate is
+`churnTaa ≤ max(0.7 × churnFxaa, 0.08)` — ratio where the denominator is meaningful, absolute
+sub-perceptual bar where it is not. The ratio form remains the real-GPU gate in
+`measure.mjs --aliasing` (0.635 measured). First green run (seed 1, SwiftShader):
+**sharp 0.903, churnFxaa 0.008, churnTaa 0.052, abDiff 2.712, pass, 0 console errors**;
+JSON in `tools/shots/fidelity-visual-quality.json`. Terrain/props/animals parts are
+screenshot-verified only — no scenarios for them (their effect is not stateful). Top-level async
+function, default list + dispatcher branch, `tools/check-harness.mjs` green: 21 scenarios
+dispatched.
 
 ## Unit tests — as amended by part 3's shipped design
 

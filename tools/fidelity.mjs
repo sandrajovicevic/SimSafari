@@ -34,7 +34,7 @@ const URL_BASE = args.url || process.env.SIM_URL || 'http://127.0.0.1:5173';
 const SEED = +(args.seed || 1);
 const DAYS = +(args.days || 30);
 const TIMEOUT = +(args.timeout || 300000); // this machine's SwiftShader needs ~150 s to ready the full game
-const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep', 'plant-aloe', 'remove-prey', 'spread', 'fire-response', 'fire-regrowth', 'biodiversity', 'mission-replay', 'lodging-elasticity', 'layoff-chain']);
+const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep', 'plant-aloe', 'remove-prey', 'spread', 'fire-response', 'fire-regrowth', 'biodiversity', 'mission-replay', 'lodging-elasticity', 'layoff-chain', 'visual-quality']);
 
 async function launch() {
   const gpuArgs = ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-gpu-sandbox', '--no-sandbox', '--autoplay-policy=no-user-gesture-required'];
@@ -976,6 +976,85 @@ function writeJson(name, data) {
   console.log(`  -> ${path.relative(process.cwd(), p)}`);
 }
 
+// ---------------------------------------------------------------- Wave V1 (docs/specs/v1-visual-wins.md)
+// visual-quality: the TAA/FXAA A/B with the AMENDED gates (spec §1 retired the offset-variance
+// form with evidence): sharpness non-inferiority, per-frame stability at rest, non-vacuity.
+async function scenarioVisualQuality(browser) {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+  const consoleErrors = [], pageErrors = [];
+  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 800)); });
+  page.on('pageerror', (e) => pageErrors.push(String(e?.message || e).slice(0, 800)));
+  const errors = [...consoleErrors, ...pageErrors];
+  let out = null;
+  try {
+    await page.goto(`${URL_BASE}/?speed=0&seed=${SEED}&tod=12&quality=high`, { waitUntil: 'domcontentloaded', timeout: TIMEOUT });
+    await page.waitForFunction(() => window.__SIM__ && window.__SIM__.ready === true, null, { timeout: TIMEOUT });
+    out = await page.evaluate(async () => {
+      const S = window.__SIM__;
+      const pump = (n) => new Promise((res) => { let i = 0; const f = () => (++i >= n ? res() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+      const fx0 = S.app.registry.get('effects');
+      const fx = fx0 && fx0.setAA ? fx0 : S.app.registry.modules.get('effects').def.api;
+      fx.setEnabled('particles', false);
+      fx.setGrade({ grain: 0 });           // per-frame grain would dominate the churn term
+      try { S.app.world.time.paused = true; } catch {}
+      // freeze BOTH per-frame clocks (module dt + the shared materials uTime that animates water —
+      // it runs from materials.update inside _simulate, not through the registry)
+      const reg = S.app.registry;
+      const ru = reg.update.bind(reg); reg.update = (dt, t) => ru(0, t);
+      const mu = S.app.materials.update.bind(S.app.materials); S.app.materials.update = (dt, w) => mu(0, w);
+      await S.settle(36); await pump(4);
+      const px = (d) => new Promise((res, rej) => {
+        const img = new Image();
+        img.onload = () => { const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0); res(g.getImageData(0, 0, c.width, c.height).data); };
+        img.onerror = () => rej(new Error('decode failed'));
+        img.src = d;
+      });
+      const energy = (d) => {
+        const w = 1280, h = 720;
+        const L = new Float32Array(w * h);
+        for (let i = 0; i < w * h; i++) { const j = i * 4; L[i] = d[j] * 0.2126 + d[j + 1] * 0.7152 + d[j + 2] * 0.0722; }
+        let acc = 0;
+        for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+          const i = y * w + x;
+          const e = Math.abs(L[i + 1] - 2 * L[i] + L[i - 1]) + Math.abs(L[i + w] - 2 * L[i] + L[i - w]);
+          if (e > 6) acc += e - 6;
+        }
+        return acc / (w * h);
+      };
+      const churn = async () => { const a = await px(S.capture(true).dataUrl); await pump(1); const b = await px(S.capture(true).dataUrl); let s = 0, n = 0; for (let i = 0; i < a.length; i += 4) { s += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]); n++; } return s / (n * 3); };
+      // FXAA arm
+      fx.setAA('fxaa'); await pump(6);
+      const churnF = await churn();
+      const EF = energy(await px(S.capture(true).dataUrl));
+      const pngF = S.capture(true).dataUrl;
+      // TAA arm (0.98 blend: ~50-frame convergence constant)
+      fx.setAA('taa'); await pump(120);
+      const churnT = await churn();
+      const pngT = S.capture(true).dataUrl;
+      const ET = energy(await px(pngT));
+      const A = await px(pngF), B = await px(pngT);
+      let sd = 0, sn = 0;
+      for (let i = 0; i < A.length; i += 4) { sd += Math.abs(A[i] - B[i]) + Math.abs(A[i + 1] - B[i + 1]) + Math.abs(A[i + 2] - B[i + 2]); sn++; }
+      return { sharpRatio: +(ET / EF).toFixed(3), churnFxaa: +churnF.toFixed(3), churnTaa: +churnT.toFixed(3), churnRatio: +(churnT / churnF).toFixed(3), abDiff: +(sd / (sn * 3)).toFixed(3), energyFxaa: +EF.toFixed(2), energyTaa: +ET.toFixed(2) };
+    });
+  } catch (e) {
+    out = { error: String(e?.message || e) };
+  }
+  await page.close();
+  if (!out.error) {
+    // amended V1 §1 gates: sharpness non-inferiority (this is the term that catches a broken TAA —
+    // the passthrough failure mode reads ~1.28, healthy ~0.9), the A/B must provably differ, and
+    // TAA must not shimmer at rest — EITHER ≤70% of FXAA's churn, or absolutely ≤0.08 mean-abs.
+    // The ratio alone degenerates on this harness's frozen SwiftShader scene (FXAA churn ~0.005
+    // collapses the denominator); the ratio form stays the real-GPU gate in measure.mjs --aliasing.
+    out.churnOk = out.churnTaa <= Math.max(0.70 * out.churnFxaa, 0.08);
+    out.pass = out.sharpRatio <= 1.05 && out.churnOk && out.abDiff > 0.05;
+  } else out.pass = false;
+  const result = { scenario: 'visual-quality', result: out, consoleErrors: errors };
+  writeJson('visual-quality', result);
+  return result;
+}
+
 (async () => {
   const browser = await launch();
   const results = {};
@@ -1080,6 +1159,12 @@ function writeJson(name, data) {
       results['layoff-chain'] = await scenarioLayoffChain(browser);
       const r = results['layoff-chain'].result;
       console.log(JSON.stringify({ pass: r.pass, control: { trust5: r.control.trustDay5, trust45: r.control.trustDay45, events: r.control.poachEvents, riskSum: r.control.poachRiskSum }, layoff: { trust5: r.laidOff.trustDay5, trust45: r.laidOff.trustDay45, trust90: r.laidOff.trustDay90, events: r.laidOff.poachEvents, riskSum: r.laidOff.poachRiskSum, fired: r.laidOff.fired } }, null, 2));
+    }
+    if (SCENARIOS.includes('visual-quality')) {
+      console.log('[visual-quality] TAA vs FXAA A/B at quality=high: sharpness non-inferiority, rest churn, non-vacuity');
+      results['visual-quality'] = await scenarioVisualQuality(browser);
+      const r = results['visual-quality'].result;
+      console.log(JSON.stringify({ pass: r.pass, sharpRatio: r.sharpRatio, churnRatio: r.churnRatio, churnFxaa: r.churnFxaa, churnTaa: r.churnTaa, abDiff: r.abDiff, error: r.error }, null, 2));
     }
     if (SCENARIOS.includes('biodiversity')) {
       console.log('[biodiversity] remove zebra / add rhino → stat moves both ways');
