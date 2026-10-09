@@ -348,9 +348,10 @@ ${GLSL_NOISE}`)
     col = mix(col, col * vec3(0.72, 0.73, 0.76), inPatch);
     gPaint *= 1.0 - inPatch * 0.7;
     // retroreflective paint returns light to its source; with no headlight model the old 0.35 self-glow
-    // drew every edge line as a bright white wire across the dark park at night (2026-10-09). A faint
-    // lift keeps the lines legible near lamps without lighting the whole network.
-    totalEmissiveRadiance += vec3(0.9, 0.85, 0.7) * paint * uNight * 0.05;
+    // drew every edge line as a bright white wire across the dark park at night (2026-10-09). Moonlit
+    // ground radiance is ~1e-3, so even 0.05 still saturated to white after night exposure (measured);
+    // 0.003 leaves the lines a pale, legible grey.
+    totalEmissiveRadiance += vec3(0.9, 0.85, 0.7) * paint * uNight * 0.003;
   #endif
   // edge dust blend toward terrain colour, broken up by noise
   // shoulder: a wide, noisy dust band that walks the surface colour into the terrain so the ribbon
