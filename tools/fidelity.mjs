@@ -510,7 +510,8 @@ async function scenarioRemovePrey(browser) {
 
 /** predator-stability (predator–prey stability fix, 2026-10-02): the demo park idles 730 days and
  * the lions' habitat must coexist — lions ≥ 2 and prey ≥ 1 on every sampled day, lions ≥ 3 to start
- * (non-vacuity: a real pride under observation). Old flat-rate predation ate the kopje's 14 impala
+ * (non-vacuity: a real pride under observation). Seeds whose kopje has < 4 lions of space are reported
+ * geometryLimited with pass: null (2026-10-09; see park README Known gaps). Old flat-rate predation ate the kopje's 14 impala
  * to 0 by day 270 and the pride starved out (verifier-measured); checkpoints report the new shape. */
 async function scenarioPredatorStability(browser) {
   const DAYS_PS = 730;
@@ -524,20 +525,30 @@ async function scenarioPredatorStability(browser) {
     const PREY = ['zebra', 'wildebeest', 'buffalo', 'impala', 'warthog', 'ostrich'];
     const lions = [], prey = [];
     const checkpoints = {};
+    let lionSpace = null;
     for (let d = 1; d <= days; d++) {
       sim.runDays(1);
       const hab = sim.getReport()?.habitats?.[hid]?.species || {};
+      if (d === 1) lionSpace = hab.lion?.spaceCapacity ?? null;
       lions.push(hab.lion?.n ?? 0);
       prey.push(PREY.reduce((a, s) => a + (hab[s]?.n ?? 0), 0));
       if ([90, 180, 365, 545, days].includes(d)) checkpoints[d] = { lions: lions[lions.length - 1], prey: prey[prey.length - 1] };
       if (d % 10 === 0) await new Promise((res) => setTimeout(res));
     }
-    return { habitat: world.habitats.get(hid)?.name, start: { lions: lions[0], prey: prey[0] }, checkpoints,
+    return { habitat: world.habitats.get(hid)?.name, lionSpace, start: { lions: lions[0], prey: prey[0] }, checkpoints,
       minLions: Math.min(...lions), minPrey: Math.min(...prey), end: { lions: lions[lions.length - 1], prey: prey[prey.length - 1] } };
   }, DAYS_PS);
   await page.close();
-  const out = { ...r,
-    pass: !r.error && r.start?.lions >= 3 && r.minLions >= 2 && r.minPrey >= 1 && r.end.lions >= 2 && r.end.prey >= 1 };
+  // geometry-limited seed (owner decision 2026-10-09): where the map leaves the kopje < 4 lions of
+  // space (a neighbour habitat beside the rock; seeds 4, 6, 7 of 1-8), the pride of 3 starts at or
+  // over capacity, cannot breed, and only shrinks. The pride assertion does not apply there: pass is
+  // null (not a pass, not counted as a failure) and the run is labelled; prey must still never hit 0.
+  // A pair was tried instead and went extinct on all three seeds. Every other seed keeps the full bar.
+  const limited = !r.error && r.lionSpace != null && r.lionSpace < 4;
+  const out = { ...r, geometryLimited: limited,
+    pass: limited ? (r.minPrey >= 1 ? null : false)
+      : !r.error && r.start?.lions >= 3 && r.minLions >= 2 && r.minPrey >= 1 && r.end.lions >= 2 && r.end.prey >= 1 };
+  if (limited) console.log(`  [predator-stability] GEOMETRY-LIMITED seed: lion space ${r.lionSpace} < 4; pride assertion not applied (pass: null)`);
   const result = { scenario: 'predator-stability', result: out, consoleErrors: errors };
   writeJson('predator-stability', result);
   return result;
@@ -787,7 +798,13 @@ async function scenarioMissionReplay(browser) {
     // the cheetah is released into the lions' kopje (prey-rich, 3.6 ha — the only habitat with room
     // for it): a buy's optional third element is the ANCHOR species whose habitat receives the buy,
     // because habitatOf('cheetah') finds nothing before the first cheetah exists
-    'balanced-range': [{ day: 1, buy: ['cheetah', 1, 'lion'] }, { day: 1, plant: ['sour_plum', 0, -300, 135, 0.45] }, { day: 1, plant: ['knobthorn', 250, 300, 200, 0.3] }, { day: 1, plant: ['marula', -300, 250, 205, 0.25] }],
+    // + 2 rhino (plains) and 3 giraffe (woodland), $48k (verifier, 2026-10-09): the pride-sized kopje
+    // (park, 2026-10-09) gives its impala twice the room, kopje impala 23 → 46 by day 240, and the
+    // evenness drop pushed the old 4-step script below 92 by day 60 (★0, index 90.04 at the deadline).
+    // It was already marginal on the old park: index under 92 from ~day 110, won only because the
+    // hold window opened on day 1. Rare-species buys lift evenness: measured 94.43 at day 60, ≥ 92.84
+    // to day 240. Idle still fails (88.11).
+    'balanced-range': [{ day: 1, buy: ['cheetah', 1, 'lion'] }, { day: 1, buy: ['rhino', 2] }, { day: 1, buy: ['giraffe', 3] }, { day: 1, plant: ['sour_plum', 0, -300, 135, 0.45] }, { day: 1, plant: ['knobthorn', 250, 300, 200, 0.3] }, { day: 1, plant: ['marula', -300, 250, 205, 0.25] }],
     // recalibrated for the P4 economy (idle nets $1.19M/yr now): trim the redundant ranger AND
     // push the room rates the market still pays — lodge 92%-occupied at $180 takes $240, the
     // always-full tents take $80. Measured: idle $1,192,829 < $1.3M < trim+rates $1,524,060

@@ -32,7 +32,12 @@ generated:
   * **Pride Kopje** (predators) — lions sharing the habitat with an impala herd (the sim's predator
     score is prey/(predators×8): a prey-less kopje is unliveable by construction) — centred on the
     largest kopje `terrain.getFeatures()` reports for the active seed, reached by a dirt spur off the
-    loop vertex nearest that kopje.
+    loop vertex nearest that kopje. The disc is **sized for the pride** (2026-10-09): after every
+    other habitat is sited it grows toward ~60 000 m² outside the rock (≈ 6 lions at
+    `tables.space` 9 000 m²), keeping its painted footprint (1.15 r, the off-centre second disc
+    included) 12 m clear of every neighbour's, and may slide up to one rock radius off the rock's
+    centre toward open ground. A road-cut disc resolves to its largest fragment (≥ 80 % inside the
+    disc). On some seeds that still leaves < 4 lions of space — see Known gaps.
   * **River Wetland** — hippo, buffalo — centred beside (not inside) the river channel, at whichever
     bank is dry ground, reached by the second dirt spur.
   * **Water pumps** in the three habitats the terrain doesn't water (plains, woodland, kopje): the
@@ -270,6 +275,17 @@ these rates) — the obvious player move is to build more of the mid tier.
   placement (`forced: true` in the report) rather than finding a truly good spot. Forced placements
   still flatten the terrain under their footprint, so nothing floats or clips, but the site may read as
   less levelled than its neighbours.
+* **On some seeds the kopje cannot be sized for a breeding pride.** The old fixed "rock + 42 m" disc
+  gave lions 1–4 of space over seeds 1–8 for a pride of 3; at or over capacity the sim's birth
+  room term is 0, so the pride never bred and only shrank (seeds 2, 6, 7 fell below 2 lions in
+  730 days, seed 6 to 0). The grown disc reaches lion space 5–7 on seeds 1, 2, 3, 5, 8 (all pass
+  `predator-stability`, cubs born), but on seeds 4, 6 and 7 a neighbouring habitat sits beside the
+  rock and the disc stays at space 2–3: the pride of 3 still cannot breed and dies out or nearly
+  (day-730 lions 0 / 1 / 1). The harness reports those seeds `geometryLimited` (pass: null) rather
+  than passing them. A pride of 2 was tried there and went extinct on all three seeds (owner
+  decision 2026-10-09: keep 3). Real fixes are bigger calls: move the neighbouring habitat (changes
+  the rest of the layout) or lower lions' `tables.space` (rebalances every park). Measured food capacity is 5 lions on day 1 on every seed (14
+  impala), rising as the impala breed.
 * **Predators/wetland habitat siting trusts `terrain.getFeatures()`'s kopje/river shape.** If `terrain`
   changes its generator's feature counts or scale, the "most open loop vertex" / "nearest-kopje loop
   vertex" heuristic may need retuning — it is seed-general, not hardcoded to specific coordinates, but

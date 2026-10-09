@@ -492,6 +492,14 @@ in-the-black idle fails both ($1,192,829 → $1,194,644 at the deadline); replay
 **d308** ($1,307,321 vs the $1.3 M target — margin ~$7 k, did not flip). fire-season idle fails,
 replay ★3 d92, unchanged. New harness `predator-stability` (idle 730 d, lions ≥ 2 and prey ≥ 1 on
 every day, start lions ≥ 3 as non-vacuity): PASS — `tools/shots/fidelity-predator-stability.json`.
+**Correction (verifier, 2026-10-08):** that PASS was seed 1 only and fixed the prey side alone. Over
+seeds 1–8 the demo kopje gave lions 1–4 of space for a pride of 3, so the birth room term was 0 and
+no seed bred; seeds 2, 6, 7 fell below 2 lions (seed 6 to 0). Fixed in the `park` module (kopje
+disc sized for the pride; seeds where the map leaves < 4 lions of space are reported
+`geometryLimited`) — see park README Known gaps. Knock-on (2026-10-09): the bigger kopje doubles its
+impala (23 → 46 by day 240), which pushed the A Balanced Range replay below 92 (★0); the replay now
+also buys 2 rhino + 3 giraffe on day 1 ($48k) and wins ★2 day 61 (was ★1). In the Black still wins
+★1 but crosses $1.3 M on day 349 (d308 above).
 Tests 254/254 (6 new: refuge, hunger-bites, 730-day coexistence min lions ≥ 2 / min impala ≥ 1,
 same-seed determinism, prey-removal starvation).
 
