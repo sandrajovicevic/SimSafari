@@ -457,26 +457,7 @@ export async function buildPark(ctx, opts = {}) {
       const r = h.anchor.r ?? 85;
       const region = h.region ?? (zoning && h.habitatId != null ? zoning.getHabitat(h.habitatId) : null);
       const ids = [];
-      for (const [species, count0] of h.species) {
-        let count = count0;
-        // pride-of-2 rule (owner decision 2026-10-09): where the map leaves the kopje too little room
-        // to grow (seeds 4, 6, 7: a neighbour habitat sits beside the rock), lion space capacity
-        // stays 2-3 and a pride of 3 starts at or over it -- the sim's birth room term is then 0 and
-        // the pride only shrinks. Under 4 lions of space the demo releases a pair instead.
-        if (species === 'lion' && region && simulation?.explainHabitat && count > 2) {
-          try {
-            const hab = world.habitats.get(region.id);
-            if (hab) {
-              simulation.habitatStat?.(hab, true);
-              const cap = simulation.explainHabitat(hab, 'lion')?.spaceCapacity;
-              if (Number.isFinite(cap) && cap < 4) {
-                count = 2;
-                report.pride = { lions: 2, spaceCapacity: cap, reduced: true };
-                report.warnings.push(`habitat "${h.name}": lion space capacity ${cap} < 4 on this seed; released a pair, not ${count0}`);
-              } else report.pride = { lions: count, spaceCapacity: cap ?? null, reduced: false };
-            }
-          } catch (err) { log.warn('[park] pride sizing failed: ' + err.message); }
-        }
+      for (const [species, count] of h.species) {
         const c = (region && pickInRegion(region)) || h.anchor;
         const got = animals.spawn(species, c.x, c.z, count, { homeRadius: r * 0.4, herd: undefined });
         if (got) ids.push(...got);

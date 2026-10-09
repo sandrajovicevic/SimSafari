@@ -495,7 +495,11 @@ every day, start lions ≥ 3 as non-vacuity): PASS — `tools/shots/fidelity-pre
 **Correction (verifier, 2026-10-08):** that PASS was seed 1 only and fixed the prey side alone. Over
 seeds 1–8 the demo kopje gave lions 1–4 of space for a pride of 3, so the birth room term was 0 and
 no seed bred; seeds 2, 6, 7 fell below 2 lions (seed 6 to 0). Fixed in the `park` module (kopje
-disc sized for the pride, pride-of-2 on geometry-limited seeds) — see park README Known gaps.
+disc sized for the pride; seeds where the map leaves < 4 lions of space are reported
+`geometryLimited`) — see park README Known gaps. Knock-on (2026-10-09): the bigger kopje doubles its
+impala (23 → 46 by day 240), which pushed the A Balanced Range replay below 92 (★0); the replay now
+also buys 2 rhino + 3 giraffe on day 1 ($48k) and wins ★2 day 61 (was ★1). In the Black still wins
+★1 but crosses $1.3 M on day 349 (d308 above).
 Tests 254/254 (6 new: refuge, hunger-bites, 730-day coexistence min lions ≥ 2 / min impala ≥ 1,
 same-seed determinism, prey-removal starvation).
 

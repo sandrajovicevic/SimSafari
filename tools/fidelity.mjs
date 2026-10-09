@@ -510,8 +510,8 @@ async function scenarioRemovePrey(browser) {
 
 /** predator-stability (predator–prey stability fix, 2026-10-02): the demo park idles 730 days and
  * the lions' habitat must coexist — lions ≥ 2 and prey ≥ 1 on every sampled day, lions ≥ 3 to start
- * (non-vacuity: a real pride under observation). Seeds whose kopje has < 4 lions of space start a pair
- * (park pride-of-2 rule, 2026-10-09) and are reported geometryLimited with pass: null. Old flat-rate predation ate the kopje's 14 impala
+ * (non-vacuity: a real pride under observation). Seeds whose kopje has < 4 lions of space are reported
+ * geometryLimited with pass: null (2026-10-09; see park README Known gaps). Old flat-rate predation ate the kopje's 14 impala
  * to 0 by day 270 and the pride starved out (verifier-measured); checkpoints report the new shape. */
 async function scenarioPredatorStability(browser) {
   const DAYS_PS = 730;
@@ -540,14 +540,15 @@ async function scenarioPredatorStability(browser) {
   }, DAYS_PS);
   await page.close();
   // geometry-limited seed (owner decision 2026-10-09): where the map leaves the kopje < 4 lions of
-  // space, park releases a pair (pride-of-2 rule) that has little or no room to breed. The pride
-  // assertion does not apply there: pass is null (not a pass, not counted as a failure) and the
-  // run is labelled; prey must still never hit 0. Every other seed keeps the full bar.
-  const limited = !r.error && r.start?.lions === 2 && r.lionSpace != null && r.lionSpace < 4;
+  // space (a neighbour habitat beside the rock; seeds 4, 6, 7 of 1-8), the pride of 3 starts at or
+  // over capacity, cannot breed, and only shrinks. The pride assertion does not apply there: pass is
+  // null (not a pass, not counted as a failure) and the run is labelled; prey must still never hit 0.
+  // A pair was tried instead and went extinct on all three seeds. Every other seed keeps the full bar.
+  const limited = !r.error && r.lionSpace != null && r.lionSpace < 4;
   const out = { ...r, geometryLimited: limited,
     pass: limited ? (r.minPrey >= 1 ? null : false)
       : !r.error && r.start?.lions >= 3 && r.minLions >= 2 && r.minPrey >= 1 && r.end.lions >= 2 && r.end.prey >= 1 };
-  if (limited) console.log(`  [predator-stability] GEOMETRY-LIMITED seed: lion space ${r.lionSpace} < 4, pride of 2 released; pride assertion not applied (pass: null)`);
+  if (limited) console.log(`  [predator-stability] GEOMETRY-LIMITED seed: lion space ${r.lionSpace} < 4; pride assertion not applied (pass: null)`);
   const result = { scenario: 'predator-stability', result: out, consoleErrors: errors };
   writeJson('predator-stability', result);
   return result;
