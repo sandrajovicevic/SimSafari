@@ -308,6 +308,15 @@ particularly on first load or after a large camera jump (e.g. a showcase preset 
   visible arc where coverage jumps. If you change a LOD's spacing or scale multiplier in
   `grass.js`, you must re-solve the paired `mat` constant in `buildTuft()`'s call sites (see the
   comment on `QUALITY` in `grass.js`).
+* **Near-camera density ring (V1 §4, 2026-10-08, high tier).** `nearSpacing` 0.40 → 0.327 (×1.5
+  candidates) paid for by a smaller LOD0 ring (`r0` 44 → 36, area −33% ≈ density +50%, caps
+  unchanged); `_repack` ramps a decorrelated keep probability from all-candidates at 36 m back to
+  nominal density by 70 m. Measured with rAF-to-rAF wall-clock medians (NOT `perf.frameMs` — it is
+  a 10-frame EMA of only part of the frame and misleads: it showed +12–18 ms where honest medians
+  show parity): overview 21.8 → 21.7 ms, low preset 17.4 → 16.9 ms; draws unchanged; vision A/B
+  "bare soil clearly visible between tufts" → "near-complete ground cover". p90 tail at the low
+  view rose 19 → 28 ms (GC of the 1.5× chunk arrays — median unaffected). The 14 m repack
+  threshold, ≤3 draws, and zero per-frame allocations are unchanged; near-chunk memory is 1.5×.
 * **Tuft mats + placement re-solved against terrain's photo ground (2026-09-25, critic round 4
   majors 1+2).** Terrain's ground switched to photo-derived layers after the tuft palette was
   authored, and the stale values announced themselves: every tuft's baked ground mat read as a

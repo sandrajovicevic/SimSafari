@@ -200,6 +200,19 @@ and is not reported.
 | `predators` | 56 | 1 563 900 | 0 | `tools/shots/animals-predators-r4.png` |
 | `night` | 52 | 1 310 332 | 0 | `tools/shots/animals-night-r4.png` |
 
+## LOD0 density bump (Wave V1 §4, 2026-10-08, `quality=high` only)
+
+Procedural species build their near mesh at `detail √1.5 ≈ 1.22` (segment counts scale ~linearly
+in detail, triangles ~detail² → ×1.5 LOD0 tris); the far LOD stays 0.5. The GLTF species
+(elephant, giraffe, zebra, lion, impala) render their authored assets at full density already —
+there is no knob for them, which is why the V1 spec's tour-species list mapped onto the procedural
+seven instead (wildebeest, buffalo, cheetah, hippo, rhino, warthog, ostrich). Measured (real GPU,
+game overview, whole frame): 4.66 M → 4.59 M tris (≤ the wave's 5 M bar; slightly down — the
+grass ring shrank in the same wave), draws unchanged, rAF-to-rAF wall-clock parity (21.8 → 21.7
+ms). Vision A/B at the herd preset: wildebeest "decidedly low-poly… sides read as a series of
+connected chords" → "smooth, slightly faceted transitions, curvature mostly continuous". Caveat:
+`perf.frameMs` is a partial-frame EMA and misleads for A/B — use rAF-to-rAF wall-clock medians.
+
 Draw calls and triangles are geometry-driven and unaffected by the lighting fixes below; re-measured
 after them anyway to confirm nothing regressed. All six still zero console errors.
 

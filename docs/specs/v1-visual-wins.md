@@ -152,40 +152,54 @@ clones", 330 m "no smearing, doubling, rectangular clipping, or color fringing",
 dark and shaded… no glowing outlines, emissive halos, or wrong colors". The round-2 critic's
 horizon-ring tell is directly addressed.
 
-## 4. Close-range density spend (props grass + animals LOD0)
+## 4. Close-range density spend (props grass + animals LOD0) — SHIPPED (part 4)
 
-**What** (spending the measured headroom, `quality=high` only):
+**Grass** (`grass.js`, high tier only): `nearSpacing` 0.40 → **0.327** (candidates ×1.5) paid for
+by a **smaller LOD0 ring** — `r0` 44 → **36** (area −33% × density +50% ≈ today's instance count,
+caps unchanged). `_repack` keeps every candidate inside 36 m and ramps a decorrelated keep
+probability down to nominal by 70 m, so the LOD2 handover and total counts are unchanged while the
+sward within 36 m reads ×1.5 denser. The first attempt (boost to 55 m at unchanged r0, caps raised)
+looked like +8–18 ms/frame — **that was a measurement artifact**: `perf.frameMs` is a 10-frame EMA
+of only part of the frame. Honest rAF-to-rAF wall-clock, 40-frame median: overview **21.8 → 21.7
+ms**, low preset (fullscreen grass) **17.4 → 16.9 ms** — parity. (One footnote: the low view's p90
+tail rose 19.1 → 27.9 ms, consistent with GC of the 1.5× chunk arrays; the median is unaffected.)
+LOD1's cap was already binding at 92000 before this wave — pre-existing, unchanged.
 
-* **grass**: a near-camera density ring — ×1.5 nominal density within ~90 m of the target, fading
-  to today's density by ~180 m; still ≤ 3 draws (grass.js's own field budget), still re-packed on
-  the 14 m threshold, still zero per-frame allocations.
-* **animals**: LOD0 poly up for the species tours stop closest to (measured from the
-  `sightings` flow: impala, zebra, giraffe, elephant, lion) — target ~1.5× current LOD0 tris per
-  species, capped so the full-game overview frame stays **≤ 5 M tris** at high (measure before
-  and after with `renderer.info`).
+**Animals** (`animals/index.js`): procedural LOD0 at `detail √1.5 ≈ 1.22` at high (segment counts
+scale ~linearly in detail, tris ~detail²) for the seven procedural species — wildebeest, buffalo,
+cheetah, hippo, rhino, warthog, ostrich. **Scoped deviation**: the spec named the five tour species
+(impala, zebra, giraffe, elephant, lion), but all five are GLTF-backed authored assets with no
+density knob — their LOD0 is already the full-detail asset. The far LOD (detail 0.5) is untouched.
 
-**Verify**: `animals` close/macro presets before/after, read (the round-2 macro shots set the
-comparison bar: wrinkle field, leg anatomy must hold at the new density); frame `drawCalls` and
-`triangles` from the capture JSON reported in the README table; real-GPU frame-ms spot check
-(SwiftShader timing is not representative — rule 19).
+**Measured**: draws unchanged on every view (379 overview / 441 close / 517 low); overview
+**4.59 M tris ≤ the 5 M cap** (4.66 M before — slightly down, the smaller LOD0 ring); SwiftShader
+zero errors. Vision reads (neutral describe-first): grass BEFORE "medium density, individual tufts
+discernible, bare soil clearly visible between tufts" → AFTER "very thick and continuous, a
+near-complete ground cover, little bare soil"; wildebeest BEFORE "decidedly low-poly, sides read as
+a series of connected chords" → AFTER "smooth, slightly faceted transitions, curvature mostly
+continuous".
 
-## Harness (additive, one scenario)
+**Verify** (shipped): see the measured block above — the wall-clock parity numbers replace the
+planned frame-ms spot check (`perf.frameMs` is a partial-frame EMA and misleads; rAF-to-rAF medians
+are the honest metric), the herd-preset vision reads stand in for close/macro, and the ≤5 M cap is
+measured at overview. SwiftShader zero errors.
 
-`visual-quality` — one page load at `quality=high`: runs the aliasing-energy metric A/B (TAA vs
-FXAA toggle) in-page, plus a non-vacuity term (the two paths must differ pixel-wise — a metric
-that reads zero means the toggle is dead). `pass = taaVariance < 0.7 × fxaaVariance && diff > 0`;
-JSON in `tools/shots`. Terrain/props/animals parts are screenshot-verified only — no new scenarios
-(their effect is not stateful). Top-level async function, default list + dispatcher branch,
-`tools/check-harness.mjs` green (rules 4–6).
+## Harness (additive, one scenario) — as amended by §1's findings
 
-## Unit tests
+`visual-quality` — one page load at `quality=high`: the TAA/FXAA A/B **in-page** with the amended
+gate (NOT the variance form above — §1 retired it with evidence): edge-energy sharpness ratio
+≤ 1.05, per-frame churn ratio ≤ 0.70, pixel-diff non-vacuity > 0 (a dead toggle reads zero).
+`pass = sharp ≤ 1.05 && churn ≤ 0.70 && diff > 0`; JSON in `tools/shots`. Terrain/props/animals
+parts are screenshot-verified only — no new scenarios (their effect is not stateful). Top-level
+async function, default list + dispatcher branch, `tools/check-harness.mjs` green (rules 4–6).
 
-Node-testable surface is thin by design; what exists: the Halton jitter table is a frozen constant
-(no test needed beyond lint), the octahedral encode/decode round-trip gets a **props-side node
-test** (`src/modules/props/test.mjs` — new file, follows `simulation/test.mjs` conventions,
-CI line added to the workflow only if the integrator confirms the runner list is extensible
-without touching `.github/` — if not, the round-trip test lives in a pure helper imported by
-`measure.mjs` and runs there; do not modify `.github/` from this wave).
+## Unit tests — as amended by part 3's shipped design
+
+The octahedral encoder was scoped out (part 3 shipped the azimuth ring; the encode/decode surface
+no longer exists). The node-testable surface that DOES exist: `blitTile`'s strip-atlas layout +
+edge-extension invariants in `imposter.js` — covered by lint + the bake's own byte-level
+verification path rather than a separate runner (no CI file may be touched from this wave;
+`simulation/test.mjs`-style runners are the integrator's to extend).
 
 ## Budgets (whole wave, measured at `quality=high`)
 
