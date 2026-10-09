@@ -318,6 +318,54 @@ vec4 shade(vec2 uv){
 }`, { key: 'terrain:waterNormal', size, seed: 3, mipmaps: true, anisotropy });
 }
 
+// ---- Wave V1 §2: close-range detail normals ------------------------------------------------------
+// Two fine tileables layered OVER the composed splat normal (material.js) at tilings the layer
+// arrays don't carry: ~1.4 m fractured-rock plates for kopje/boulder faces (the round-2 critic's
+// flat-shading tell at raking light) and ~0.55 m grass-ground tuft micro-bump. Generated once
+// beside the splat sources; the splat shader fades them 80–220 m so distant pixels never sample.
+export function buildDetailNormals(ctx, { size = 512, anisotropy = 4 } = {}) {
+  const tRock = ctx.textures.gpu(/* glsl */ `
+float dhgt(vec2 uv){
+  // fracture plates: tridged facets at two scales, cross-cut by worley cracks, plus grain
+  float plates = tridged(uv, 3.0, 3, uSeed);
+  float plates2 = tridged(uv + 0.37, 7.0, 2, uSeed + 5.0);
+  vec2 c = tworley(uv, 6.0, uSeed + 3.0);
+  float crack = 1.0 - smoothstep(0.0, 0.045, c.y - c.x);
+  vec2 c2 = tworley(uv + 0.44, 14.0, uSeed + 9.0);
+  float crack2 = 1.0 - smoothstep(0.0, 0.035, c2.y - c2.x);
+  float grain = tfbm(uv, 90.0, 2, uSeed + 13.0) * 0.5 + 0.5;
+  return 0.48 * plates + 0.22 * plates2 + 0.12 * grain - 0.58 * crack - 0.26 * crack2;
+}
+vec4 shade(vec2 uv){
+  float px = 1.0 / uSize;
+  float l = dhgt(uv + vec2(-px, 0.0)), r = dhgt(uv + vec2(px, 0.0));
+  float d = dhgt(uv + vec2(0.0, -px)), u = dhgt(uv + vec2(0.0, px));
+  vec3 nn = normalize(vec3((l - r) * 0.85 * uSize * 0.5, (d - u) * 0.85 * uSize * 0.5, 1.0));
+  return vec4(nn * 0.5 + 0.5, 1.0);
+}`, { key: 'terrain:detailRock', size, seed: 131, mipmaps: true, anisotropy });
+  const tGrass = ctx.textures.gpu(/* glsl */ `
+float ghgt(vec2 uv){
+  // ground micro-bump: hummocks, a tuft lattice and fine blade grain — gentle, this only has to
+  // break the smooth ground plane at grazing light, not compete with the grass instance field
+  vec2 w = tworley(uv, 7.0, uSeed + 21.0);
+  float clump = 1.0 - smoothstep(0.0, 0.85, w.x);
+  float fine = tfbm(uv, 110.0, 2, uSeed + 25.0) * 0.5 + 0.5;
+  float mat = tfbm(uv, 5.0, 2, uSeed + 29.0) * 0.5 + 0.5;
+  return 0.42 * clump + 0.30 * fine + 0.28 * mat;
+}
+vec4 shade(vec2 uv){
+  float px = 1.0 / uSize;
+  float l = ghgt(uv + vec2(-px, 0.0)), r = ghgt(uv + vec2(px, 0.0));
+  float d = ghgt(uv + vec2(0.0, -px)), u = ghgt(uv + vec2(0.0, px));
+  vec3 nn = normalize(vec3((l - r) * 0.38 * uSize * 0.5, (d - u) * 0.38 * uSize * 0.5, 1.0));
+  return vec4(nn * 0.5 + 0.5, 1.0);
+}`, { key: 'terrain:detailGrass', size, seed: 137, mipmaps: true, anisotropy });
+  return {
+    tRock, tGrass,
+    dispose() { ctx.textures.dispose('terrain:detailRock'); ctx.textures.dispose('terrain:detailGrass'); },
+  };
+}
+
 // ---- authored photo layers (ARCHITECTURE §8, 2026-09-24) ---------------------------------------
 // Scanned CC0 ground sets replace procedural layers when present. Each set is a colour map plus a
 // "surface" map packing tangent normal X/Y (OpenGL) in r/g and roughness in b. The photo's mean colour

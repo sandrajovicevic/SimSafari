@@ -175,7 +175,11 @@ class Pool {
   constructor(spec, variant) {
     this.key = `${spec.id}:${variant}`;
     this.spec = spec; this.variant = variant;
-    const hi = buildAnimal(spec, { detail: 1, variant });
+    // V1 §4 close-range density: procedural LOD0 runs at detail √1.5 ≈ 1.22 at high (segment counts
+    // scale ~linearly in D, tris ~D² → ×1.5 triangles). The GLTF species (elephant, giraffe, zebra,
+    // lion, impala) render their authored assets at full density already — no knob exists there.
+    const hiDetail = ctx.quality === 'high' ? 1.22 : 1;
+    const hi = buildAnimal(spec, { detail: hiDetail, variant });
     const lo = buildAnimal(spec, { detail: 0.5, variant });
     this.rig = hi.rig; this.dims = hi.dims; this.eyes = hi.eyes;
     this.geoHi = hi.geometry; this.geoLo = lo.geometry;

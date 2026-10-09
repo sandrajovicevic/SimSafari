@@ -17,7 +17,8 @@ numbers off a screenshot.
 | `setEnabled` | `(name, on) → boolean` | `name` ∈ `pipeline\|ao\|bloom\|haze\|grade\|vignette\|grain\|aa\|particles`. Returns `false` for an unknown name. |
 | `isEnabled` | `(name) → boolean` | |
 | `setQuality` | `(q) → boolean` | `'low'\|'medium'\|'high'`; rebuilds the whole chain. |
-| `setAA` | `(mode)` | `'fxaa'\|'smaa'\|'none'`, overrides the tier default; rebuilds. |
+| `setAA` | `(mode)` | `'fxaa'\|'smaa'\|'taa'\|'none'`, overrides the tier default (high ships `taa`); rebuilds. |
+| `setAATuning` | `({blend?, slack?, gamma?}) → boolean` | TAA-only maintenance hook: history blend weight (default 0.98), variance-clip HDR slack (0.002), clip radius γ (2.5). `false` when the current AA pass is not TAA. |
 | `setBloomMode` | `(mode)` | `'mip'` (default, 4-level 13-tap mip chain, 7 draws) or `'unreal'` (three's `UnrealBloomPass`, ~13 draws); rebuilds. |
 | `setGrade` | `({exposure, contrast, saturation, warmth, lift, vignette, grain, bloom, floor})` | any subset; cheap (no rebuild). `exposure` multiplies inside the grade shader — `renderer.toneMappingExposure` is owned by `environment` and untouched. `floor` (default 1) is a multiplier on the AO-masked moonlit fill; `setGrade({floor: 0})` disables it for A/B. |
 | `getGrade` | `() → object \| null` | copy of current grade state. |
@@ -46,9 +47,9 @@ ParticlesPass  soft dust/smoke/splash quad-instances over the resolved buffer   
 BloomPass      Karis 13-tap threshold → 4-level 13-tap mip chain → tent upsample (¼ res)    [7]
 GradePass      + bloom, exposure, toe-protected contrast, sat/warmth, night scotopic shift,  [1]
                AO-masked moonlit fill, lift, vignette, fine grain
-FXAAPass       (SMAA at 3 draws if selected)                                               [1]
+TAAPass        temporal AA at high tier (FXAA otherwise): jittered-sample accumulation      [1]
 OutputPass     ACES tone mapping + sRGB (renderer.toneMappingExposure, owned by environment) [1]
-                                                                              total extra = 14
+                                                                    total extra = 14 (taa: 15)
 ```
 
 `quality=low` drops AO and bloom (FXAA-only): **5** extra draws, measured. `quality=off` (`setEnabled('pipeline', false)`)
@@ -59,12 +60,46 @@ depth test instead of the soft-particle depth texture.
 
 | tier | MSAA | AO | AO samples/scale | Bloom | Haze | AA | measured extra draws |
 |---|---|---|---|---|---|---|---|
-| high | 4× | on | 16 / 1.0 | on | on | fxaa | 14 |
+| high | 4× | on | 16 / 1.0 | on | on | **taa** | 15 |
 | medium | 2× | on | 8 / 0.5 | on | on | fxaa | 14 |
 | low | off | off | — | off | off | fxaa | 5 |
 
 (medium and high add the same *passes* as each other — only sample counts/MSAA/AO render-scale differ
-internally — so their extra-draw-call count is identical; the saving is GPU time per pass, not pass count.)
+internally — so their extra-draw-call count is identical; the saving is GPU time per pass, not pass count.
+TAA adds exactly one draw over the fxaa chain, measured with `measure.mjs --aliasing`.)
+
+## TAA — temporal anti-aliasing (Wave V1 part 1, 2026-10-04)
+
+`TAAPass` after GradePass at `quality=high`: the projection is jittered by a centred Halton(2,3)
+8-point sequence (~±0.375 px, `rig.jitter` applied by the rig), each frame reprojects its depth to
+the previous frame's uv (`rig.prevViewProjection`) and blends the two HalfFloat history targets at
+0.98 with **variance clipping** (history clamped to μ ± 2.5σ of the current 3×3, +0.002 HDR slack).
+Escape hatches: `setAA('fxaa')` (A/B, regression hunting) and `setAATuning({ blend, slack, gamma })`.
+
+Measured (real GPU D3D11, `node src/modules/effects/measure.mjs --tag <t> --aliasing`, game overview
+frozen so only the AA differs; full method + numbers in `docs/specs/v1-visual-wins.md` §1):
+
+* edge energy taa/fxaa **0.803** (5.31 vs 6.62 thresholded second-difference sum — TAA is 20 % smoother,
+  bar was ≤ 1.05 "no blur regression");
+* per-frame churn at rest **0.635×** fxaa (0.060 vs 0.094) — with the scene's live wind/particles
+  unfrozen the ratio is **0.40** (0.381 vs 0.956): the pass integrates animation, its headline value;
+* grey-card exposure neutrality **0.9969** grain-off (grain-on reads 0.9888: averaging grain in HDR
+  before the ACES tonemap biases ≈1 % by Jensen — a grain interplay, not an exposure shift);
+* +**1** draw; SwiftShader renders the whole battery with zero page errors; 45° sweep + settle shows
+  no ghosting (structural vision read, twice — at 0.97 and at the shipped 0.98).
+
+Two things the measurement loop caught that theory missed (both fixed, post-mortem in
+`docs/requests/effects.md` #1): (1) capturing `prevViewProjection` at the *end* of `CameraRig.update`
+made it ≡ the current VP — identity reprojection, no jitter integration, history clamped away under
+motion; (2) applying the jitter with `+=` to the never-reset projection matrix random-walked the
+camera by the Halton mean every frame. A third finding: a min/max 3×3 history clamp (the textbook
+first cut) cannot bound the supersample of sub-texel grass detail — an aliased single-phase box pins
+the recursion's fixed point back to the raw frame (energy 8.42 vs fxaa 6.58, blend-insensitive at
+convergence); variance clipping is not optional here.
+
+Known gap: `screenshot.mjs` renders 4 real frames after settle — at blend 0.98 that is ~8 %
+converged, so its captures under-represent TAA's smoothing (never over-represent). Convergence
+constant ≈ 50 frames.
 
 ## Measured cost — round 2 (the round-1 "204 draw calls" finding, resolved)
 

@@ -86,6 +86,27 @@ vec3 tAlbedo; float tRough; float tAo; vec3 tNormalW;
   ${Array.from({ length: L }, (_, i) => `b[${i}] /= bs;`).join(' ')}
   vec3 alb = vec3(0.0); vec2 tn = vec2(0.0); float rough = 0.0; float ao = 0.0;
   ${Array.from({ length: L }, (_, i) => `alb += srgb2lin(A[${i}].rgb) * b[${i}]; rough += Bn[${i}].b * b[${i}]; ao += Bn[${i}].a * b[${i}]; tn += (Bn[${i}].rg * 2.0 - 1.0) * b[${i}];`).join('\n  ')}
+  // Wave V1 §2: close-range detail normals — a finer world tiling than the layer arrays, perturbing
+  // the composed tangent normal through the same frame. Rock faces get fractured plates (the flat-
+  // shading tell at raking light, close preset tod 8-9), ground layers get tuft micro-bump. Faded
+  // out 80–220 m and the whole branch is skipped beyond that, so overview pixels never sample;
+  // triplanar on slopes like the layers (the tell lives on cliff/boulder faces).
+  float dFade = uDetail * (1.0 - smoothstep(80.0, 220.0, camD));
+  if (dFade > 0.004) {
+    vec2 tnR = texture2D(tDetRock, rot2(wxz * uInvScaleDR, 0.71) + 0.19).rg * 2.0 - 1.0;
+    vec2 tnG = texture2D(tDetGrass, rot2(wxz * uInvScaleDG, 0.29) + 0.61).rg * 2.0 - 1.0;
+    if (tri > 0.004) {
+      vec2 nXR = texture2D(tDetRock, vWPos.zy * uInvScaleDR).rg * 2.0 - 1.0;
+      vec2 nZR = texture2D(tDetRock, vWPos.xy * uInvScaleDR).rg * 2.0 - 1.0;
+      vec2 nXG = texture2D(tDetGrass, vWPos.zy * uInvScaleDG).rg * 2.0 - 1.0;
+      vec2 nZG = texture2D(tDetGrass, vWPos.xy * uInvScaleDG).rg * 2.0 - 1.0;
+      tnR = tnR * bw.y + nXR * bw.x + nZR * bw.z;
+      tnG = tnG * bw.y + nXG * bw.x + nZG * bw.z;
+    }
+    float wDetR = b[3];
+    float wDetG = clamp(b[0] + b[1] + 0.35 * b[2], 0.0, 1.0);
+    tn += (tnR * wDetR + tnG * wDetG) * dFade;
+  }
   // world-space detail normal through an orthonormal frame built on N (works for vertical faces)
   vec3 tnv = vec3(tn, sqrt(max(0.04, 1.0 - dot(tn, tn))));
   vec3 upv = abs(N.y) < 0.995 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
@@ -158,6 +179,8 @@ uniform float uNormalStr; uniform float uBlendDepth;
 uniform float uWarpA; uniform float uWarpB; uniform float uWarpC;
 uniform float uSat; uniform float uGain; uniform float uContrast;
 uniform sampler2D uBurnTex; uniform float uBurnOn; uniform float uSize;
+uniform sampler2D tDetRock; uniform sampler2D tDetGrass;
+uniform float uInvScaleDR; uniform float uInvScaleDG; uniform float uDetail;
 varying vec3 vWPos; varying vec3 vWNormal;
 vec3 srgb2lin(vec3 c){ return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }
 vec2 rot2(vec2 p, float a){ float c = cos(a), s = sin(a); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }
@@ -182,10 +205,22 @@ void sampleLayer(float layer, float tri, vec2 uvA, vec2 uvB, vec3 bw, vec3 P, fl
 }
 `;
 
-export function createTerrainMaterial(ctx, layers, control) {
+// 1×1 flat tangent normal (128,128,255): bound when detail textures are missing so the samplers
+// are never undefined (sampling an unbound sampler is undefined behaviour on some drivers) — it
+// contributes exactly (0,0), and uDetail is forced 0 alongside it anyway.
+function flatNormal() {
+  if (!flatNormal.t) {
+    flatNormal.t = new THREE.DataTexture(new Uint8Array([128, 128, 255, 255]), 1, 1);
+    flatNormal.t.needsUpdate = true;
+  }
+  return flatNormal.t;
+}
+
+export function createTerrainMaterial(ctx, layers, control, detail) {
   const world = ctx.world;
   const m = ctx.materials.standard({ color: 0xffffff, roughness: 1, metalness: 0, side: THREE.FrontSide });
   m.name = 'terrain-splat';
+  const hasDetail = !!(detail?.tRock && detail?.tGrass);
   const uniforms = {
     tAlb: { value: layers.tAlb }, tNrm: { value: layers.tNrm },
     tCtl0: { value: control.tCtl0 }, tCtl1: { value: control.tCtl1 }, tAux: { value: control.tAux },
@@ -195,6 +230,10 @@ export function createTerrainMaterial(ctx, layers, control) {
     uWarpA: { value: 11.0 }, uWarpB: { value: 3.4 }, uWarpC: { value: 1.1 },
     uSat: { value: 1.0 }, uGain: { value: 1.0 }, uContrast: { value: 0.0 },
     uBurnTex: { value: null }, uBurnOn: { value: 0.0 }, uSize: { value: world.size },
+    tDetRock: { value: hasDetail ? detail.tRock : flatNormal() },
+    tDetGrass: { value: hasDetail ? detail.tGrass : flatNormal() },
+    uInvScaleDR: { value: 1 / 1.4 }, uInvScaleDG: { value: 1 / 0.55 },
+    uDetail: { value: hasDetail ? 1.0 : 0.0 },
   };
   m.userData.uniforms = uniforms;
   m.onBeforeCompile = (shader) => {
@@ -210,7 +249,7 @@ export function createTerrainMaterial(ctx, layers, control) {
       .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(tNormalW, 0.0)).xyz);')
       .replace('#include <aomap_fragment>', 'reflectedLight.indirectDiffuse *= tAo; reflectedLight.directDiffuse *= mix(1.0, tAo, 0.35);');
   };
-  m.customProgramCacheKey = () => 'terrain-splat-v10';
+  m.customProgramCacheKey = () => 'terrain-splat-v11';
   return m;
 }
 
