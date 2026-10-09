@@ -183,5 +183,9 @@ the 12-edge / 5-junction / several-bridge overview network this is at most ~10 r
   `environment`'s moonlight the way daylight materials respond to the sun — see `terrain`'s README for
   the wider near-black-night finding; roads only reads better at night because of its own added
   emissive elements, not because its base material is any brighter under ambient light.
+  **Paint self-glow cut 0.35 → 0.003 (2026-10-09):** moonlit ground radiance is ~1e-3, so the old
+  glow (and even 0.05, measured) saturated every edge line and dash to a bright white wire across the
+  dark park. At 0.003 the lines read pale grey and legible near the lamps. There is still no
+  headlight model, so real retroreflection (bright only toward a vehicle's lights) is not simulated.
 * **Bridge deck arch height and rail spacing are fixed constants**, not derived from span length, so
   a very long or very short water crossing gets the same rail density and the same arch sag fraction.

@@ -199,6 +199,18 @@ suitability from it). The apron and the splat's 80 m border fade use the same fo
 `savannah/overview`, 0 errors. Still open: the patch albedo reads mauve-brown from altitude rather
 than laterite red.
 
+## Escarpment shade (2026-10-09)
+
+The escarpment's shaded faces read near-black from the overview at 14 h: the hemisphere light gives a
+vertical face only the weak sky/ground mean, and the rock macro tint's darkest band (×0.58) compounded
+it. Fix in `material.js`: rock macro floor 0.58 → 0.72, and indirect light on steep faces
+(`1 − N.y` 0.35 → 0.80) lifted up to ×2.3 as bounce off the sunlit plain, **gated by the brightest
+directional light's elevation** (smoothstep 0.08 → 0.35) so it fades out at dusk. Ungated, the faces
+glowed pale against the unlit plain at 18 h; an additive physically-scaled bounce (k × the ground's
+direct irradiance) stayed invisible at 14 h even at k = 0.45. Tuned by eye on SwiftShader overview
+shots at 14 h / 18 h / 21.5 h against `main` — renders and composes correctly there, not checked on a
+real GPU. Cache key `terrain-splat-v11`.
+
 ## Known gaps (honest)
 
 * **World-border seam fixed (2026-09-28).** A ruler-straight line crossed the game's default overview at
