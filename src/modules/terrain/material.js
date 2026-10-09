@@ -99,7 +99,8 @@ vec3 tAlbedo; float tRough; float tAo; vec3 tNormalW;
   float rockShare = b[3];
   float rmac = snoise(vWPos.xz * 0.013 + vWPos.y * 0.021) * 0.5 + 0.5;
   float rmac2 = snoise(vWPos.xz * 0.055 + vWPos.y * 0.09 + 4.0) * 0.5 + 0.5;
-  alb *= mix(1.0, mix(0.58, 1.22, rmac) * mix(0.85, 1.12, rmac2), rockShare);
+  // rock macro floor 0.58 → 0.72: the darkest bands compounded with shade into charcoal on the escarpment
+  alb *= mix(1.0, mix(0.72, 1.22, rmac) * mix(0.85, 1.12, rmac2), rockShare);
   float dust = c1.a; float rbed = c1.b;
   alb = mix(alb, alb * vec3(1.10, 0.98, 0.84) + vec3(0.10, 0.075, 0.045), clamp(dust * 1.2, 0.0, 1.0) * b[2]);
   alb *= mix(1.0, 0.55, rbed);
@@ -208,9 +209,13 @@ export function createTerrainMaterial(ctx, layers, control) {
       .replace('#include <map_fragment>', splatGLSL())
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = roughness * tRough;')
       .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(tNormalW, 0.0)).xyz);')
-      .replace('#include <aomap_fragment>', 'reflectedLight.indirectDiffuse *= tAo; reflectedLight.directDiffuse *= mix(1.0, tAo, 0.35);');
+      // steep faces get a bounce term (2026-10-09): a cliff in the sun's shadow sees half the sky and
+      // the sunlit plain below, but the hemisphere light gives a vertical face only its weak mean, so
+      // the escarpment read near-black from the overview. Scaling indirect (not adding a colour) keeps
+      // night and dusk proportionally dark.
+      .replace('#include <aomap_fragment>', 'float steepB = smoothstep(0.35, 0.80, 1.0 - vWNormal.y); reflectedLight.indirectDiffuse *= tAo * (1.0 + 1.3 * steepB); reflectedLight.directDiffuse *= mix(1.0, tAo, 0.35);');
   };
-  m.customProgramCacheKey = () => 'terrain-splat-v10';
+  m.customProgramCacheKey = () => 'terrain-splat-v11';
   return m;
 }
 

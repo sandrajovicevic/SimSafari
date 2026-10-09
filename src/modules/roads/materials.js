@@ -347,7 +347,10 @@ ${GLSL_NOISE}`)
                   * step(0.05, a * side) * step(a * side, 1.9 + 0.8 * hW) * rutMask;
     col = mix(col, col * vec3(0.72, 0.73, 0.76), inPatch);
     gPaint *= 1.0 - inPatch * 0.7;
-    totalEmissiveRadiance += vec3(0.9, 0.85, 0.7) * paint * uNight * 0.35;
+    // retroreflective paint returns light to its source; with no headlight model the old 0.35 self-glow
+    // drew every edge line as a bright white wire across the dark park at night (2026-10-09). A faint
+    // lift keeps the lines legible near lamps without lighting the whole network.
+    totalEmissiveRadiance += vec3(0.9, 0.85, 0.7) * paint * uNight * 0.05;
   #endif
   // edge dust blend toward terrain colour, broken up by noise
   // shoulder: a wide, noisy dust band that walks the surface colour into the terrain so the ribbon
@@ -372,7 +375,7 @@ ${GLSL_NOISE}`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 roughnessFactor = clamp(roughnessFactor - gRut * 0.12 + gDust * 0.06 - gPaint * 0.15, 0.3, 1.0);`);
   };
-  mat.customProgramCacheKey = () => 'road4-' + kind;
+  mat.customProgramCacheKey = () => 'road5-' + kind;
   return mat;
 }
 
