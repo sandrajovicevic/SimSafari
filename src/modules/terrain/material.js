@@ -99,7 +99,8 @@ vec3 tAlbedo; float tRough; float tAo; vec3 tNormalW;
   float rockShare = b[3];
   float rmac = snoise(vWPos.xz * 0.013 + vWPos.y * 0.021) * 0.5 + 0.5;
   float rmac2 = snoise(vWPos.xz * 0.055 + vWPos.y * 0.09 + 4.0) * 0.5 + 0.5;
-  alb *= mix(1.0, mix(0.58, 1.22, rmac) * mix(0.85, 1.12, rmac2), rockShare);
+  // rock macro floor 0.58 → 0.72: the darkest bands compounded with shade into charcoal on the escarpment
+  alb *= mix(1.0, mix(0.72, 1.22, rmac) * mix(0.85, 1.12, rmac2), rockShare);
   float dust = c1.a; float rbed = c1.b;
   alb = mix(alb, alb * vec3(1.10, 0.98, 0.84) + vec3(0.10, 0.075, 0.045), clamp(dust * 1.2, 0.0, 1.0) * b[2]);
   alb *= mix(1.0, 0.55, rbed);
@@ -208,9 +209,30 @@ export function createTerrainMaterial(ctx, layers, control) {
       .replace('#include <map_fragment>', splatGLSL())
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = roughness * tRough;')
       .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(tNormalW, 0.0)).xyz);')
-      .replace('#include <aomap_fragment>', 'reflectedLight.indirectDiffuse *= tAo; reflectedLight.directDiffuse *= mix(1.0, tAo, 0.35);');
+      // steep faces get bounce light off the sunlit plain (2026-10-09): a cliff in its own shadow
+      // still sees the bright ground below, but the hemisphere light gives a vertical face only the
+      // weak sky/ground mean, so the escarpment read near-black from the overview. Indirect on steep
+      // faces is lifted up to ×2.3, gated by the brightest directional light's elevation so the lift
+      // fades out at dusk — ungated, the faces glowed pale against the unlit plain at 18 h (measured);
+      // an additive physically-scaled bounce (k × the ground's direct irradiance) stayed too weak to
+      // see at 14 h even at k = 0.45. Tuned by eye at 14 h / 18 h / 21.5 h.
+      .replace('#include <aomap_fragment>', `reflectedLight.indirectDiffuse *= tAo; reflectedLight.directDiffuse *= mix(1.0, tAo, 0.35);
+#if NUM_DIR_LIGHTS > 0
+{
+  float steepB = smoothstep(0.35, 0.80, 1.0 - vWNormal.y);
+  if (steepB > 0.0) {
+    vec3 upV = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+    float bestL = -1.0, elev = 0.0;
+    for (int i = 0; i < NUM_DIR_LIGHTS; i++) {
+      float L = dot(directionalLights[i].color, vec3(0.2126, 0.7152, 0.0722));
+      if (L > bestL) { bestL = L; elev = dot(directionalLights[i].direction, upV); }
+    }
+    reflectedLight.indirectDiffuse *= 1.0 + 1.3 * steepB * smoothstep(0.08, 0.35, elev);
+  }
+}
+#endif`);
   };
-  m.customProgramCacheKey = () => 'terrain-splat-v10';
+  m.customProgramCacheKey = () => 'terrain-splat-v11';
   return m;
 }
 
