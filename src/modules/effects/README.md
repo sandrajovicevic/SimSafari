@@ -105,7 +105,7 @@ visible.
 
 `overview`, `close`, `heat`, `night`, `off`, `calibrate`, `locusts`, `locusts-night` (spec minimum `overview`/`close`/`night` plus
 the two the spec calls out; `calibrate` is a measurement target, not a look — a neutral grey card fills
-the frame for `measure.mjs`, the rest of the yard is hidden). All six build the same stand-alone effects
+the frame for `measure.mjs`, the rest of the yard is hidden). All eight build the same stand-alone effects
 yard (`showcase.js`) once, then move the camera/time/preset flags; see the description string on each
 preset in `showcase.js` for what it's meant to show.
 
