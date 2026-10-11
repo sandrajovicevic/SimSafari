@@ -166,6 +166,8 @@ class TAAPass extends Pass {
     this.needsSwap = true;
     this._h = 0;              // history ping-pong index
     this._reset = true;       // first frame after build/resize: accept current, no history
+    this._frames = 0;         // frames since reset — drives the convergence ramp
+    this._blendTarget = 0.98; // steady-state history weight (uBlend ramps up to this)
     this._vp = new THREE.Matrix4();
     const mkRT = () => new THREE.WebGLRenderTarget(w, h, {
       type: THREE.HalfFloatType, depthBuffer: false, stencilBuffer: false,
@@ -252,10 +254,23 @@ void main() {
     u.uPrevVP.value.copy(this.rig.prevViewProjection);
     if (this._reset) {
       this._reset = false;
+      this._frames = 0;
       this._blit(renderer, readBuffer.texture, this.hist[this._h]);
       this._blit(renderer, readBuffer.texture, writeBuffer);
+      // flip so the NEXT frame READS the slot just seeded — without this the next frame sampled
+      // the never-written slot (black) and spent ~150 frames blending out of it (1-0.98^n), which
+      // is exactly the "night captures near-black / much darker with --slow" verifier report: at
+      // ×12 night exposure even the 4-frame screenshot captures sat at ~8 % luma.
+      this._h = 1 - this._h;
       return;
     }
+    // convergence ramp: after a reset the blend climbs to the steady state over ~12 frames
+    // (w_k = 1 - 0.5^(k/2.5)) so short captures (screenshot.mjs renders ~4) are already converged —
+    // a constant blend leaves a 40-frame capture at 55 % luma and smears movers mid-recovery.
+    // After 30 frames uBlend is left alone, so setAATuning({blend}) overrides still stick at
+    // steady state (maintenance hook contract).
+    this._frames++;
+    if (this._frames <= 30) this.uniforms.uBlend.value = Math.min(this._blendTarget, 1 - Math.pow(0.5, this._frames / 2.5));
     u.uCurr.value = readBuffer.texture;
     u.uDepth.value = this.sceneRT.depthTexture;
     const next = 1 - this._h;

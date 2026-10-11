@@ -191,10 +191,14 @@ export function bakeImposter(ctx, meshes, { size = 256, pad = 1.04, views = 4 } 
   // d_k = (sin a, 0, cos a) — view 0 is the side camera). Albedo and normal each render into a
   // scratch RT, are read back, and land in one strip atlas whose tiles are separated by a gutter
   // of edge-extended pixels — mip chains then blend tile edge into tile edge, never across views.
-  const ringSize = Math.max(64, Math.round(size * 0.5));
+  // The atlas is POWER OF TWO by construction (tile 112 + 2×8 gutter = stride 128 → 512×128):
+  // SwiftShader's glGenerateMipmap on the original 576×144 NPOT atlas produced garbage deep mips,
+  // which rendered every DISTANT impostor (the small, high-mip samples) as spiky crownless sticks
+  // on software GL while the identical mip-0 bytes looked correct on a real GPU.
+  const ringSize = Math.max(56, Math.round(size * 0.5) >= 112 ? 112 : 56);
   const gutter = 8;
-  const stride = ringSize + 2 * gutter;
-  const atlasW = stride * views, atlasH = ringSize + 2 * gutter;
+  const stride = ringSize + 2 * gutter;                 // 112 + 16 = 128 (POT stride)
+  const atlasW = stride * views, atlasH = stride;       // 512 × 128 at 4 views (POT)
   const alb = new Uint8Array(atlasW * atlasH * 4);
   const nrm = new Uint8Array(atlasW * atlasH * 4);
   const scratchA = mkRt(ringSize, ringSize, THREE.LinearSRGBColorSpace);
