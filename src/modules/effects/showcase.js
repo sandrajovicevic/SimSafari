@@ -368,6 +368,7 @@ export async function stage(ctx, presetName, api, group) {
     try { injected = !!sim?.injectEvent?.('locusts', swarm); } catch (err) { ctx.log.warn('[effects] locust injectEvent failed: ' + err.message); }
     if (!injected) { L.swarms.push({ id: 1, ...swarm, age: 0, eaten: 0 }); L.version++; ST.stagedSwarm = true; }
   }
+  if (isLocust) api.setAmbientDust(0);   // no ambient motes: every speck in frame is a locust
   // preset-specific state
   if (presetName === 'heat') {
     ctx.world.weather.temperature = 37;   // environment owns weather; in this standalone showcase nobody else writes it

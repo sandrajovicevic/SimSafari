@@ -103,7 +103,7 @@ visible.
 
 ## Presets
 
-`overview`, `close`, `heat`, `night`, `off`, `calibrate` (spec minimum `overview`/`close`/`night` plus
+`overview`, `close`, `heat`, `night`, `off`, `calibrate`, `locusts`, `locusts-night` (spec minimum `overview`/`close`/`night` plus
 the two the spec calls out; `calibrate` is a measurement target, not a look — a neutral grey card fills
 the frame for `measure.mjs`, the rest of the yard is hidden). All six build the same stand-alone effects
 yard (`showcase.js`) once, then move the camera/time/preset flags; see the description string on each
@@ -393,6 +393,16 @@ without pitch/yaw leaves the camera wherever it was, and `world.locusts` has no 
 The 14-frame rAF pump lets the emitter burst + rate fill the cloud (a paused world still renders
 and particles spawn on real `dt`); the eval result must read `swarms: 1` — if it does not, the
 swarm never existed and the PNG proves nothing. Day shot identical with `--tod 14`.
+
+**Standalone presets (2026-10-11):** `locusts` (14 h) and `locusts-night` (21.5 h) stage one dense
+40 m swarm at (0, −60) beyond the yard, framed from ~120 m. Without `simulation` (the normal case in
+this showcase) the stage writes that one swarm into `world.locusts` itself and clears it for any other
+preset; with `simulation` loaded it goes through `injectEvent('locusts', …)`. Ambient dust is off in
+both, so every speck in frame is a locust (measured: 1806 kind-6 particles live, y 0.7–5.3 m). Capture
+with `--slow` (2.4 s specks expire during fast-settle). Observed in these shots, **not fixed here**:
+against the yard's bright ground the specks read *pale*, and at 21.5 h they read as faint light
+points rather than dark silhouettes — the 2026-10-04 night fix was verified in the full game, not in
+this yard.
 
 ## Known gaps (honest)
 
