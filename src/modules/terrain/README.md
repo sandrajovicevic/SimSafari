@@ -199,7 +199,6 @@ suitability from it). The apron and the splat's 80 m border fade use the same fo
 `savannah/overview`, 0 errors. Still open: the patch albedo reads mauve-brown from altitude rather
 than laterite red.
 
-<<<<<<< HEAD
 ## Close-range detail normals (Wave V1 §2, 2026-10-08)
 
 Two GPU-generated tileables (`buildDetailNormals`, textures.js — 512² hardware / 256² software GL,
@@ -211,7 +210,8 @@ perturb the same world tangent frame the layer normals use, and go **triplanar o
 the existing `bw` axis blend — the round-2 critic's flat-shading tell lived on kopje/cliff faces.
 Faded out **80→220 m** (`uDetail` scales it, 0 kills it; the branch is skipped entirely beyond the
 fade so distant pixels never sample). Zero new draws — fragment cost only inside the fade ring; a
-1×1 flat normal binds if generation ever fails, with `uDetail` forced 0. Program cache key v11.
+1×1 flat normal binds if generation ever fails, with `uDetail` forced 0. Program cache key v12
+(#38 landed first and took v11; this branch bumped per the PR #37 review note).
 
 Measured (real GPU, quality=medium for a deterministic FXAA chain, both per-frame clocks frozen):
 A/B mean-abs diff close@8.5 **0.199**, close@14 **0.120**, kopje@17 **0.062** (the fade is already
