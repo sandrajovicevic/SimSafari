@@ -249,7 +249,8 @@ export function createTerrainMaterial(ctx, layers, control, detail) {
       .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(tNormalW, 0.0)).xyz);')
       .replace('#include <aomap_fragment>', 'reflectedLight.indirectDiffuse *= tAo; reflectedLight.directDiffuse *= mix(1.0, tAo, 0.35);');
   };
-  m.customProgramCacheKey = () => 'terrain-splat-v11';
+  // v12: #38 (landed first) took v11; this branch bumps per the PR #37 review note
+  m.customProgramCacheKey = () => 'terrain-splat-v12';
   return m;
 }
 
