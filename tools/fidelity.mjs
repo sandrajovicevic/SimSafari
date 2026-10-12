@@ -36,6 +36,31 @@ const DAYS = +(args.days || 30);
 const TIMEOUT = +(args.timeout || 300000); // this machine's SwiftShader needs ~150 s to ready the full game
 const SCENARIOS = (args.scenarios ? String(args.scenarios).split(',') : ['baseline', 'elasticity', 'water', 'sightings', 'bankruptcy', 'determinism', 'poaching', 'drought', 'disease', 'prosperity', 'price-sweep', 'plant-aloe', 'remove-prey', 'predator-stability', 'spread', 'fire-response', 'fire-regrowth', 'biodiversity', 'mission-replay', 'lodging-elasticity', 'layoff-chain', 'drought-water', 'locusts', 'salt-lick']);
 
+// ---------------------------------------------------------------- process isolation
+// One long-lived Chromium dies after ~13 SwiftShader page loads (seen on three separate full runs:
+// the page-load wait times out while later runs in a fresh process succeed). A full default sweep
+// is 24 scenarios × 1-9 loads, so the parent mode below re-executes this file as a CHILD per
+// scenario — each child gets a fresh process AND a fresh browser, keeping every scenario under the
+// death limit. Children stream their output through; the parent aggregates exit codes. A single
+// explicit scenario (or --child) runs in-process exactly as before.
+if (!args.child && SCENARIOS.length > 1) {
+  const { spawn } = await import('node:child_process');
+  const fwd = [];
+  for (const k of ['seed', 'days', 'url', 'timeout']) if (args[k] !== undefined) fwd.push('--' + k, String(args[k]));
+  const failed = [];
+  for (const s of SCENARIOS) {
+    console.log(`\n=== [${s}] (fresh process) ===`);
+    const code = await new Promise((res) => {
+      const ch = spawn(process.execPath, [import.meta.filename, '--child', '--scenarios', s, ...fwd], { stdio: 'inherit' });
+      ch.on('close', (c) => res(c ?? 2));
+      ch.on('error', (e) => { console.error('child failed to start:', e); res(2); });
+    });
+    if (code !== 0) failed.push(`${s}(${code})`);
+  }
+  console.log(failed.length ? `FAIL: scenario process(es) exited non-zero [${failed.join(', ')}]` : `OK all ${SCENARIOS.length} scenarios (each in a fresh process)`);
+  process.exit(failed.length ? 1 : 0);
+}
+
 async function launch() {
   const gpuArgs = ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-gpu-sandbox', '--no-sandbox', '--autoplay-policy=no-user-gesture-required'];
   const exe = process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium';

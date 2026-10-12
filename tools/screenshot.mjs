@@ -39,7 +39,7 @@ const URL_BASE = args.url || process.env.SIM_URL || 'http://127.0.0.1:5173';
 const W = +(args.w || 1920), H = +(args.h || 1080);
 const SETTLE_FRAMES = +(args.settle || 40);
 const RENDER_FRAMES = +(args.renderFrames || 4); // fast settle: real rendered frames at the end
-const TIMEOUT = +(args.timeout || 90000);
+const TIMEOUT = +(args.timeout || 300000); // SwiftShader full-game ready can take ~150-180 s (night shots measured); 90 s timed out
 
 async function launch() {
   const gpuArgs = ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-gpu-sandbox', '--no-sandbox', '--autoplay-policy=no-user-gesture-required'];
