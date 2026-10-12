@@ -28,6 +28,16 @@ export const presets = {
     camera: { target: [0, 0], distance: 240, pitch: 26, yaw: 35 }, tod: 17.5,
     description: 'Same view and time as overview with the whole pipeline bypassed (direct MSAA render, no particles) for A/B comparison.',
   },
+  locusts: {
+    // Wave P5 swarm on its own (leftover from the P5 review): a dense 40 m swarm 60 m beyond the yard,
+    // seen from ~120 m — the range the P5 spec asks it to read at
+    camera: { target: [0, -60], distance: 120, pitch: 20, yaw: 0 }, tod: 14,
+    description: 'Locust swarm by day: a low band of dark sandy specks over a 40 m disc beyond the yard, roaming so the cloud is not a static column; 1 draw (shared particle mesh).',
+  },
+  'locusts-night': {
+    camera: { target: [0, -60], distance: 120, pitch: 20, yaw: 0 }, tod: 21.5,
+    description: 'The same swarm at night: a moonlit shadow band of dark specks, no self-lit or glowing points (the 2026-10-04 forward-scatter fix).',
+  },
   calibrate: {
     // Near top-down, 14 m up: the 80x80 m neutral grey card below fills every pixel of the frame, so
     // any mean-luminance difference between pipeline-on and bypass is chain gain, not scene content.
@@ -41,7 +51,7 @@ const ST = {
   built: false, group: null, preset: null, api: null,
   dome: null, domeU: null, mats: [], geos: [], lights: [],
   smoke: null, splash: null, trackAngle: 0, puffAcc: 0, vehicleDir: { x: 0, z: 0 },
-  hourCache: -1, calibCard: null,
+  hourCache: -1, calibCard: null, stagedSwarm: false,
 };
 
 const SKY_VERT = /* glsl */ `
@@ -343,6 +353,22 @@ export async function stage(ctx, presetName, api, group) {
   // the whole yard blows out to white, making the passes impossible to judge. Take ownership of
   // exposure only when environment is not loaded (updateStage drives it from the sun elevation).
   ST.ownsExposure = !ctx.modules.has('environment');
+  // locust presets: one staged swarm. world.locusts is simulation's to write; in this standalone
+  // showcase simulation is normally absent, so the stage writes the one swarm itself (and clears it
+  // again for any other preset). With simulation loaded the swarm goes through its own API instead.
+  const isLocust = presetName === 'locusts' || presetName === 'locusts-night';
+  const L = ctx.world.locusts;
+  if (L && ST.stagedSwarm && !isLocust) {
+    L.swarms.length = 0; L.version++; ST.stagedSwarm = false;
+  }
+  if (isLocust && L && !L.swarms.length) {
+    const sim = ctx.modules.get('simulation');
+    const swarm = { x: 0, z: -60, radius: 40, days: 30, budget: 400, density: 1 };
+    let injected = false;
+    try { injected = !!sim?.injectEvent?.('locusts', swarm); } catch (err) { ctx.log.warn('[effects] locust injectEvent failed: ' + err.message); }
+    if (!injected) { L.swarms.push({ id: 1, ...swarm, age: 0, eaten: 0 }); L.version++; ST.stagedSwarm = true; }
+  }
+  if (isLocust) api.setAmbientDust(0);   // no ambient motes: every speck in frame is a locust
   // preset-specific state
   if (presetName === 'heat') {
     ctx.world.weather.temperature = 37;   // environment owns weather; in this standalone showcase nobody else writes it
@@ -399,6 +425,7 @@ export function updateStage(dt, t, S, ctx) {
 export function disposeStage(ctx) {
   if (!ST.built) return;
   ST.smoke?.dispose(); ST.splash?.dispose();
+  if (ST.stagedSwarm && ctx?.world?.locusts) { ctx.world.locusts.swarms.length = 0; ctx.world.locusts.version++; ST.stagedSwarm = false; }
   for (const m of ST.mats) { ctx?.materials.untrack(m); m.dispose(); }
   for (const g of ST.geos) g.dispose();
   ST.group?.removeFromParent();
