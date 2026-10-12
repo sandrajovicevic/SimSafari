@@ -17,7 +17,11 @@ import * as THREE from 'three';
 // midground: LOD1 was carrying 1.65x LOD0's mat coverage and LOD2 only half of LOD1's, so the
 // terrain showed through in bands. Change a spacing or a mulXZ and you must re-solve `mat`.
 export const QUALITY = {
-  high:   { r0: 44, r1: 96,  r2: 305, nearSpacing: 0.40, farSpacing: 1.5, lod1Keep: 0.90, cap: [34000, 92000, 92000] },
+  // V1 §4 high tier: nearSpacing /√1.5 → ×1.5 candidate density, paid for by a SMALLER LOD0 ring
+  // (r0 44→36: area −33% × density +50% ≈ today's instance count, so the vertex load — measured
+  // +8..18 ms/frame at ×1.5-everywhere, 5-8x over the wave's +1.5 ms budget — stays put while the
+  // sward inside 36 m reads ×1.5 denser). _repack thins the boost back to nominal by 70 m.
+  high:   { r0: 36, r1: 96,  r2: 305, nearSpacing: 0.327, farSpacing: 1.5, lod1Keep: 0.90, cap: [34000, 92000, 92000] },
   medium: { r0: 34, r1: 84,  r2: 240, nearSpacing: 0.55, farSpacing: 2.0, lod1Keep: 0.82, cap: [20000, 58000, 56000] },
   low:    { r0: 24, r1: 60,  r2: 165, nearSpacing: 0.78, farSpacing: 2.8, lod1Keep: 0.70, cap: [10000, 26000, 30000] },
 };
@@ -399,6 +403,16 @@ export class GrassField {
           if (d > r1) continue;
           if (vegOn && p[i + 10] >= this._vegRatio(p[i], p[i + 2])) continue;
           const key = p[i + 8];
+          // V1 §4 near-camera density ring: candidates are generated at ×1.5 (nearSpacing /√1.5);
+          // inside the ring every candidate draws, beyond it a distance-ramped keep probability
+          // thins back to EXACTLY today's density by 70 m, so the LOD2 handover is unchanged. At
+          // the r0 boundary both LOD0 and LOD1 sides are still boosted — coverage stays equal, no
+          // seam. kb is derived from already-drawn values, decorrelated from `key`'s LOD pick.
+          if (q.nearSpacing < 0.4) {
+            const kb = (key * 3.717 + 0.113) % 1;
+            const keep = 1 - 0.3333 * Math.min(1, (d - 36) / 34);
+            if (kb > keep) continue;
+          }
           // LOD0 probability ramps down over the last 14 m of its ring
           // 26 m cross-fade, and the LOD1 keep ratio barely drops, so the handover is invisible
           const p0 = 1 - Math.min(1, Math.max(0, (d - (r0 - 26)) / 26));

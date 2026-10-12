@@ -199,7 +199,36 @@ suitability from it). The apron and the splat's 80 m border fade use the same fo
 `savannah/overview`, 0 errors. Still open: the patch albedo reads mauve-brown from altitude rather
 than laterite red.
 
-## Escarpment shade (2026-10-09)
+## Close-range detail normals (Wave V1 §2, 2026-10-08)
+
+Two GPU-generated tileables (`buildDetailNormals`, textures.js — 512² hardware / 256² software GL,
+cached keys `terrain:detailRock` / `terrain:detailGrass`) layered over the composed splat normal in
+material.js at tilings the 1024² layer arrays don't carry: **1.4 m fractured rock** (tridged facets
+at two scales, worley cross-cracks, grain) weighted by the rock splat weight `b[3]`, and **0.55 m
+ground micro-bump** (hummocks, tuft lattice, blade grain) over grass + dry-grass + 0.35·dirt. Both
+perturb the same world tangent frame the layer normals use, and go **triplanar on slopes** through
+the existing `bw` axis blend — the round-2 critic's flat-shading tell lived on kopje/cliff faces.
+Faded out **80→220 m** (`uDetail` scales it, 0 kills it; the branch is skipped entirely beyond the
+fade so distant pixels never sample). Zero new draws — fragment cost only inside the fade ring; a
+1×1 flat normal binds if generation ever fails, with `uDetail` forced 0. Program cache key v12
+(#38 landed first and took v11; this branch bumped per the PR #37 review note).
+
+Measured (real GPU, quality=medium for a deterministic FXAA chain, both per-frame clocks frozen):
+A/B mean-abs diff close@8.5 **0.199**, close@14 **0.120**, kopje@17 **0.062** (the fade is already
+≈⅔ down at 175 m), overview@1150 m **byte-identical** (the fade provably holds); draws 31–36
+unchanged; SwiftShader 0 errors. Vision A/B (neutral prompts): kopje OFF "fairly smooth and
+somewhat flat-shaded… like a continuous skin", ON "a collection of angled facets and plates…
+articulated pile of stone slabs"; grass OFF "reads more as a painted texture", ON "tufts and clumps
+catch the grazing light with distinct micro-shadows". Numbers and method in
+`docs/specs/v1-visual-wins.md` §2.
+
+**Verification recipe gotcha**: to prove "unchanged pixels are byte-identical", freeze BOTH
+per-frame clocks — `registry.update` (module dt) *and* `materials.update` (the shared core `uTime`
+that animates the water runs from `materials.update(dt)` inside `_simulate`, not through the
+registry; freezing only the registry leaves ~0.001/frame of river shimmer). And use quality=medium:
+the high tier's TAA wobbles ~0.06/frame at rest, the same order as the kopje effect itself.
+
+## Escarpment shade (2026-10-09, #38)
 
 The escarpment's shaded faces read near-black from the overview at 14 h: the hemisphere light gives a
 vertical face only the weak sky/ground mean, and the rock macro tint's darkest band (×0.58) compounded
@@ -209,7 +238,8 @@ directional light's elevation** (smoothstep 0.08 → 0.35) so it fades out at du
 glowed pale against the unlit plain at 18 h; an additive physically-scaled bounce (k × the ground's
 direct irradiance) stayed invisible at 14 h even at k = 0.45. Tuned by eye on SwiftShader overview
 shots at 14 h / 18 h / 21.5 h against `main` — renders and composes correctly there, not checked on a
-real GPU. Cache key `terrain-splat-v11`.
+real GPU. Cache key `terrain-splat-v11` at landing; **v12** after the V1 merge (#38 took v11, this
+branch bumped — see the V1 §2 section above).
 
 ## Known gaps (honest)
 

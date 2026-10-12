@@ -169,8 +169,18 @@ const api = {
   isEnabled(name) { return pipeline ? pipeline.isEnabled(name) : false; },
   /** 'low'|'medium'|'high' — rebuilds the chain. */
   setQuality(q) { return pipeline ? pipeline.setQuality(q) : false; },
-  /** AA mode override: 'fxaa'|'smaa'|'none' (default from tier). Rebuilds. */
+  /** AA mode override: 'fxaa'|'smaa'|'taa'|'none' (default from tier). Rebuilds. */
   setAA(mode) { pipeline?.setAA(mode); },
+  /** TAA tuning: { blend (history weight 0..1), slack (neighbourhood-clamp HDR slack) }. No-op unless the current AA pass is TAA. */
+  setAATuning(o = {}) {
+    const p = pipeline?.taaPass;
+    if (!p || !p.uniforms) return false;
+    if (o.blend !== undefined) p.uniforms.uBlend.value = o.blend;
+    if (o.slack !== undefined) p.uniforms.uSlack.value = o.slack;
+    if (o.gamma !== undefined) p.uniforms.uGamma.value = o.gamma;
+    if (o.debug !== undefined) p.uniforms.uDebug.value = o.debug;
+    return true;
+  },
   /** Bloom implementation: 'mip' (default, 5 draws) or 'unreal' (three's UnrealBloomPass, 13 draws). Rebuilds. */
   setBloomMode(mode) { pipeline?.setBloomMode(mode); },
   /** {exposure, contrast, saturation, warmth, lift, vignette, grain, bloom} — any subset. exposure multiplies in the grade, renderer.toneMappingExposure is untouched. */

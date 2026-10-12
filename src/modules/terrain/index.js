@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { BIOME } from '../../core/World.js';
 import { presets, stage } from './showcase.js';
-import { buildLayerArrays, buildWaterNormal, applyPhotoLayers } from './textures.js';
+import { buildLayerArrays, buildWaterNormal, buildDetailNormals, applyPhotoLayers } from './textures.js';
 import { generateSavannah, classifyRange, classifyAll, packControl, packControlRect, sampleMoisture, BIOME_NAMES, normalAt } from './generate.js';
 import { buildChunks, refreshChunk, refreshChunkRect, chunkAt } from './mesh.js';
 import { createTerrainMaterial, createControlTextures, createHeightTexture, updateHeightTexture, updateHeightTextureRect } from './material.js';
@@ -122,7 +122,7 @@ function generate({ preset = 'savannah', seed } = {}) {
   }
   uploadControl();
   if (!S.heightTex) S.heightTex = createHeightTexture(world); else updateHeightTexture(world, S.heightTex);
-  if (!S.material) S.material = createTerrainMaterial(ctx, S.layers, S.control);
+  if (!S.material) S.material = createTerrainMaterial(ctx, S.layers, S.control, S.detail);
   if (!S.chunks.length) {
     S.chunks = buildChunks(world, S.material, { chunksPerSide: CHUNKS });
     for (const c of S.chunks) S.group.add(c.mesh);
@@ -296,6 +296,7 @@ export default {
       const t0 = performance.now();
       S.layers = buildLayerArrays(ctx, { size: S.textureSize, anisotropy: S.anisotropy });
       S.waterNormal = buildWaterNormal(ctx, { anisotropy: S.soft ? 1 : 4 });
+      S.detail = buildDetailNormals(ctx, { size: S.soft ? 256 : 512, anisotropy: S.soft ? 1 : 4 });
       log(`[terrain] ${S.layers.layers} layer sets @ ${S.textureSize}² aniso ${S.anisotropy} (${S.soft ? 'software' : 'hardware'} GL) in ${(performance.now() - t0).toFixed(0)} ms`);
     } catch (err) {
       ctx.log.error('[terrain] texture generation failed', err);
@@ -353,6 +354,7 @@ export default {
     if (S.control) { for (const t of Object.values(S.control)) t.dispose(); S.control = null; }
     S.heightTex?.dispose(); S.heightTex = null;
     S.ctx?.textures.dispose('terrain:waterNormal'); S.waterNormal = null;
+    S.detail?.dispose(); S.detail = null;
     S.group?.removeFromParent(); S.group = null;
     S.gen = null; S.ctlBytes = null; S.generated = false;
   },

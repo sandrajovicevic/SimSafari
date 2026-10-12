@@ -24,6 +24,12 @@ export class CameraRig {
     this.panSpeed = 1;
     this.enabled = true;
     this.presets = new Map();
+    // Wave V1 TAA (docs/requests/effects.md #1): the previous frame's view-projection for temporal
+    // reprojection — one writer (the rig, at the end of update), effects reads it. `jitter` is the
+    // TAA sub-pixel offset in NDC units, set by effects before update; null when TAA is off.
+    this.prevViewProjection = new THREE.Matrix4();
+    this._vp = new THREE.Matrix4();
+    this.jitter = null;
     this._drag = null;
     this._keys = new Set();
     this._bind();
@@ -157,6 +163,12 @@ export class CameraRig {
   }
 
   update(dt) {
+    // Wave V1 TAA: freeze the previous frame's view-projection FIRST — before this frame's motion and
+    // jitter touch the camera, the matrices still hold the exact state the last frame (the one sitting
+    // in TAA's history buffer) was rendered with. Computing it at the end instead made prevVP == currVP
+    // (identity reprojection: no jitter integration, history clamped away under motion).
+    this._vp.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    this.prevViewProjection.copy(this._vp);
     if (this.enabled && dt > 0 && this._keys.size) {
       const k = this._keys;
       const s = this.distance * 0.8 * dt * this.panSpeed;
@@ -186,5 +198,12 @@ export class CameraRig {
     if (py < ground + 1.7) py = ground + 1.7;
     this.camera.position.set(px, py, pz);
     this.camera.lookAt(this.target);
+    // Wave V1 TAA: assign, never accumulate — elements 12/13 are pure NDC xy offsets (zero in a
+    // centred perspective projection; nothing else writes them, only _resize rebuilds the matrix),
+    // so setting them both applies this frame's jitter and clears the last. `+=` random-walked the
+    // projection by the Halton mean across every settle frame.
+    this.camera.updateMatrixWorld();
+    this.camera.projectionMatrix.elements[12] = this.jitter ? this.jitter[0] : 0;
+    this.camera.projectionMatrix.elements[13] = this.jitter ? this.jitter[1] : 0;
   }
 }
